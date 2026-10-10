@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "profile_id": "g60_us_feedback_mvp",
+  "revision": 1,
+  "model_family": "G60",
+  "countries": ["US"],
+  "powertrains": ["ICE", "PHEV", "BEV"],
+  "domain_applicability": {
+    "charging_and_range": ["BEV", "PHEV"]
+  },
+  "powertrain_aliases": {
+    "BEVE": "BEV"
+  },
+  "alias_assumptions": {
+    "BEVE": "BEVE is provisionally interpreted as BEV; the supplied raw label is retained and data-owner confirmation remains pending."
+  },
+  "planning_date": "2026-10-10",
+  "launch_window": null,
+  "objectives": [],
+  "uncovered_regions": ["CN"],
+  "notes": [
+    "The first candidate slice is scoped to US G60 feedback records.",
+    "No China verbatims are supplied; the China customer study is contextual aggregate evidence only.",
+    "Source A-D identities and verified owner/expert status are unavailable."
+  ]
+}

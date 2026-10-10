@@ -14,5 +14,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.python/
+.uv-cache/
+.tmp/
+.worktrees/
 node_modules/
 .DS_Store

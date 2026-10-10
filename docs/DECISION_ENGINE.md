@@ -2,6 +2,12 @@
 
 This is a proposed implementation contract. Numerical examples and default policies here are illustrative, not BMW decisions or validated predictive models.
 
+## Implemented local slice (10 October 2026)
+
+`src/bmw_pm/intelligence/requirements.py` groups signals by domain **and customer outcome**, counts unique supporting feedback IDs, keeps praise as preservation evidence, and routes mixed or neutral statements to context. It checks each linked exact span and source hash. Semantic entailment remains `unreviewed`; anonymized Source A–D records retain `author_expertise=unknown`. G60 charging applicability is declared in the vehicle profile for BEV/PHEV, and its denominator uses only that scoped eligible corpus.
+
+The exploratory policy marks each weighted criterion as `customer` or `business`. `src/bmw_pm/decision/scoring.py` reports a separate 0–100 scenario interval for each dimension and the combined value interval. Missing criterion weights remain in the upper bound. Engineering feasibility is a separate status and basis, not an inferred numeric criterion. The displayed list sorts by combined lower bound with a stable ID tie-break; `assess_ranking` counts pairwise comparisons unresolved by overlapping intervals. All current business criteria and feasibility are unknown; this is a triage view, not a decision-grade BMW priority order. The baseline extractor has not been evaluated against human labels.
+
 ## Separate four questions
 
 1. **What does the evidence say?** Atomic claims, context, recurrence, source quality, uncertainty and counterevidence.

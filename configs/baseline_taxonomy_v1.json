@@ -1,0 +1,35 @@
+{
+  "version": "baseline_taxonomy_v1",
+  "label": "Deterministic keyword baseline; not AI and not an evaluated taxonomy",
+  "domains": {
+    "controls_usability": {
+      "phrases": ["touchscreen", "touch screen", "physical button", "buttons", "climate control", "menu", "menus", "iDrive"],
+      "customer_outcome": "Occupants can complete frequently used control tasks with low visual and manual effort."
+    },
+    "software_reliability": {
+      "phrases": ["software", "app", "screen", "display", "crash", "crashes", "bug", "bugs", "connectivity", "bluetooth"],
+      "customer_outcome": "Occupants can rely on vehicle software and connected functions to work consistently during normal use."
+    },
+    "charging_and_range": {
+      "applicable_powertrains": ["BEV", "PHEV"],
+      "phrases": ["charging", "charge", "charger", "range", "battery"],
+      "customer_outcome": "Electric-vehicle users can complete intended journeys and charging stops with predictable effort."
+    },
+    "ride_and_comfort": {
+      "phrases": ["comfort", "comfortable", "seat", "seats", "ride", "suspension", "legroom", "roominess"],
+      "customer_outcome": "Occupants remain comfortable in their seating position and intended journey conditions."
+    },
+    "noise_and_refinement": {
+      "phrases": ["noise", "noisy", "quiet", "rattle", "rattles", "vibration"],
+      "customer_outcome": "Occupants experience an appropriately quiet and refined cabin in the stated driving conditions."
+    },
+    "storage_and_practicality": {
+      "phrases": ["storage", "trunk", "boot", "cargo", "cupholder", "cup holder"],
+      "customer_outcome": "Occupants can carry and organize everyday items needed for intended journeys."
+    },
+    "driver_assistance": {
+      "phrases": ["driver assistance", "lane", "cruise control", "parking", "park assist", "adaptive cruise"],
+      "customer_outcome": "Drivers can use assistance functions predictably without avoidable supervision burden."
+    }
+  }
+}
