@@ -17,8 +17,8 @@ Update this board with actual outcomes and evidence. Preparation and the first l
 
 - [x] **T01** Bootstrap environment, package, schemas, minimal persistence and run manifest.
 - [x] **T02** Implement idempotent feedback adapter and annotation grouping; reconcile 10,128 IDs.
-- [ ] **T04 — partial, next human review:** Frozen `runs/evaluation-v1/` contains 60 G60 development, 30 reserved G60 holdout, 15 F70 and 15 G70 transfer records with hashes/group membership and 30 provisional second-review assignments. Prior baseline exposure prevents claiming these are completely unseen. Human difficulty/near-duplicate screening, labels, double review and adjudication remain open. Keep held-out records out of future prompt tuning. See `docs/EVALUATION_LABELING.md`.
-- [ ] **T05 — partial:** The keyword baseline and bounded structured OpenAI provider validate exact spans. After T04, add per-record resumable live jobs, persisted failures/abstentions and model/latency/token metadata; compare both extractors on identical frozen examples. Human entailment review is outstanding.
+- [ ] **T04 — partial, next human review:** Frozen `runs/evaluation-v1/` contains 60 G60 development, 30 reserved G60 holdout, 15 F70 and 15 G70 transfer records with hashes/group membership and 30 provisional second-review assignments. The local validator checks frozen hashes, human spans, abstentions and independent second review. Prior baseline exposure prevents claiming these are completely unseen. Human difficulty/near-duplicate screening, labels, double review and adjudication remain open. Keep held-out records out of future prompt tuning. See `docs/EVALUATION_LABELING.md`.
+- [ ] **T05 — partial:** The keyword baseline and bounded structured OpenAI provider validate exact spans. A private frozen-packet runner now saves per-record results/failures and duration, with available live-model token metadata; its scorer can compare identical splits after human labels exist. Live same-input comparison and human entailment review are outstanding.
 - [ ] **T03 — partial:** The feedback and customer-study adapters work. Add sales observations and 10–20 manually verified, market/derivative/date-scoped equipment facts with exact cell/page/table locators. Reconcile accepted plus quarantined source units.
 - [ ] **T06 — partial:** Customer-outcome candidates, support, praise/preservation, context and explicit assumptions work for feedback. Link the separately scoped study, sales, equipment and public-source facts to actual cards; obtain human review of material claims.
 - [ ] **T07 — partial:** Deterministic four-criterion score intervals and customer/business views work. Only reach is data-derived in the real run. Obtain PM objectives, anchored impact/strategy/competitive ratings and swing weights; implement reproducible weight/evidence-removal sensitivity. Keep engineering feasibility and cost separate and unknown without reviewed inputs.
@@ -48,6 +48,13 @@ Sequence: T04 before prompt tuning or AI quality claims; then T05 and scoped T03
 - [ ] Expand gold annotations and PM preference judgments.
 
 ## Per-task completion note
+
+### 10 October 2026: reviewed-label and extraction evaluation workflow (T04/T05 partial)
+
+- Acceptance: validate immutable packet hashes and human exact spans; require independent review/adjudication for flagged records; resume per-record extractor jobs with failures and metadata; report no accuracy when labels are absent.
+- Added `evaluation_workflow.py`, a standalone script, focused tests and labeling instructions. Optional live calls use the same frozen redacted packets as the baseline, but require explicit provider selection and credentials. Run identity includes input, model/prompt or taxonomy configuration hashes. No scoring policy or final recommendation is changed automatically.
+- Focused tests: `.venv\Scripts\python.exe -m pytest -q tests/test_evaluation_workflow.py tests/test_evaluation.py -p no:cacheprovider --basetemp .tmp/pytest-eval-workflow-2` passed six tests. Full `tests/` suite passed 34 tests. `python -m bmw_pm.cli validate --expect-supplied-shape` passed feedback/study reconciliation, 2,518 exact citation checks, unique-ID recurrence, unknown engineering inputs and audit-chain validation. Real `validate-labels`: 120 unlabelled, zero gold-ready. Baseline development run: 60 attempted, 30 with signals, 30 abstained, zero failures. Saved-run scoring returned `metrics: null`; these counts do not establish extraction quality.
+- Remaining: independent human labels, second reviews/adjudication, semantic entailment review, optional authorized live model comparison, transfer and holdout measurements. No live inference or training occurred.
 
 ### 10 October 2026: financial business-case foundation (T07 partial)
 

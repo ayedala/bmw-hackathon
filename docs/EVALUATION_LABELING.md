@@ -46,6 +46,35 @@ Offsets are Python Unicode character indices into packet `text`, with an exclusi
 
 For a flagged second review, give an independent reviewer the packet and an empty worksheet, without the first review. Retain both worksheets under distinct names. A human adjudicator records disagreement and the resolved labels in `adjudication`; do not silently replace either independent review. Additional difficult records may need a second reviewer.
 
+The second worksheet is a separate JSONL file with the same row shape as `human_labels.jsonl`, containing only `double_label: true` records. Its `reviewer_id` must differ from the primary reviewer and `adjudication` stays `null`. Once both reviewers finish, keep both entries and add this object to the primary row:
+
+```json
+{
+  "reviewer_id": "adjudicator-id",
+  "reason": "How the two reviews were resolved, including agreement",
+  "signals": [],
+  "abstention_reason": "Reason when the resolved label has no signals"
+}
+```
+
+Replace `signals` and `abstention_reason` with the resolved values. The adjudicator's exact spans are validated against the same frozen text. A singly reviewed record is ready for scoring when labelled; a flagged record stays provisional until independent review and adjudication are complete.
+
+## Local validation and extraction comparison
+
+Run from the repository root with `PYTHONPATH=src`:
+
+```powershell
+$env:PYTHONPATH = 'src'
+python scripts/evaluation_workflow.py validate-labels
+python scripts/evaluation_workflow.py validate-labels --second-review runs/evaluation-v1/second_review.jsonl
+python scripts/evaluation_workflow.py run-extraction --provider baseline --split development --output runs/evaluation-v1/baseline-development-v2
+python scripts/evaluation_workflow.py score-extraction --run runs/evaluation-v1/baseline-development-v2 --second-review runs/evaluation-v1/second_review.jsonl
+```
+
+Use a new output directory for a changed taxonomy, prompt, model or frozen split. A repeated run reuses completed per-record results; `--retry-failures` retries only failed records. Run the optional live provider on the **same split** with a separate output directory and configured `OPENAI_API_KEY` / `BMW_PM_OPENAI_MODEL`, then use `compare-extraction --first <baseline-run> --second <live-run>` with the same second-review file. Live calls transmit the redacted packet text; check authorization and the packet before invoking them. No live model call occurs during validation, baseline extraction, scoring or comparison.
+
+The scorer counts one-to-one matches requiring the same normalized topic, polarity and overlapping evidence span. It reports this as a **proxy**, with true/false counts and denominators, rather than semantic accuracy or citation entailment. Reviewers must separately assess whether a quoted span actually supports an atomic claim. The output remains `metrics: null` when no adjudicated labels are ready; partial labels produce explicitly partial metrics.
+
 ## Current boundary
 
-Freezing inputs does not label them, train a model, establish correctness or approve a policy. Human worksheet contents are not yet automatically validated or scored. Do not treat them as gold until exact spans, scope and disagreements have been checked. Once human labels exist, the next improvement is a deterministic label validator and same-input baseline/live comparison, followed by development-only changes and held-out measurements. No automatic policy promotion is enabled.
+Freezing inputs does not label them, train a model, establish correctness or approve a policy. The validator checks hashes, coverage, independent reviewer IDs, abstentions and exact spans; it cannot establish semantic correctness or the quality of an adjudication. The baseline can run before labels, but no measured accuracy exists until reviewers finish. No automatic policy promotion is enabled.
