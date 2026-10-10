@@ -17,8 +17,12 @@ Prepared 10 October 2026. “Proposed” means the team may revise the choice; i
 | D11 | Feasibility/cost unknown unless reviewed evidence exists | Required by missing engineering inputs | Engineering information received |
 | D12 | No time trends from undated comments | Required by missing feedback timestamps | Timestamped source supplied |
 | D13 | Cache validated output for honest replay | Proposed reliability and reproducibility measure | Operational deployment |
-| D14 | Keep source data local and Git ignored | Protective repository default | Explicit authorized sharing requirements |
-| D15 | Automated scraper and model evaluation not yet implemented | Current preparation status | Verified implementation and measured runs |
+| D14 | Keep original source data, identity mapping and raw model responses local and Git ignored | Protective repository default; user authorized only locally redacted excerpts for bounded OpenAI API runs | Privacy review or changed authorization |
+| D15 | Public-source research and model evaluation are not integrated into the decision path | A standalone YouTube research module exists, but no verified imported fact or human-labelled model metric is recorded | Scoped source integration and evaluation artifacts |
+| D16 | More than 12 hours remained in the 24-hour window when the next sprint was planned | User response on 10 October 2026; elapsed time continues | Updated deadline or schedule |
+| D17 | No separate teammate coding path was reported for the next engine sprint | User response; a standalone YouTube module subsequently appeared on `main`, so integration ownership is unconfirmed | Team assignment or new branch/work arrives |
+| D18 | Locally redacted customer excerpts may be sent to the OpenAI API for bounded extraction/evaluation | User explicitly selected this option; original text and redaction mapping stay local | Data-owner restrictions or changed authorization |
+| D19 | A BMW PM is available for policy and requirement review | User response; no weights, card judgments or approvals have been received yet | Actual review session and recorded decisions |
 
 ## Questions for BMW/team, without blocking coding
 
@@ -29,7 +33,7 @@ Prepared 10 October 2026. “Proposed” means the team may revise the choice; i
 5. Does sales “EU/Europe” include GB, NO and other non-EU countries? Are 2024/2025 observed or illustrative, and how is 2030 derived?
 6. Does `BEVE` explicitly denote BEV? Are powertrain-level sales available?
 7. What strategy, target launch, engineering boundaries and competitor cohort should the first PM policy use?
-8. What data/model hosting restrictions apply to customer text, and who can evaluate/approve the demo requirements?
+8. What additional data-owner restrictions apply beyond the user's authorization for locally redacted API excerpts, and which BMW PM judgments may be recorded or presented as official approval?
 
 Proceed using the explicit unknown states described in the contracts. Ask for answers when useful, but do not stall deterministic ingestion, fixtures or the first working path.
 

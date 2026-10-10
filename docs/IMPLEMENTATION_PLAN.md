@@ -1,25 +1,23 @@
-# 24-hour implementation plan
+# Remaining-work implementation plan
 
-The user confirmed a 24-hour build window. This schedule starts when implementation begins; it is not a claim that these tasks are already completed. Stack default: Python, SQLite, Streamlit, provider-neutral structured LLM calls. Optimize for one working path and measured quality.
+The user confirmed a 24-hour build window and reported more than 12 hours remaining when this sequence was agreed. Stack: Python, SQLite and Streamlit with a provider-neutral extraction boundary. `TASKS.md` is the status source of truth. Do not restart completed bootstrap or claim the original hour-by-hour schedule still describes actual progress.
 
-## Hour-by-hour milestones
+## Ordered milestones from the working slice
 
-| Elapsed time | Deliverable | Acceptance evidence |
+| Order | Deliverable | Acceptance evidence |
 |---|---|---|
-| 0–2 h | Repo bootstrap, typed core, local DB, tiny synthetic fixture, run manifest, frozen split plan | One source can be ingested and cited; no hosted inference required |
-| 2–5 h | Feedback/study/sales adapters, verified equipment subset, deduplication, initial gold annotations | Supplied counts reconcile; raw labels preserved; unknown metadata explicit |
-| 5–9 h | Bounded extraction, span validator, basic grouping, baseline and small dev evaluation | Atomic signals trace to sources; mixed sentiment preserved; failures visible |
-| 9–12 h | Requirement drafting, counterevidence, policy and deterministic score intervals | Representative cards and reproducible contributions; no invented costs/targets |
-| 12–15 h | Thin review UI, decisions, versioning, access/change audit, export | Approve/edit/challenge persists and changes exact revision; replay works |
-| 15–18 h | Small web collector, scoped facts, F70/G70 transfer, second evidence cycle | Real fetched source reaches a card; mismatched comparison flagged |
-| 18–21 h | Locked quality evaluation, adversarial tests, measured performance, fixes on dev only | Metrics report with sample sizes, baselines and failures |
-| 21–24 h | Demo freeze, reproducible replay, presentation, judge rehearsal | Five-minute path works offline; claims match measured results |
+| 1 | Freeze 120 grouped development/test/transfer IDs and content hashes; hide legacy labels | Reproducible manifest, 30 double-labelled difficult records and adjudicated disagreements |
+| 2 | Run bounded resumable structured AI extraction against the keyword baseline | Same frozen examples, valid exact spans, recorded abstentions/failures/model/tokens/latency and human-rated metrics |
+| 3 | Add sales observations, 10–20 verified equipment facts and 3–4 permitted public-source claims | Each fact has source locator and scope; accepted/quarantined units reconcile; at least one fact reaches a card |
+| 4 | Have the BMW PM review 10–12 cards, about 15 paired preferences, criterion anchors/objectives and swing weights | Versioned reviewer judgments; impact/business inputs use linked evidence and PM rationale; unknown feasibility stays separate |
+| 5 | Implement deterministic sensitivity and demonstrate one PM challenge/new revision/historical replay | Changed contributions and unresolved pairs recompute from stored inputs; prior decision remains reconstructable |
+| 6 | Measure G60/F70/G70 quality, adversarial cases, runtime and costs; freeze export and offline demo | Evaluation report with denominators, baseline and failure cases; one five-minute path works without live APIs |
 
-Annotating the small gold set should happen as soon as ingestion is stable. If the team has multiple people, a human can annotate while another implements. This plan does not authorize autonomous subagent spawning or require parallel infrastructure.
+The recently added YouTube research module is standalone; only validated, scoped findings imported into the decision engine count as web enrichment. If time slips, reduce source and card breadth before cutting evaluation, provenance or PM decision history.
 
-## First vertical slice
+## Working slice and next demonstration
 
-Take a small G60 evidence packet including one positive, one negative, one mixed and one ambiguous comment. Preserve ID/row locators, extract signals, draft one requirement, validate evidence, calculate a policy-based score interval, have the PM challenge a premise, and save a second revision with an audit event. Do this before scaling to the full feedback corpus.
+The first G60 US baseline run already produced seven requirements with exact spans and score intervals from 3,610 eligible records. Local review, revisions and audit replay exist. It has not yet demonstrated a scored change after new external evidence or a BMW PM challenge. Build that demonstration using a positive, negative, mixed and ambiguous packet; preserve ID/row locators and both revisions.
 
 Use synthetic fixtures for unit tests and real records for a clearly labelled demo sample. No demo card should be hardcoded as the production output for a particular model or row. Persist model outputs and lineage so the path can be replayed.
 
@@ -42,21 +40,16 @@ If time slips, reduce source breadth, number of requirements and UI detail. Pres
 
 Use a handful of tables initially: sources; canonical records; typed artifacts/evidence links; requirement revisions; policies/profiles; decisions; audit events; runs. Complex object payloads may be versioned JSON with validated schemas. Avoid implementing a separate ORM/table for every contract before the vertical slice works.
 
-## Planned command contract
+## CLI status
 
-These commands are **not implemented yet**. Implement them or update this section to match the final CLI; do not tell the user they work until verified.
+Implemented commands: `ingest`, `run`, `list`, `review`, `edit`, `verify-audit`, `validate` and `replay`. The local database validation and 12 tests pass. The commands below are future interfaces, not current CLI functionality:
 
 ```text
-python -m bmw_pm.cli ingest --input data/raw/provided --profile configs/g60.yaml
-python -m bmw_pm.cli run --profile configs/g60.yaml --sample-manifest <path>
-python -m bmw_pm.cli evaluate --split-manifest <path> --run-id <id>
-python -m bmw_pm.cli replay --run-id <id>
-python -m bmw_pm.cli export --run-id <id> --reviewed-only
-python -m pytest
-streamlit run ui/app.py
+bmw-pm evaluate --split-manifest <path> --run-id <id>
+bmw-pm export --run-id <id> --reviewed-only
 ```
 
-Use an environment template with provider key names, model IDs and budget settings, without actual credentials. Check provider availability and documented API syntax before implementation. Do not install an agent framework or vector database as the first step.
+Current run example: `bmw-pm ingest --input data/raw/provided --profile configs/g60.json`, then `bmw-pm run --provider baseline --profile configs/g60.json --policy configs/exploratory_equal_v1.json`; `bmw-pm validate --expect-supplied-shape` checks the resulting database. Live AI uses `--provider openai --limit N` (maximum 50 per run) after locally redacted text is reviewed and credentials/model ID are configured. Implement resumable record-level persistence before depending on live runs for the final demo. Do not install a general agent framework or vector database for this slice.
 
 ## Stop conditions and failure handling
 
@@ -69,4 +62,4 @@ Use an environment template with provider key names, model IDs and budget settin
 
 ## Definition of done
 
-The real provided data can be traced through normalized evidence to AI-generated, validated customer requirements. At least one public source enriches an actual argument. A visible policy deterministically calculates priorities with unknowns and regional gaps. A PM can challenge/change a requirement, producing a versioned decision and a reconstructable history. Held-out metrics, transfer checks and runtime are measured and reported. The presentation demonstrates this path and identifies what remains unvalidated.
+The real provided data can be traced through normalized evidence to AI-generated, human-checked customer requirements. At least one scoped public source enriches an actual argument. A visible PM-reviewed policy deterministically calculates priorities with unknowns and regional gaps. A PM challenge creates a versioned decision and a reconstructable history. Held-out metrics, transfer checks and runtime are measured and reported with sample sizes. The presentation demonstrates this path and identifies what remains unvalidated.

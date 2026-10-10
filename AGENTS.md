@@ -6,6 +6,8 @@ Build an evidence-grounded BMW product-management decision-support prototype wit
 
 Read `docs/REPORT.md`, `docs/DATA_AUDIT.md`, and `TASKS.md` before the first implementation task. Then load only the documents relevant to the stage being changed. The recommended stack is Python + SQLite + Streamlit; it is a proposal, not a user-mandated dependency. Keep the core independent of the UI and model provider.
 
+**Current next task:** freeze the grouped evaluation manifest and human labels before changing extraction prompts or claiming model quality. `TASKS.md` is the live status board. Keep structural/software validation separate from human-labelled extraction, requirement and ranking metrics; never promote a proposed target into a measured result.
+
 ## Non-negotiable domain invariants
 
 - Ground every proposed requirement and material rationale claim in resolvable evidence or an explicitly identified assumption. A source ID alone does not establish entailment.

@@ -6,7 +6,7 @@ This is a proposed implementation contract. Numerical examples and default polic
 
 `src/bmw_pm/intelligence/requirements.py` groups signals by domain **and customer outcome**, counts unique supporting feedback IDs, keeps praise as preservation evidence, and routes mixed or neutral statements to context. It checks each linked exact span and source hash. Semantic entailment remains `unreviewed`; anonymized Source A–D records retain `author_expertise=unknown`. G60 charging applicability is declared in the vehicle profile for BEV/PHEV, and its denominator uses only that scoped eligible corpus.
 
-The exploratory policy marks each weighted criterion as `customer` or `business`. `src/bmw_pm/decision/scoring.py` reports a separate 0–100 scenario interval for each dimension and the combined value interval. Missing criterion weights remain in the upper bound. Engineering feasibility is a separate status and basis, not an inferred numeric criterion. The displayed list sorts by combined lower bound with a stable ID tie-break; `assess_ranking` counts pairwise comparisons unresolved by overlapping intervals. All current business criteria and feasibility are unknown; this is a triage view, not a decision-grade BMW priority order. The baseline extractor has not been evaluated against human labels.
+The exploratory policy marks each weighted criterion as `customer` or `business`. `src/bmw_pm/decision/scoring.py` reports a separate 0–100 scenario interval for each dimension and the combined value interval. Missing criterion weights remain in the upper bound. Engineering feasibility is a separate status and basis, not an inferred numeric criterion. The displayed list sorts by combined lower bound with a stable ID tie-break; `assess_ranking` counts pairwise comparisons unresolved by overlapping intervals. In the real G60 US run, **only evidence-backed reach has a data-derived criterion input**; customer impact, both business criteria and feasibility are unknown. This is a triage view, not a decision-grade BMW priority order. The baseline and optional live extractor have not been compared against human labels.
 
 ## Separate four questions
 
@@ -66,7 +66,7 @@ Each requirement includes supporting claims, counterclaims, baseline equipment k
 
 ## Practical scoring contract
 
-Use a small additive multi-criteria **value** model, conditional on a published policy and scope. Start with four dimensions; keep feasibility and cost outside the value sum.
+Use a small additive multi-criteria **value** model, conditional on a published policy and scope. The current policy has four criteria in two displayed dimensions, customer and business; keep feasibility and cost outside the value sum.
 
 | Dimension | Anchor 0 | Anchor 4 | Scoring evidence |
 |---|---|---|---|
@@ -79,7 +79,7 @@ Intermediate anchors 1/2/3 must be written and illustrated in the policy before 
 
 R may use a transparent monotone mapping `R = 4 * min(mention_share / saturation_share, 1)`. `saturation_share` is a policy parameter defined on the same corpus type, never a hidden universal constant. Set it from reviewed development examples and PM judgment; retain raw shares beside it. If coverage is absent, R is unknown rather than zero. For survey-led scopes with no comparable verbatim denominator, use a separately named survey policy after scale review; do not pretend it is the same R metric.
 
-For known dimensions `x in [0,4]`, `V_rm = 100 * sum(w_j * x_j / 4)`, where `w_j >= 0` and `sum(w_j)=1`. Computation is deterministic. LLMs may propose evidence-backed ordinal labels, but may not supply unexplained weights or a final rank. The current core does not exist yet; these functions are to be implemented and tested.
+For known dimensions `x in [0,4]`, `V_rm = 100 * sum(w_j * x_j / 4)`, where `w_j >= 0` and `sum(w_j)=1`. Computation is deterministic. LLMs may propose evidence-backed ordinal labels, but may not supply unexplained weights or a final rank. The scoring arithmetic, unknown intervals, dimension views and overlap check are implemented and covered by synthetic tests. Anchored human ratings, PM-approved weights and deterministic sensitivity scenarios remain outstanding.
 
 ### Weight elicitation
 

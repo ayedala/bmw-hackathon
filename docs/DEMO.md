@@ -1,18 +1,20 @@
 # Demonstration and presentation plan
 
-Target a five-minute presentation plus live questions. Adjust to the organizer's actual timing. Do not claim that a winning outcome is guaranteed; the strategy is to make the evidence and decision quality easy to assess.
+Target a five-minute presentation plus live questions. Adjust to the organizer's actual timing. The currently working G60 US baseline provides seven traceable candidate cards, score ranges, PM review and audit replay. Live AI quality, linked sales/equipment/web facts, sensitivity and the export are still to be completed. Only show a segment as implemented after its recorded acceptance evidence exists.
 
 ## Five-minute story
 
 | Time | Show | Point |
 |---|---|---|
-| 0:00–0:35 | One PM decision and two competing needs | Successor planning combines current experience, uncertainty and strategy |
-| 0:35–1:15 | Data lineage and before/after cleaning counts | We used the supplied four data types and avoided annotation inflation |
-| 1:15–2:00 | Requirement card with support, counterevidence and a web fact | AI turns evidence into a scoped customer outcome |
-| 2:00–2:45 | Criteria contributions, region coverage, policy sensitivity | Ranking follows evidence and explicit preferences |
-| 2:45–3:35 | PM challenge/edit, changed score and revision diff | Human judgment changes the result at a consequential point |
-| 3:35–4:15 | New batch and historical replay | The process supports repeated decisions over two years |
-| 4:15–5:00 | Measured baseline comparison and transfer test | Quality and generalization are tested, with limitations visible |
+| 0:00–0:35 | One proposed G60 decision and competing customer needs | Successor planning requires a choice under uncertainty |
+| 0:35–1:15 | Supplied data lineage and unique-ID reconciliation | 13,771 annotation rows represent 10,128 feedback IDs, not independent customers |
+| 1:15–2:00 | One card with exact feedback spans, study context, verified equipment fact and scoped public claim | Each part of the argument has a locator and applicability limit |
+| 2:00–2:45 | Four criterion contributions, unknowns, regional coverage and deterministic sensitivity | Only reach is data-derived today; reviewed PM inputs must drive additional criteria |
+| 2:45–3:35 | BMW PM challenges a premise; new revision and score snapshot appear | A consequential human decision changes the recorded argument |
+| 3:35–4:15 | Earlier decision replayed beside the revised one | The two-year process retains decision memory |
+| 4:15–5:00 | Held-out keyword-versus-AI results, PM judgments and F70/G70 transfer | Quality claims use recorded sample sizes and failures |
+
+The card and challenge sequence above is the **target demonstration**, not a claim that every segment already works. Do not display the standalone YouTube research output as integrated web evidence until an exact, scoped claim is imported and reviewed. If PM weights or ratings have not arrived, show the equal-weight policy as unapproved and the corresponding criteria as unknown.
 
 ## Evidence-grounded candidate examples
 
@@ -45,12 +47,12 @@ Draft outcome: rear occupants can achieve comfortable climate conditions in the 
 - Feedback: raw row → canonical ID → atomic signal → requirement.
 - Study: scoped category and original distribution/mean → supporting context; no invented sample sizes or pooled scale.
 - Equipment: verified cell/symbol and derivative → known baseline or explicit applicability gap.
-- Sales: selected 2025 or 2030 scenario → market exposure assumption and rank sensitivity; no invented powertrain sales.
+- Sales: selected 2025 or 2030 scenario → market exposure assumption and rank sensitivity after its adapter is integrated; no invented powertrain sales.
 - Web: source method and dated scope → qualified claim with locator; show one incompatible comparison rejected.
 
 ## Quality slide
 
-Populate from actual `runs/<run_id>/evaluation.md`: sample sizes, baseline versus system, extraction F1, supported-claim rate, requirement rubric, transfer errors, and cold/warm runtime. If ranking labels are team proxies, say so. If no valid metric was measured, say “not measured” rather than replacing it with a persuasive anecdote.
+Populate from actual `runs/<run_id>/evaluation.md`: sample sizes, keyword baseline versus AI, extraction F1 and coverage, human-confirmed supported-claim rate, requirement rubric, PM preference agreement, transfer errors, and cold/warm runtime. Separate team proxy labels from BMW PM judgments. The 12 software tests and source-span checks belong on an engineering validation slide, not in place of model accuracy. If a metric was not measured, say “not measured.”
 
 ## Judge questions to rehearse
 
@@ -66,4 +68,4 @@ Populate from actual `runs/<run_id>/evaluation.md`: sample sizes, baseline versu
 
 ## Fallback
 
-Keep a labelled cached replay with full manifest. If live network/provider access fails, display the failure and switch explicitly to that replay. Never present cached model output as live or a synthetic constraint as a BMW engineering fact. Preserve a readable Markdown export for a reliable evidence walkthrough.
+Prepare a labelled cached replay with the full manifest and a readable Markdown export; neither is implemented yet. If live network/provider access fails during the demo, disclose the failure and use only a previously validated run. Never present cached model output as live or a synthetic constraint as a BMW engineering fact.

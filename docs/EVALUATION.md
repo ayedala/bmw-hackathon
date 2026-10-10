@@ -1,6 +1,6 @@
 # Evaluation and release evidence
 
-**Status: not run.** This document proposes tests and initial targets. No model accuracy, time saving or PM preference agreement has been measured in this preparation task.
+**Status: deterministic checks run; human-labelled evaluation not run.** The 12 software tests pass. The local `validate --expect-supplied-shape` run reconciles 10,128 feedback IDs/13,771 annotation rows and 185 study means/206 US distributions, checks 2,518 exact signal spans, seven unique-ID recurrence counts and the audit chain. These checks establish structural correctness only. No extraction accuracy, citation entailment rate, requirement-quality score, PM preference agreement, transfer quality, runtime distribution or cost result has been measured.
 
 ## Questions the evaluation must answer
 
@@ -12,9 +12,14 @@ Minimum initial set: **120 unique feedback records**: 60 G60 development, 30 bli
 
 Freeze the split manifest and content hashes before prompt tuning. All rows for one ID stay together. Group confirmed duplicates/reposts and strong near-duplicate candidates before splitting. Avoid splitting paraphrases of one underlying origin between development and test. This preparatory audit has inspected examples from all files; the future blind set must be freshly selected, with no guarantee of blindness for examples already used in development.
 
+**Immediate next artifact:** write a versioned manifest with record IDs, model/source/country/powertrain strata, source/content hashes, split and selection reason; keep customer text and labels in ignored local files. Freeze it before changing extraction prompts or model settings. Record any later exclusions and never silently move a test record into development.
+
 Annotate: atomic need(s), polarity, topic, market/model/powertrain context, exact supporting spans, uncertainty, and whether a proposed requirement would exceed the evidence. Hide legacy category labels from annotators at first. Double-label at least 30 records including difficult and transfer cases; resolve disagreements and report agreement. A single team member can label the rest, but report the weaker reliability. Never describe the supplied labels or unreviewed LLM labels as gold truth.
 
-Build 10–12 requirement evaluation cards from held-out evidence packets, with human rubric scores and 15–20 paired preferences including ties and insufficient-evidence judgments. Keep development preferences separate from evaluation preferences. PM availability limits the credibility of ranking validation; team proxy ratings are useful but must be labelled as proxies.
+Team members create and adjudicate the record labels. The available BMW PM reviews policy anchors/objectives, 10–12 requirement cards and about 15 paired priorities, including ties and insufficient-evidence judgments. Store reviewer identity/role and decision time locally. Report team proxy labels and BMW PM judgments separately; PM availability is not yet a completed review or approval.
+
+Build 10–12 requirement evaluation cards from held-out evidence packets, with human rubric scores and 15–20 paired preferences including ties and insufficient-evidence judgments. Keep development preferences separate from evaluation preferences. The BMW PM is available, but ranking validity still depends on actually recording independent judgments; team proxy ratings must remain labelled as proxies.
+Do not ask the same reviewer to score a card after seeing its model-generated rationale without recording that exposure. Freeze card evidence packets and rating rubrics before comparing policies. The BMW PM's time can be concentrated on policy choices and paired decisions while team members complete record-level annotation.
 
 With only 15 records per transfer model, results are diagnostic, not a broad generalization claim. Increase to 200–300 labelled records if time remains. The minimum set is chosen for the sprint, not statistical sufficiency.
 
@@ -28,6 +33,8 @@ With only 15 records per transfer model, results are diagnostic, not a broad gen
 | Optional ablations: no deduplication, no scope filter, no counterevidence, equal credibility treatment | Identifies which safeguards improve results |
 
 Use identical evidence packets, comparable token budgets and the same held-out splits where possible. Log differences. The intentionally flawed no-dedup ablation belongs only in evaluation; do not ship it as a hidden alternate production path. Existing labels can support a separate legacy-label comparison but are not independent ground truth.
+
+Run the keyword baseline and the structured AI extractor on the same frozen test and transfer IDs. Record attempted, successful, abstained and failed records for each provider; a schema-valid output is not automatically a correct signal. Evaluate exact-span validity automatically and semantic support with human review. The live API may receive only locally redacted excerpts under the user's authorization; keep original feedback and identity mapping local.
 
 ## Metrics and provisional targets
 
@@ -83,6 +90,6 @@ A cheap extraction model versus a more capable one is a measurable trade-off: co
 
 ## Output report contract
 
-Save `runs/<run_id>/metrics.json` plus `evaluation.md`: dataset/split hashes, exclusions and coverage, model/provider/version, prompt/policy hashes, baselines, per-scope metrics, annotation reliability, runtime/cost basis, actual failures, examples and unresolved limitations. Show at least one failure in the presentation and its mitigation.
+Save `runs/<run_id>/metrics.json` plus `evaluation.md`: dataset/split hashes, exclusions and coverage, model/provider/version, prompt/policy hashes, baseline and AI results on identical examples, per-scope G60/F70/G70 metrics, annotation reliability, human citation and requirement reviews, BMW PM preference judgments when received, runtime/cost basis, actual failures, examples and unresolved limitations. Label metrics as unmeasured until artifacts exist. Show at least one failure in the presentation and its mitigation.
 
 Principles adapted from [OpenAI evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices); the metrics, split sizes and targets above are this team's proposed design.

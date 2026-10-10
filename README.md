@@ -4,12 +4,12 @@ Preparation and working prototype, 10 October 2026. Build window: **24 hours**.
 
 The proposed app turns evidence into customer-facing successor-vehicle requirements, shows why they deserve attention, and lets a product manager challenge and revise them over time. The primary demonstration is the 5 Series; the 1 and 7 Series provide transfer tests.
 
-**Current status:** a local Python/SQLite decision-engine slice ingests the supplied feedback and customer-study workbooks, extracts candidate signals, drafts seven G60 US requirement candidates with exact source links, computes customer and business scenario ranges, keeps feasibility unknown, and records PM reviews in an audit chain. The default extractor is a deterministic keyword baseline. Live AI extraction is optional and has not been quality-evaluated. Sales/equipment adapters, automated web enrichment, a human-labelled evaluation set, and measured model accuracy are still pending. No product requirement has been approved by BMW.
+**Current status:** a local Python/SQLite decision-engine slice ingests the supplied feedback and customer-study workbooks, extracts candidate signals, drafts seven G60 US requirement candidates with exact source links, computes customer and business scenario ranges, keeps feasibility unknown, and records PM reviews in an audit chain. The default extractor is a deterministic keyword baseline. The structured OpenAI extractor is available for bounded runs but has not been quality-evaluated. The supplied sales/equipment facts and public web claims are not yet linked to requirement cards; a separate YouTube research module has been added but is not integrated into this decision path. A frozen human-labelled set, sensitivity analysis and measured model accuracy are pending. No product requirement or scoring policy has been approved by BMW.
 
 ## Start here
 
 1. Read [AGENTS.md](AGENTS.md), then [the strategy report](docs/REPORT.md).
-2. Follow [the 24-hour plan](docs/IMPLEMENTATION_PLAN.md) and [TASKS.md](TASKS.md).
+2. Follow the current priority in [TASKS.md](TASKS.md); [the implementation plan](docs/IMPLEMENTATION_PLAN.md) distinguishes working commands from planned work.
 3. Before changing a pipeline stage, read its contract below. Keep the root agent instructions short; do not inject every document into every model call.
 
 | Document | Purpose |
@@ -41,7 +41,9 @@ uv run bmw-pm validate --expect-supplied-shape
 uv run streamlit run ui/app.py
 ```
 
-The Streamlit sidebar accepts the SQLite path (default `data/processed/bmw_pm.db`). The baseline's counts are unique feedback records in the selected corpus, never estimated customer prevalence. The exploratory policy is unapproved; its bounds expose missing impact and business evidence. Feasibility remains a separate unknown until engineering review. For optional live extraction, install `uv sync --extra ai`, set `OPENAI_API_KEY` and `BMW_PM_OPENAI_MODEL`, then run `bmw-pm run --provider openai --limit 20`. Keep customer text local unless your team has approved hosted processing.
+The Streamlit sidebar accepts the SQLite path (default `data/processed/bmw_pm.db`). The baseline's counts are unique feedback records in the selected corpus, never estimated customer prevalence. The exploratory policy is unapproved; only reach is data-derived in the current real run, while impact and both business criteria remain unknown. Feasibility remains separate and unknown until engineering review. For a bounded live extraction run, install `uv sync --extra ai`, set `OPENAI_API_KEY` and `BMW_PM_OPENAI_MODEL`, review the locally redacted excerpts, then run `bmw-pm run --provider openai --limit 20`. The user authorized sending locally redacted excerpts for this project; keep original customer text local and out of Git.
+
+Working CLI commands are `ingest`, `run`, `list`, `review`, `edit`, `verify-audit`, `validate` and `replay`. An `evaluate` command, decision-report `export`, resumable live jobs and an offline replay package are **not implemented**. The 12 passing tests and the local `validate --expect-supplied-shape` report establish software/structural behavior, not model accuracy.
 
 ## Source data stays local
 
@@ -63,4 +65,4 @@ Use your Python environment, or the bundled Python executable reported by Codex'
 
 ## Next implementation instruction
 
-Continue with [TASKS.md](TASKS.md). The next quality gate is a grouped, independently labelled evaluation split before tuning prompts or declaring model accuracy. Sales, equipment and sourced web claims should then enrich the business dimension with scoped facts rather than guessed values.
+Begin with **T04 in [TASKS.md](TASKS.md)**: freeze the grouped 120-record development/test/transfer manifest and obtain independent human labels before changing extraction prompts. Then compare the keyword baseline with bounded live AI extraction on the same examples. Add scoped sales, verified equipment and sourced public claims to actual requirement cards before populating business ratings. Record PM objectives and weights only after the BMW PM reviews them; do not infer feasibility or expertise.
