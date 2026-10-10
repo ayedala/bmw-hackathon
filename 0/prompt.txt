@@ -1,0 +1,7 @@
+<environment_context>
+  <cwd>C:\Users\firas\Desktop\bmw-hackathon</cwd>
+  <shell>powershell</shell>
+  <current_date>2026-10-10</current_date>
+  <timezone>Europe/Berlin</timezone>
+  <filesystem><workspace_roots><root>C:\Users\firas\Desktop\bmw-hackathon</root></workspace_roots><permission_profile type="managed"><file_system type="restricted"><entry access="read"><special>:root</special></entry><entry access="write"><path>C:\Users\firas\Desktop\bmw-hackathon</path></entry><entry access="write"><special>:slash_tmp</special></entry><entry access="write"><special>:tmpdir</special></entry><entry access="read"><path>C:\Users\firas\Desktop\bmw-hackathon\.git</path></entry><entry access="read"><path>C:\Users\firas\Desktop\bmw-hackathon\.agents</path></entry><entry access="read"><path>C:\Users\firas\Desktop\bmw-hackathon\.codex</path></entry><entry access="read"><path>C:\Users\firas\Desktop\bmw-hackathon\.aws</path></entry></file_system></permission_profile></filesystem>
+</environment_context>
