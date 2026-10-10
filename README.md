@@ -15,7 +15,7 @@ The [strategy report](docs/REPORT.md), [data audit](docs/DATA_AUDIT.md), [decisi
 
 ## Current prototype
 
-The Python/SQLite core ingests feedback and customer-study workbooks, builds candidates with a deterministic keyword baseline or a bounded structured model call, scores them under an unapproved exploratory policy, and records local review revisions and audit events. A Streamlit interface displays evidence and score breakdowns. The stored baseline run produced seven US G60 candidates from 3,610 eligible feedback IDs. This is a software demonstration, not measured extraction accuracy or a BMW-approved priority order. Sales, equipment, and public web facts have not yet been linked into these cards.
+The Python/SQLite core ingests feedback and customer-study workbooks, builds candidates with a deterministic keyword baseline or a bounded structured model call, scores them under an unapproved exploratory policy, and records local review revisions and audit events. A Streamlit workbench shows the requirement queue, outcomes, evidence scope and exact spans, score contributions, run provenance, uncertainty, review actions, and audit history. Large evidence sets are paginated. The stored baseline run produced seven US G60 candidates from 3,610 eligible feedback IDs. This is a software demonstration, not measured extraction accuracy or a BMW-approved priority order. Sales, equipment, and public web facts have not yet been linked into these cards.
 
 ## Run locally
 

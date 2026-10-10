@@ -13,9 +13,30 @@ from bmw_pm.storage import Database, RevisionConflict, WorkflowError
 
 
 st.set_page_config(page_title="BMW Product Decision Lab", layout="wide")
+st.markdown(
+    """
+    <style>
+    .block-container { max-width: 1320px; padding-top: 2.6rem; padding-bottom: 5rem; }
+    [data-testid="stSidebar"] { background: #f4f7fb; border-right: 1px solid #dfe6f0; }
+    h1, h2, h3 { color: #14233b; letter-spacing: -.035em; }
+    h1 { font-size: clamp(2.25rem, 4vw, 3.5rem) !important; line-height: 1.08 !important; }
+    h2 { font-size: 1.6rem !important; }
+    [data-testid="stMetric"] { border-top: 2px solid #1763d6; padding: 1rem 0 .25rem; }
+    [data-testid="stMetricLabel"] { color: #53657e; }
+    [data-testid="stMetricValue"] { color: #14233b; font-size: 1.65rem; }
+    [data-testid="stTabs"] { margin-top: 1.25rem; }
+    [data-testid="stTabs"] button { font-weight: 600; }
+    [data-testid="stExpander"] { border: 1px solid #dfe6f0; border-radius: 8px; }
+    .eyeline { color: #1763d6; font-size: .77rem; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+    .subtle { color: #53657e; font-size: .95rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 st.title("BMW Product Decision Lab")
-st.caption(
-    "Evidence-to-requirement prototype. Reviewer IDs are declared and are not verified personal identities."
+st.markdown(
+    '<p class="subtle">An evidence-to-decision workbench for customer outcomes, transparent value ranges, and PM review.</p>',
+    unsafe_allow_html=True,
 )
 
 if hosted_mode():
@@ -33,7 +54,7 @@ if hosted_mode():
             reason="Authenticated team session opened the decision/evidence review surface.",
             request_id=f"hosted-view:{uuid4().hex}", result="success")
         connection.commit()
-with st.expander("Imported evidence context", expanded=False):
+with st.sidebar.expander("Imported evidence context", expanded=False):
     from bmw_pm.ingestion.legacy_database import evidence_context
     channels = ["sales_observation", "equipment_fact", "external_claim",
         "web_research_seed", "benchmark_vehicle", "source_document"]
@@ -56,6 +77,7 @@ if not summaries:
 ranking_assessment = assess_ranking(
     [item["score"] for item in summaries if item["score"] is not None]
 )
+st.markdown(f"**{len(summaries)} candidate outcomes**")
 st.caption(
     f"Value comparisons resolved by non-overlapping ranges: "
     f"{len(ranking_assessment['resolved_value_pairs'])}; unresolved: "
@@ -69,7 +91,9 @@ labels = {
     )
     for item in summaries
 }
-selected_id = st.sidebar.selectbox(
+st.sidebar.markdown("### Requirement queue")
+st.sidebar.caption("Exploratory order by lower value bound; overlapping ranges remain unresolved.")
+selected_id = st.sidebar.radio(
     "Requirement", options=list(labels), format_func=lambda key: labels[key]
 )
 selected = next(
@@ -80,20 +104,23 @@ score = selected["score"]
 decision = selected["decision"]
 
 status = decision.action.value if decision else requirement.lifecycle_status
-st.subheader(requirement.customer_outcome)
-st.write(
-    {
-        "status": status,
-        "requirement_id": requirement.requirement_id,
-        "revision": requirement.revision,
-        "scope": requirement.scope.model_dump(mode="json"),
-        "feasibility": requirement.feasibility,
-        "implementation_cost": "unknown",
-    }
+run = database.run_manifest(score.run_id) if score else None
+run_mode = run.provider.mode if run else "unknown"
+mode_label = {
+    "baseline_no_ai": "Deterministic baseline · no AI",
+    "live_ai": "Live model extraction",
+    "cached_replay": "Cached replay · no live inference",
+}.get(run_mode, "Run mode unavailable")
+st.markdown(f"**{mode_label}**")
+st.markdown('<p class="eyeline">Selected customer outcome</p>', unsafe_allow_html=True)
+st.header(requirement.customer_outcome)
+st.caption(
+    f"{requirement.title} · revision {requirement.revision} · {status} · "
+    f"{requirement.requirement_id}"
 )
 
 if score:
-    left, middle, right = st.columns(3)
+    left, middle, right = st.columns(3, gap="large")
     customer = score.dimension_intervals.get("customer")
     business = score.dimension_intervals.get("business")
     left.metric(
@@ -104,59 +131,117 @@ if score:
         "Business value (scenario range)",
         f"{business.lower_bound:.1f}–{business.upper_bound:.1f}" if business else "unavailable",
     )
-    right.metric("Engineering feasibility", score.feasibility_status)
+    right.metric("Engineering feasibility", score.feasibility_status.replace("_", " ").title())
     st.caption(
         f"Combined value range {score.lower_bound:.1f}–{score.upper_bound:.1f}; "
         f"feedback extraction coverage {score.coverage['processed_feedback_records']}/"
         f"{score.coverage['eligible_feedback_records']}. "
         "The list uses the lower value bound as an exploratory order; overlapping ranges are unresolved. "
-        "Evidence claims await human entailment review; the equal-weight seed policy is unapproved."
+        "Evidence claims await human entailment review; the equal-weight seed policy is unapproved. "
+        "Ranges are scenarios, not measured probabilities."
     )
 
-evidence_tab, scoring_tab, uncertainty_tab, history_tab = st.tabs(
-    ["Evidence", "Scoring", "Uncertainty", "History"]
+overview_tab, evidence_tab, scoring_tab, uncertainty_tab, history_tab = st.tabs(
+    ["Overview", "Evidence", "Scoring", "Uncertainty", "History"]
 )
+with overview_tab:
+    left, right = st.columns([1.5, 1], gap="large")
+    with left:
+        st.subheader("Outcome and validation")
+        st.write(requirement.customer_outcome)
+        st.markdown("**Use conditions**")
+        if requirement.use_conditions:
+            for condition in requirement.use_conditions:
+                st.markdown(f"- {condition}")
+        else:
+            st.caption("No use conditions recorded.")
+        st.markdown("**Proposed validation**")
+        st.write(requirement.acceptance_proposal.method)
+        st.caption(f"Target status: {requirement.target_status.replace('_', ' ')}")
+    with right:
+        st.subheader("Evidence scope")
+        st.write("Models: " + (", ".join(requirement.scope.models) or "unknown"))
+        st.write("Countries: " + (", ".join(requirement.scope.countries) or "unknown"))
+        st.write("Powertrains: " + (", ".join(requirement.scope.powertrains) or "unknown"))
+        st.write(f"Supporting feedback records: {requirement.support_count}")
+        st.write(f"Praise / preservation records: {requirement.counter_count}")
+        st.caption(
+            f"Denominator: {requirement.denominator_feedback_records} unique feedback IDs "
+            "in this supplied-file scope. IDs are records, not verified people."
+        )
+    st.divider()
+    st.subheader("Run provenance")
+    if run:
+        st.write(
+            f"{mode_label} · {run.provider.label} · run {run.run_id} · "
+            f"vehicle profile {run.profile_id} r{run.profile_revision}"
+        )
+        if run.provider.model_id:
+            st.caption(f"Model ID: {run.provider.model_id}; prompt version: {run.provider.prompt_version}")
+        if run.replay_of_run_id:
+            st.caption(f"Replay of {run.replay_of_run_id}; no new model inference is implied.")
+    else:
+        st.caption("No run manifest is linked to this revision's score snapshot.")
+    st.caption("Reviewer IDs are declared, not verified personal identities.")
 with evidence_tab:
-    st.write(
-        {
-            "supporting_unique_feedback_records": requirement.support_count,
-            "praise_or_preservation_unique_feedback_records": requirement.counter_count,
-            "denominator_unit": "unique feedback IDs in the selected supplied-file scope",
-            "denominator": requirement.denominator_feedback_records,
-            "customer_study_observations_in_database_for_G60": database.survey_count(model="G60"),
-        }
-    )
+    st.subheader("Trace the evidence")
     st.caption(
-        "Study observations are a separate evidence channel and are not added to feedback recurrence. "
-        "Respondent counts are unavailable."
+        "A checked text span locates source wording; semantic support is still unreviewed. "
+        "Study observations are separate from feedback recurrence."
     )
-    for role, ids in (
-        ("Supporting signals", requirement.supporting_signal_ids),
-        ("Praise / preservation signals", requirement.counter_signal_ids),
-        ("Ambiguous or descriptive context", requirement.context_signal_ids),
-    ):
-        with st.expander(f"{role} ({len(ids)})", expanded=False):
-            for signal_id in ids:
-                signal = database.signal(signal_id)
-                span = signal.evidence_spans[0]
-                st.write(
-                    {
-                        "polarity": signal.polarity.value,
-                        "redacted_evidence": span.text,
-                        "locator": (
-                            f"{span.locator.sheet}!{span.locator.cell_range} · "
-                            f"source sha256 {span.locator.source_hash}"
-                        ),
-                        "provider_mode": signal.provider_mode,
-                        "source_author_expertise": "unknown",
-                        "semantic_entailment": "unreviewed",
-                    }
-                )
+    st.write(
+        f"G60 study observations in database: {database.survey_count(model='G60')}; "
+        "respondent counts unavailable."
+    )
+    roles = {
+        "Supporting signals": requirement.supporting_signal_ids,
+        "Praise / preservation": requirement.counter_signal_ids,
+        "Ambiguous context": requirement.context_signal_ids,
+    }
+    role = st.radio("Evidence role", list(roles), horizontal=True)
+    signal_ids = roles[role]
+    if not signal_ids:
+        st.info("No linked signals in this role. Zero linked signals do not establish no customer need.")
+    else:
+        page_size = 12
+        page_count = (len(signal_ids) + page_size - 1) // page_size
+        page = st.number_input("Page", min_value=1, max_value=page_count, value=1, step=1)
+        page_ids = signal_ids[(page - 1) * page_size:page * page_size]
+        rows = []
+        for signal_id in page_ids:
+            signal = database.signal(signal_id)
+            locator = signal.evidence_spans[0].locator
+            rows.append({
+                "Signal ID": signal_id,
+                "Polarity": signal.polarity.value,
+                "Atomic claim": signal.atomic_claim,
+                "Source locator": f"{locator.sheet}!{locator.cell_range}",
+            })
+        st.dataframe(rows, width="stretch", hide_index=True)
+        st.caption(f"Showing {len(page_ids)} of {len(signal_ids)} linked signals in this role.")
+        selected_signal_id = st.selectbox("Inspect exact source span", page_ids)
+        signal = database.signal(selected_signal_id)
+        span = signal.evidence_spans[0]
+        st.markdown("**Redacted source wording**")
+        st.write(span.text)
+        st.caption(
+            f"{span.locator.sheet}!{span.locator.cell_range} · "
+            f"source SHA-256 {span.locator.source_hash}"
+        )
+        st.caption(
+            f"Provider mode: {signal.provider_mode}; source author expertise: unknown; "
+            "semantic entailment: unreviewed."
+        )
     st.warning(
         "Evidence shown here is locally redacted by a heuristic. Privacy review is still required before hosted inference or export."
     )
 
 with scoring_tab:
+    st.subheader("How this value range was calculated")
+    st.caption(
+        "Deterministic contributions come from recorded policy inputs. "
+        "Unknown inputs retain their weight and widen the scenario range."
+    )
     if not score:
         st.info("No score snapshot is linked to this revision.")
     else:
@@ -164,22 +249,26 @@ with scoring_tab:
         for name, criterion in score.criterion_inputs.items():
             rows.append(
                 {
-                    "criterion": name,
-                    "input": criterion.value
+                    "criterion": name.replace("_", " ").title(),
+                    "input": f"{criterion.value:.1f}"
                     if criterion.value is not None
                     else (
-                        [criterion.lower_value, criterion.upper_value]
+                        f"{criterion.lower_value:.1f}–{criterion.upper_value:.1f}"
                         if criterion.lower_value is not None
                         else "unknown"
                     ),
-                    "contribution interval": score.contributions[name],
+                    "contribution interval": (
+                        f"{score.contributions[name][0]:.1f}–"
+                        f"{score.contributions[name][1]:.1f}"
+                    ),
                     "basis / missing reason": criterion.basis or criterion.missing_reason,
                 }
             )
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
         st.caption(score.feasibility_basis)
 
 with uncertainty_tab:
+    st.subheader("What remains uncertain")
     st.markdown("**Assumptions**")
     for item in requirement.assumptions:
         st.write(f"- {item}")
@@ -188,19 +277,30 @@ with uncertainty_tab:
         st.write(f"- {item}")
     st.markdown("**Acceptance proposal**")
     st.write(requirement.acceptance_proposal.model_dump(mode="json"))
+    st.markdown("**Implementation cost**")
+    st.caption(requirement.implementation_cost_missing_reason)
 
 with history_tab:
     replay = database.replay_requirement(requirement.requirement_id)
-    st.write(
-        {
-            "audit_chain_valid": replay["audit_valid"],
-            "audit_checkpoint": replay["audit_checkpoint"],
-        }
+    st.subheader("Decision history")
+    st.caption(
+        f"Audit chain: {'valid' if replay['audit_valid'] else 'invalid'} · "
+        f"checkpoint {replay['audit_checkpoint'][:16]}…"
     )
-    st.json({"revisions": replay["revisions"], "decisions": replay["decisions"]})
+    if replay["decisions"]:
+        for item in replay["decisions"]:
+            st.write(
+                f"Revision {item['requirement_revision']} · {item['action'].title()} · "
+                f"{item['recorded_at']} · {item['rationale']}"
+            )
+    else:
+        st.caption("No PM decisions recorded for this requirement.")
+    with st.expander("Inspect full revision and decision records"):
+        st.json({"revisions": replay["revisions"], "decisions": replay["decisions"]})
 
 st.divider()
 st.subheader("PM review")
+st.caption("Record a rationale for every decision. Edits create an immutable new revision.")
 actor = st.text_input("Reviewer ID", "local-demo-pm")
 reason = st.text_area("Decision rationale (required)")
 service = ReviewService(database)
@@ -212,7 +312,7 @@ actions = [
     ("Defer", DecisionAction.DEFER),
 ]
 for column, (label, action) in zip(action_columns, actions):
-    if column.button(label, use_container_width=True):
+    if column.button(label, width="stretch"):
         try:
             service.decide(
                 requirement_id=requirement.requirement_id,

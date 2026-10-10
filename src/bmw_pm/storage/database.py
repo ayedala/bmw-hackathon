@@ -516,6 +516,13 @@ class Database:
             )
             connection.commit()
 
+    def run_manifest(self, run_id: str) -> RunManifest | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT payload_json FROM run_manifests WHERE run_id = ?", (run_id,)
+            ).fetchone()
+        return RunManifest.model_validate_json(row["payload_json"]) if row else None
+
     def persist_signals(self, signals: Sequence[Signal]) -> int:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
