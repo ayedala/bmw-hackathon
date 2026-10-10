@@ -1,3 +1,5 @@
+"""Core hashing, timestamps and reversible-position text redaction helpers."""
+
 from __future__ import annotations
 
 import hashlib

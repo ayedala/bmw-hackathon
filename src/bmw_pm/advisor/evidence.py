@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 from ..contracts import FeedbackRecord, Polarity
+from ..data_pipeline.video_memory import memory_excerpts
 from ..intelligence.baseline import BaselineExtractionProvider
 from ..utils import content_hash
 from .contracts import AdvisorRequest, EvidenceItem, EvidencePacket, TopicSummary
@@ -120,6 +121,8 @@ def build_packet(request: AdvisorRequest, database: Path, *, search_terms: Itera
     ]
     if not records:
         limitations.append("No feedback matches this vehicle/market/powertrain. Do not infer demand from another market.")
+    if not any(item.channel in {"saved_video_review", "video_transcript_memory"} for item in evidence):
+        limitations.append("No saved video evidence was selected for this generation. YouTube discovery or an unavailable transcript is not customer evidence.")
     return EvidencePacket(request=request, feedback_records=len(records), topics=topics, evidence=evidence,
                           limitations=limitations, fingerprint=content_hash({
                               "request": request.model_dump(mode="json"),
@@ -222,12 +225,26 @@ def _add_context(connection: sqlite3.Connection, tables: set[str], request: Advi
         findings.sort(key=lambda row: (-_relevance(row["supporting_excerpt"], terms), row["evidence_id"]))
         for row in findings[:6]:
             evidence.append(EvidenceItem(
-                evidence_id=f"youtube:{row['evidence_id']}", channel="saved_video_review", title=row["topic"],
+                evidence_id=f"youtube:{row['evidence_id']}", channel="saved_video_review", title=f"{row['topic']} · {row.get('feedback_type', 'observation')}",
                 text=redact(row["supporting_excerpt"]), selection_reason="Saved transcript finding for this generation; at most six examples.",
                 scope={"generation": row["generation"], "market": "unknown", "powertrain": "unknown"},
                 locator={"url": f"https://www.youtube.com/watch?v={row['video_id']}&t={int(row['timestamp_seconds'])}s",
                          "transcript_sha256": row["transcript_sha256"], "timestamp_seconds": row["timestamp_seconds"]},
                 limitations=["Saved extraction; market/powertrain scope and semantic entailment still need review."],
+            ))
+    if "video_memories" in tables:
+        for row in memory_excerpts(connection, request.model_code, request.market, terms):
+            evidence.append(EvidenceItem(
+                evidence_id=f"memory:{row['memory_id']}:{row['start_char']}", channel="video_transcript_memory",
+                title=row["title"], text=redact(row["text"]),
+                selection_reason="Reusable transcript excerpt, generation matched and ranked by query relevance; at most two excerpts per video and six total.",
+                scope={"generation": row["model_code"], "market": row["market"] or "unknown", "powertrain": "unknown",
+                       "scope_basis": "supplied with transcript, not independently verified"},
+                locator={"url": row["video_url"], "video_id": row["video_id"], "memory_id": row["memory_id"],
+                         "transcript_sha256": row["transcript_sha256"], "start_char": row["start_char"], "end_char": row["end_char"],
+                         "source_kind": row["source_kind"], "original_source": row["source_locator"]},
+                limitations=["Stored transcript content is source evidence, not a verified fact or engineering approval.",
+                             "Video excerpts and saved findings from the same video are not independent customers; scope and claim meaning require review."],
             ))
 
 

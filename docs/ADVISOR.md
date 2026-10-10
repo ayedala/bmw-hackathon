@@ -1,5 +1,9 @@
 # Guided product research website
 
+The new frontend is available through `cd web` then `npm run dev` at `http://127.0.0.1:3000`. It uses the incoming Next.js workbench's components and the same Python advisor described below. See [frontend and transcript-memory setup](../web/README.md#run-decision-studio). The Streamlit entry points remain available.
+
+The web adapter synchronizes saved YouTube runs through the existing quote/timestamp validator before calling `run_advisor`. Retrieved transcripts with a recorded research generation and manually supplied transcripts are kept as immutable, deduplicated source memory in SQLite, including transcripts whose extraction was empty or failed. The source's URL, hash, supplied scope and exact stored character range accompany selected excerpts. Known incompatible markets/generations are excluded; unknown market/powertrain and user-supplied scope remain explicit limitations. Video findings and transcript excerpts are not additional customer records, and can describe the same video. Manual transcript saving needs no YouTube or LLM quota. This is evidence retrieval memory, not model training or automatic approval.
+
 Start with `uv run streamlit run ui/agent.py` (or the compatible `ui/mocktest.py` entry point). Install the `ai` extra and import the private dataset first.
 
 ## Configure the app

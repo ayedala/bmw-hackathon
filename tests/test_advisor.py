@@ -332,3 +332,125 @@ def test_advisor_hosted_entry_requires_sign_in(monkeypatch, tmp_path):
     assert not app.exception
     assert any(item.value == "Team sign-in" for item in app.subheader)
     assert not app.radio
+
+
+@pytest.mark.parametrize("journey", ["idea", "improve", "compare"])
+def test_web_bridge_uses_existing_advisor_for_every_journey(evidence_db, tmp_path, monkeypatch, journey):
+    from bmw_pm.advisor.bridge import execute
+    req = request(journey, question="Improve the climate controls", ideas=["Physical climate shortcuts", "Improved voice control"] if journey == "compare" else [])
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=synthetic-bridge-key\n", encoding="utf-8")
+    plan = ResearchPlan(focus_domains=["controls_usability"], search_terms=["climate controls"], research_questions=["Which controls are available?"], rationale="Synthetic test")
+    parsed = iter([plan, draft(req)])
+    calls, events = [], []
+
+    def parse(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(output_parsed=next(parsed), status="completed", id="parsed", model="fixture", usage=None)
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return web_response()
+
+    def factory(**kwargs):
+        assert kwargs["api_key"] == "synthetic-bridge-key"
+        return AdvisorProvider(model_id="fixture", client=SimpleNamespace(responses=SimpleNamespace(parse=parse, create=create)))
+
+    execute("analyze", req.model_dump(mode="json"), evidence_db, events.append, root=tmp_path, provider_factory=factory)
+    assert len(calls) == 3
+    assert events[-1]["type"] == "result"
+    result = AdvisorResult.model_validate(events[-1]["result"])
+    assert result.packet.request == req
+    assert result.packet.feedback_records == 2
+    assert result.report == draft(req)
+    assert any(e["type"] == "progress" for e in events)
+    assert "synthetic-bridge-key" not in json.dumps(events)
+    assert "The climate control menu is hard" not in json.dumps(calls[1])
+
+
+def test_transcript_memory_is_persistent_scoped_deduplicated_and_traceable(evidence_db):
+    import sqlite3
+    from bmw_pm.data_pipeline.video_memory import TranscriptInput, save_transcript
+    transcript = "The climate control menu is difficult to use while driving. The physical wheel is comfortable. Contact sample@example.com."
+    item = TranscriptInput(video_url="https://youtu.be/abcdefghijk", title="Synthetic owner transcript", model_code="G60", market="US", transcript=transcript)
+    first = save_transcript(evidence_db, item)
+    assert first["inserted"] and not save_transcript(evidence_db, item)["inserted"]
+    save_transcript(evidence_db, item.model_copy(update={"model_code": "F70"}))
+    save_transcript(evidence_db, item.model_copy(update={"video_url": "https://youtu.be/lmnopqrstuv", "market": "DE"}))
+    packet = build_packet(request(), evidence_db, search_terms=["climate", "controls"])
+    memory = [e for e in packet.evidence if e.channel == "video_transcript_memory"]
+    assert len(memory) == 1 and memory[0].scope["generation"] == "G60"
+    assert packet.feedback_records == 2
+    assert "sample@example.com" not in json.dumps(model_payload(packet))
+    loc = memory[0].locator
+    assert loc["memory_id"] == first["memory_id"] and loc["transcript_sha256"] == first["transcript_sha256"]
+    assert transcript[loc["start_char"]:loc["end_char"]].startswith("The climate control")
+    updated = item.model_copy(update={"transcript": transcript.replace("difficult", "easy")})
+    save_transcript(evidence_db, updated)
+    latest = [e for e in build_packet(request(), evidence_db).evidence if e.channel == "video_transcript_memory"]
+    assert len(latest) == 1 and "easy to use" in latest[0].text
+    with sqlite3.connect(evidence_db) as connection:
+        assert connection.execute("SELECT count(*) FROM video_memories").fetchone()[0] == 4
+    for url in ("https://example.com/watch?v=abcdefghijk", "https://youtube.com.evil.test/watch?v=abcdefghijk", "file:///private", "https://youtu.be/short"):
+        with pytest.raises(ValueError):
+            TranscriptInput(**{**item.model_dump(), "video_url": url})
+
+
+def test_saved_youtube_sync_preserves_validated_findings_and_builds_memory(evidence_db, tmp_path):
+    from bmw_pm.advisor.bridge import source_catalog, sync_youtube
+    folder = tmp_path / "src/bmw_pm/data_pipeline/youtube_research/output/synthetic"
+    (folder / "transcripts").mkdir(parents=True)
+    quote = "The climate control menu is hard to use, but the physical steering wheel is comfortable."
+    (folder / "transcripts/abcdefghijk.json").write_text(json.dumps([{"start": 10, "duration": 8, "text": quote}]), encoding="utf-8")
+    (folder / "sources.json").write_text(json.dumps([{"video_id": "abcdefghijk", "retrieval_status": "retrieved", "title": "Synthetic video"}]), encoding="utf-8")
+    finding = dict(video_id="abcdefghijk", generation="G60", topic="controls", timestamp_seconds=10, supporting_excerpt=quote, feedback_type="pain_point")
+    (folder / "evidence.json").write_text(json.dumps([finding, finding, {**finding, "supporting_excerpt": "Invented quote"}]), encoding="utf-8")
+    result = sync_youtube(evidence_db, tmp_path)
+    assert (result.inserted, result.rejected, result.memories_inserted, result.failed_runs) == (1, 1, 1, 0)
+    assert sync_youtube(evidence_db, tmp_path).inserted == 0
+    assert sync_youtube(evidence_db, tmp_path).memories_inserted == 0
+    catalog = source_catalog(evidence_db, tmp_path)
+    assert (catalog.youtube_findings, catalog.youtube_videos, catalog.video_memories) == (1, 1, 1)
+    packet = build_packet(request(), evidence_db)
+    assert packet.feedback_records == 2
+    assert {"saved_video_review", "video_transcript_memory"} <= {e.channel for e in packet.evidence}
+    assert any(e.locator.get("original_source", {}).get("bundle_sha256") for e in packet.evidence)
+
+
+def test_web_scenarios_use_the_same_deterministic_calculator(evidence_db, tmp_path):
+    from bmw_pm.advisor.bridge import execute
+    row = dict(upfront_cost=1000, annual_fixed_cost=20, baseline_units=100, incremental_units=2,
+        adoption_rate=0.5, revenue_per_extra_vehicle=100, cost_per_extra_vehicle=60,
+        revenue_uplift_per_adopter=5, feature_cost_per_adopter=2)
+    events = []
+    payload = dict(rows=[dict(scenario=s, **row) for s in ("Downside", "Base", "Upside")], source="Synthetic assumptions", years=2, discount_rate=0)
+    execute("scenarios", payload, evidence_db, events.append, root=tmp_path)
+    assert events[0]["rows"][0]["NPV"] == -584
+    assert events[0]["rows"][0]["Annual added revenue"] == 450
+
+
+def test_transcript_memory_survives_empty_or_quota_failed_extraction(evidence_db, tmp_path):
+    import sqlite3
+    from bmw_pm.advisor.bridge import sync_youtube
+    from bmw_pm.utils import sha256_bytes
+    folder = tmp_path / "src/bmw_pm/data_pipeline/youtube_research/output/no-observations"
+    (folder / "transcripts").mkdir(parents=True)
+    original = json.dumps([{"start": 12.5, "text": "The cabin is comfortable, and the physical climate controls are easy to reach while driving."}], indent=2)
+    (folder / "transcripts/abcdefghijk.json").write_bytes(original.encode("utf-8"))
+    (folder / "sources.json").write_text(json.dumps([
+        {"video_id": "abcdefghijk", "retrieval_status": "retrieved", "research_generation": "G60", "extraction_status": "failed", "title": "Quota failure fixture"},
+        {"video_id": "lmnopqrstuv", "retrieval_status": "failed", "research_generation": "G60"},
+        {"video_id": "zyxwvutsrqp", "retrieval_status": "retrieved"},
+    ]), encoding="utf-8")
+    (folder / "evidence.json").write_text("[]", encoding="utf-8")
+    result = sync_youtube(evidence_db, tmp_path)
+    assert (result.accepted, result.memories_inserted, result.failed_runs) == (0, 1, 0)
+    assert sync_youtube(evidence_db, tmp_path).memories_inserted == 0
+    with sqlite3.connect(evidence_db) as connection:
+        saved = json.loads(connection.execute("SELECT payload_json FROM video_memories").fetchone()[0])
+        assert saved["original_transcript_json"] == original
+        assert saved["source_locator"]["original_transcript_sha256"] == sha256_bytes(original.encode("utf-8"))
+    packet = build_packet(request(), evidence_db)
+    memories = [e for e in packet.evidence if e.channel == "video_transcript_memory"]
+    assert len(memories) == 1 and memories[0].scope["market"] == "unknown"
+    assert "original_transcript_json" not in json.dumps(model_payload(packet))
+    assert packet.feedback_records == 2

@@ -1,3 +1,5 @@
+"""Offline keyword extraction fallback; its output must never be presented as AI inference."""
+
 from __future__ import annotations
 
 import json
@@ -79,7 +81,7 @@ class BaselineExtractionProvider(ExtractionProvider):
             text = record.redacted_text
             for domain, definition in self.config["domains"].items():
                 applicable = definition.get("applicable_powertrains")
-                if applicable and record.powertrain not in applicable:
+                if applicable and record.powertrain not in applicable and record.powertrain != "BEVE":
                     continue
                 matches = []
                 for phrase in sorted(definition["phrases"], key=len, reverse=True):

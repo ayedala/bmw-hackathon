@@ -1,3 +1,5 @@
+"""Pure deterministic requirement scoring: unknown inputs retain their weight as intervals."""
+
 from __future__ import annotations
 
 from typing import Mapping, Sequence

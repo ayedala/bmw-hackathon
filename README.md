@@ -1,6 +1,39 @@
 # BMW Product Decision Lab
 
+> Current workflow: [Evidence-grounded drafts and explicit PM decisions](docs/DRAFT_DECISION_SUPPORT.md). Future scenarios and AI provisional priorities are restored as labelled drafts. Quotations remain exact; only reviewer input can adopt, approve, reject or confirm a priority. This supersedes the earlier evidence-only restriction.
+
 A local decision-support prototype for turning customer evidence into reviewable requirements for future BMW vehicles. The first working scope is 5 Series G60 feedback from the US; F70 and G70 are used to check whether the method transfers to other vehicles.
+
+## Repository map
+
+```text
+src/bmw_pm/
+  data_pipeline/      # Search, ingestion, cleaning and source provenance
+    feedback.py       # Supplied feedback workbooks
+    studies.py        # Aggregate customer studies
+    legacy_database.py
+    web_research/     # Optional public-web collector, local dependencies
+    youtube_research/ # Optional video/transcript collector, local dependencies
+  intelligence/       # Bounded AI extraction and labelled offline baseline
+  decision/           # Deterministic requirement consolidation and scoring
+  review/             # PM actions and immutable edits
+  storage/            # SQLite persistence and application audit history
+  contracts.py        # Shared typed data contracts
+  pipeline.py         # Orchestrates the modules
+  cli.py              # Application commands
+ui/                   # Primary PM review workbench
+configs/              # Versioned scope, taxonomy and scoring policies
+prompts/              # Extraction and proposed stage contracts
+scripts/              # Local diagnostics and hosting utilities
+research/             # Curated source seeds; collection code is in data_pipeline/
+tests/                # Core regression checks
+docs/                 # Architecture, challenge assessment and design documents
+internal/             # Historical development plans and agent guidance
+```
+
+Each application module has a README explaining its inputs, responsibilities and limits. Start with the [module guide](src/bmw_pm/README.md), [file inventory](docs/FILE_INVENTORY.md) or [cleanup and challenge report](docs/REPOSITORY_REVIEW.md).
+
+The collectors remain independently runnable. The workbench now includes a **YouTube research** workspace for local credential/runtime readiness, generation-scoped discovery, saved-run/source review, and an explicit combine action. The combined pipeline consumes validated saved YouTube excerpts and BMW study/sales/equipment context with separate provenance. The current available video run has no usable transcripts, so the real-data demo makes no video-derived claims. The successor layer adds seven evidence-anchored US G60 draft requirements and editable provisional priorities.
 
 ## Approach
 
@@ -14,6 +47,10 @@ A local decision-support prototype for turning customer evidence into reviewable
 The [strategy report](docs/REPORT.md), [data audit](docs/DATA_AUDIT.md), [decision contract](docs/DECISION_ENGINE.md), and [architecture](docs/ARCHITECTURE.md) explain the evidence limits and design choices.
 
 ## Current prototype
+
+The supplied Figma-style frontend is now the primary workbench: **Decision desk** for the searchable proposal queue, **Data & AI findings** for source inspection and evidence-link assessment, **YouTube research** for transcript-backed discovery and evidence fusion, and **Audit trail** for traceable human actions. Use the header Vehicle/Market selectors. The local default is the original combined BMW database; set `BMW_PM_DATABASE` to review a separate demonstration copy. Every screen calls the real evidence and review services.
+
+The [current demo and handover](docs/DRAFT_DECISION_SUPPORT.md) adds seven evidence-linked US 5 Series drafts for the assumed 2029–2031 scenario, transparent AI provisional scores, editable PM criteria/ratings/weights/manual ranks, separate priority confirmation, immutable decision references and a private Markdown export. Run `python scripts/demo_successor.py` to generate an isolated real-data draft portfolio with **no new decisions**. Decisions require explicit reviewer input in the UI or CLI; the original database receives no test approvals.
 
 The Python/SQLite core ingests feedback and customer-study workbooks, builds candidates with a deterministic keyword baseline or a bounded structured model call, scores them under an unapproved exploratory policy, and records local review revisions and audit events. The combined engine aligns BMW feedback with saved YouTube findings, relevant study observations and imported sales/equipment/web context in one versioned requirement card. A Streamlit workbench shows the requirement queue, outcomes, evidence scope and exact spans, score contributions, run provenance, uncertainty, review actions, and audit history. Large evidence sets are paginated. The earlier feedback-only baseline produced seven US G60 candidates from 3,610 eligible feedback IDs. This is a software demonstration, not measured extraction accuracy or a BMW-approved priority order.
 
@@ -69,7 +106,7 @@ With no `--youtube-run`, the engine discovers saved `output/*/evidence.json` run
 
 The importer independently checks every quote and timestamp against `transcripts/<video_id>.json`, retains original source/evidence/transcript bytes in SQLite, and reports rejected findings. Matching uses the versioned keyword taxonomy, with exact generation filtering. Repeated observations from the same video do not create extra customer records. A YouTube-only concern can create a provisional card; its customer reach stays unknown. Positive assessments remain preservation evidence; differing assessments trigger review rather than an automatic contradiction verdict. Studies and imported business/technical facts supply context, with original scope and limitations visible. External evidence never receives an invented severity, expertise, feasibility or ranking bonus.
 
-New evidence changes the corpus manifest and creates an immutable requirement revision when its argument changes. Unmatched YouTube findings are retained and reported for manual alignment. This first fusion implementation uses deterministic theme alignment, not a new LLM synthesis prompt or measured quality improvement. A blocked or empty YouTube run adds no claims; obtain a successful transcript/extraction run to demonstrate live cross-channel evidence. BMW workbooks/private databases are required separately and remain excluded from Git.
+New evidence changes the corpus manifest and can create an immutable revision for an unreviewed candidate. Reviewed requirements retain their stored wording; incorporating changed evidence requires an explicit PM edit. Unmatched YouTube findings are retained and reported for manual alignment. This fusion implementation uses deterministic theme alignment, not a measured model-quality improvement. A blocked or empty YouTube run adds no claims; obtain a successful transcript/extraction run to demonstrate video-derived evidence. BMW workbooks/private databases are required separately and remain excluded from Git.
 
 ## Import another local evidence workspace
 

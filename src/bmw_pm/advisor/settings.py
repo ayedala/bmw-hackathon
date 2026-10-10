@@ -42,7 +42,7 @@ def save_project_credentials(credentials: ProjectCredentials, root: Path = ROOT)
 
 
 def project_credentials(root: Path = ROOT) -> ProjectCredentials | None:
-    for relative in (".env.advisor", ".env", "youtube_research_agent/.env"):
+    for relative in (".env.advisor", ".env", "src/bmw_pm/data_pipeline/youtube_research/.env", "youtube_research_agent/.env"):
         path = root / relative
         if not path.is_file():
             continue

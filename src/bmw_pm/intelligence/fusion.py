@@ -12,7 +12,7 @@ from ..contracts import (AcceptanceProposal, BMWContextObservation, CrossChannel
 from ..storage import Database
 from ..utils import content_hash, sha256_bytes, stable_id, utc_now
 
-FUSION_VERSION = "cross_channel_v2"
+FUSION_VERSION = "cross_channel_v3_evidence_only"
 
 
 def fusion_manifest(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -63,7 +63,7 @@ def import_youtube_run(database: Database, directory: str | Path) -> dict[str, A
             findings[identity] = dict(
                 evidence_id=identity, video_id=video_id, generation=item["generation"],
                 topic=item.get("topic") or "unspecified", feedback_type=item["feedback_type"],
-                source_statement=item.get("source_statement") or excerpt,
+                source_statement=excerpt,
                 supporting_excerpt=excerpt, timestamp_seconds=timestamp,
                 transcript_segment=segment, transcript_sha256=sha256_bytes(raw),
                 payload={"observation": item, "source": source})
@@ -192,7 +192,7 @@ def fuse_candidates(*, candidates: Sequence[RequirementRevision], inputs: dict[s
             youtube_by_domain[domain].append(CrossChannelEvidence(
                 evidence_id=finding.evidence_id, channel="youtube",
                 role="preserves" if finding.feedback_type == "positive" else "supports",
-                source_family=f"youtube:{finding.video_id}", claim=finding.source_statement,
+                source_family=f"youtube:{finding.video_id}", claim=finding.supporting_excerpt,
                 locator={"url": f"https://www.youtube.com/watch?v={finding.video_id}&t={int(finding.timestamp_seconds)}s",
                          "timestamp_seconds": finding.timestamp_seconds, "exact_quote": finding.supporting_excerpt,
                          "transcript_sha256": finding.transcript_sha256, "bundle_sha256": finding.bundle_sha256},
@@ -210,10 +210,10 @@ def fuse_candidates(*, candidates: Sequence[RequirementRevision], inputs: dict[s
         scoped = {r.record_id for r in eligible if not powertrains or r.powertrain in powertrains}
         result.append(RequirementRevision(
             requirement_id=stable_id("req", str(profile["profile_id"]), domain, spec["customer_outcome"].casefold()),
-            revision=1, title=domain.replace("_", " ").title(), customer_outcome=spec["customer_outcome"],
+            revision=1, title=domain.replace("_", " ").title(), customer_outcome=f"Video evidence topic: {domain}. A PM must define any requirement from the cited source wording.",
             scope=RequirementScope(models=[profile["model_family"]], countries=profile.get("countries", []), powertrains=powertrains),
             use_conditions=["YouTube-led hypothesis; intended market and configuration require confirmation."],
-            acceptance_proposal=AcceptanceProposal(method="Validate the stated customer task with matched BMW feedback and a reviewed comparative study."),
+            acceptance_proposal=AcceptanceProposal(method="Not supplied. PM definition required."),
             target_status="pending_engineering_review", supporting_signal_ids=[], counter_signal_ids=[],
             alternatives=["Confirm applicability before choosing a solution."], assumptions=[],
             missing_evidence=["No supporting BMW feedback signal was extracted for this outcome.",

@@ -16,7 +16,7 @@ from bmw_pm.contracts import (
     SourceLocator,
 )
 from bmw_pm.decision import assess_ranking, rank_scores, reach_input, score_requirement
-from bmw_pm.intelligence.requirements import build_requirement_candidates
+from bmw_pm.decision.requirements import build_requirement_candidates
 from bmw_pm.utils import utc_now
 
 

@@ -1,3 +1,5 @@
+"""Typed evidence, requirement, score and audit contracts shared across modules."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -289,7 +291,23 @@ class YouTubeFinding(Contract):
     payload: dict[str, Any]
 
 
+class EvidenceLinkJudgment(Contract):
+    """A human assessment of one candidate signal-to-requirement link."""
+
+    schema_version: str = "1"
+    judgment_id: str
+    requirement_id: str
+    requirement_revision: int = Field(ge=1)
+    signal_id: str
+    verdict: Literal["supports", "does_not_support", "context_only"]
+    rationale: str = Field(min_length=1)
+    actor_id: str = Field(min_length=1)
+    recorded_at: datetime
+    request_id: str
+
+
 class RequirementRevision(Contract):
+    successor_draft_id: str | None = None
     schema_version: str = "1"
     requirement_id: str
     revision: int = Field(ge=1)
@@ -492,8 +510,87 @@ class Decision(Contract):
     recorded_at: datetime
     policy_revision: int | None = None
     score_snapshot_id: str | None = None
+    priority_assessment_id: str | None = None
     expected_revision: int
     request_id: str
+    uncertainty_acknowledged: bool = False
+
+
+class PriorityFactors(Contract):
+    impact: int = Field(ge=0, le=4)
+    evidence: int = Field(ge=0, le=4)
+    relevance: int = Field(ge=0, le=4)
+    uncertainty: int = Field(ge=0, le=4)
+
+
+class PriorityPolicy(Contract):
+    impact: float = Field(ge=0, le=1)
+    evidence: float = Field(ge=0, le=1)
+    relevance: float = Field(ge=0, le=1)
+    uncertainty: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def normalized(self):
+        if abs(sum(self.model_dump().values()) - 1) > 1e-9:
+            raise ValueError("priority weights must sum to one")
+        return self
+
+
+class PlanningCriterion(Contract):
+    name: str = Field(min_length=1)
+    rating: float = Field(ge=0, le=4, allow_inf_nan=False)
+    weight: float = Field(ge=0, allow_inf_nan=False)
+    direction: Literal["benefit", "risk"] = "benefit"
+    explanation: str = Field(min_length=1)
+
+
+class PriorityAssessment(Contract):
+    criteria: list[PlanningCriterion] = Field(default_factory=list)
+    rank_override: int | None = Field(default=None, ge=1)
+    priority_confirmed: bool = False
+    input_origin: Literal["legacy_unconfirmed", "explicit_pm"] = "legacy_unconfirmed"
+    assessment_id: str
+    requirement_id: str
+    requirement_revision: int = Field(ge=1)
+    sequence: int = Field(ge=1)
+    factors: PriorityFactors
+    policy: PriorityPolicy
+    score: float = Field(ge=0, le=100)
+    actor_id: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    recorded_at: datetime
+    request_id: str
+    interpretation: str = "Declared PM judgement, not measured customer prevalence or calibrated confidence."
+
+
+class SuccessorProposal(Contract):
+    domain: str
+    title: str
+    outcome: str
+    value: str
+    interpretation: str
+    future_assumption: str
+    contrary: str
+    validation: str
+    review_trigger: str
+    anchor_ids: list[str]
+    factors: PriorityFactors
+
+
+class SuccessorDraft(Contract):
+    draft_id: str
+    requirement_id: str
+    base_revision: int
+    recipe_version: str
+    method: str = "Assistant-authored evidence-linked template synthesis; no live model call."
+    planning_window: str = "2029–2031: scenario 3–5 years from 2026, not a launch commitment"
+    proposal: SuccessorProposal
+    quoted_records: list[FeedbackRecord]
+    context_evidence: list[CrossChannelEvidence]
+    external_context: list[dict[str, str]] = Field(default_factory=list)
+    unknowns: list[str]
+    priority_policy: PriorityPolicy
+    priority_explanations: dict[str, str]
 
 
 class AuditEvent(Contract):

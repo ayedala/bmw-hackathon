@@ -1,3 +1,5 @@
+"""Check stored provenance, scope and scoring invariants without calling a model."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -219,6 +221,32 @@ def validate_database(database: Database, *, expect_supplied_shape: bool = False
     cross_errors = validate_cross_channel_links(database, latest_requirements)
     checks.append({"check": "cross_channel_citation_resolution", "passed": not cross_errors,
                    "detail": {"errors": cross_errors, "links": sum(len(r.cross_channel_evidence) for r in latest_requirements)}})
+    from .decision.planning import PriorityService, priority_score, criteria_score
+    priority_errors = []
+    priorities = {}
+    for requirement in latest_requirements:
+        try:
+            for assessment in PriorityService(database).history(requirement.requirement_id):
+                priorities[assessment.assessment_id] = assessment
+                if abs(assessment.score - (criteria_score(assessment.criteria) if assessment.criteria else priority_score(assessment.factors, assessment.policy))) > 1e-8:
+                    priority_errors.append(f"{assessment.assessment_id}: score mismatch")
+        except (ValueError, RuntimeError) as error:
+            priority_errors.append(str(error))
+    with database.connect() as connection:
+        import json
+        for row in connection.execute("SELECT payload_json FROM decisions").fetchall():
+            decision = json.loads(row[0])
+            ref = decision.get("priority_assessment_id")
+            if ref:
+                assessment = priorities.get(ref)
+                if not assessment or (assessment.requirement_id, assessment.requirement_revision) != (decision["requirement_id"], decision["requirement_revision"]):
+                    priority_errors.append(f"{ref}: decision revision mismatch")
+    checks.append({"check":"priority_scores_and_decision_bindings", "passed":not priority_errors,
+        "detail":{"assessments":len(priorities), "errors":priority_errors}})
+    from .decision.drafts import validate_successor_drafts
+    draft_errors = validate_successor_drafts(database, latest_requirements)
+    checks.append({"check":"successor_draft_provenance", "passed":not draft_errors,
+        "detail":{"errors":draft_errors}})
     audit_valid, checkpoint = database.verify_audit_chain()
     checks.append(
         {

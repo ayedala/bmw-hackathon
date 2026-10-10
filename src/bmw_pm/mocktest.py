@@ -9,7 +9,7 @@ from pydantic import Field, model_validator
 
 from .contracts import Contract, FeedbackRecord, RequirementRevision, Signal, SourceLocator
 from .intelligence.baseline import BaselineExtractionProvider
-from .intelligence.requirements import build_requirement_candidates
+from .decision.requirements import build_requirement_candidates
 from .utils import content_hash, sha256_bytes, stable_id
 
 

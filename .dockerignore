@@ -12,3 +12,6 @@
 !.streamlit/config.toml
 **/__pycache__/
 **/*.pyc
+# Optional collectors are run locally and can contain private caches and credentials.
+src/bmw_pm/data_pipeline/web_research/
+src/bmw_pm/data_pipeline/youtube_research/

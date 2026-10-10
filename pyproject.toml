@@ -26,6 +26,11 @@ bmw-pm = "bmw_pm.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bmw_pm"]
+# Collectors keep their own dependency environments and are source-checkout tools.
+exclude = [
+  "src/bmw_pm/data_pipeline/web_research/**",
+  "src/bmw_pm/data_pipeline/youtube_research/**",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"

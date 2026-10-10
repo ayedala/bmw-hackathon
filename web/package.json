@@ -1,0 +1,88 @@
+{
+  "name": "bmw-requirement-intelligence-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 3000",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "app:prepare": "next build && node scripts/prepare-standalone.mjs",
+    "app": "npm run app:prepare && electron .",
+    "app:mac": "npm run app:prepare && electron-builder --mac --arm64 --x64",
+    "app:mac:arm64": "npm run app:prepare && electron-builder --mac --arm64",
+    "app:win": "npm run app:prepare && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "autoprefixer": "^10.4.21",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "electron": "^37.10.3",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.35.0",
+    "eslint-config-next": "15.5.27",
+    "lucide-react": "^0.468.0",
+    "next": "15.5.27",
+    "postcss": "^8.5.6",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "recharts": "^3.2.1",
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "3.4.19",
+    "typescript": "^5.9.2"
+  },
+  "description": "BMW Product Decision Lab \u2014 evidence-to-requirement decision support for product managers.",
+  "author": "BMW hackathon team",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.bmwhackathon.requirementintelligence",
+    "productName": "BMW Product Decision Lab",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**",
+      "package.json"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "BMW Product Decision Lab"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": null,
+    "afterPack": "scripts/after-pack.cjs"
+  },
+  "dependencies": {}
+}

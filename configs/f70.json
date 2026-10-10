@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "profile_id": "f70_provided_feedback",
-  "revision": 1,
+  "revision": 2,
   "model_family": "F70",
   "countries": [],
   "powertrains": [
@@ -10,7 +10,8 @@
   "domain_applicability": {
     "charging_and_range": [
       "BEV",
-      "PHEV"
+      "PHEV",
+      "BEVE"
     ]
   },
   "equipment_context_phrases": {
@@ -43,13 +44,13 @@
     "noise_and_refinement": [
       "Akustik",
       "Verglasung",
-      "GerÃ¤usch"
+      "Ger\u00c3\u00a4usch"
     ],
     "storage_and_practicality": [
-      "GepÃ¤ck",
+      "Gep\u00c3\u00a4ck",
       "Ablage",
       "Kofferraum",
-      "GetrÃ¤nkehalter"
+      "Getr\u00c3\u00a4nkehalter"
     ],
     "driver_assistance": [
       "Driving Assistant",
@@ -58,12 +59,8 @@
       "Fahrerassistenz"
     ]
   },
-  "powertrain_aliases": {
-    "BEVE": "BEV"
-  },
-  "alias_assumptions": {
-    "BEVE": "BEVE is provisionally interpreted as BEV; the supplied raw label is retained and data-owner confirmation remains pending."
-  },
+  "powertrain_aliases": {},
+  "alias_assumptions": {},
   "planning_date": "2026-10-10",
   "launch_window": null,
   "objectives": [],
@@ -74,6 +71,7 @@
     "Candidate scope is F70 supplied feedback; vehicle generations are not pooled.",
     "All supplied feedback countries are retained; the supplied sample is ICE-only.",
     "Supplied equipment pages are German-market context and require derivative/date review.",
-    "Feedback IDs are records, not verified people; source identities and engineering inputs remain unknown."
+    "Feedback IDs are records, not verified people; source identities and engineering inputs remain unknown.",
+    "Evidence-only policy: BEVE remains an uninterpreted source label, never silently mapped to BEV."
   ]
 }

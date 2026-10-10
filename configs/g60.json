@@ -1,35 +1,81 @@
 {
   "schema_version": "1",
   "profile_id": "g60_us_feedback_mvp",
-  "revision": 2,
+  "revision": 3,
   "model_family": "G60",
-  "countries": ["US"],
-  "powertrains": ["ICE", "PHEV", "BEV"],
+  "countries": [
+    "US"
+  ],
+  "powertrains": [
+    "ICE",
+    "PHEV",
+    "BEV",
+    "BEVE"
+  ],
   "domain_applicability": {
-    "charging_and_range": ["BEV", "PHEV"]
+    "charging_and_range": [
+      "BEV",
+      "PHEV",
+      "BEVE"
+    ]
   },
   "equipment_context_phrases": {
-    "controls_usability": ["Klimaautomatik", "Bedienung", "Bedienkonzept", "Lenkrad"],
-    "software_reliability": ["ConnectedDrive", "BMW Live Cockpit", "Software", "Display"],
-    "charging_and_range": ["Laden", "Ladekabel", "Ladeleistung", "Reichweite", "Batterie"],
-    "ride_and_comfort": ["Komfort", "Sitze", "Sitzheizung", "Federung", "Fahrwerk"],
-    "noise_and_refinement": ["Akustik", "Verglasung", "Geräusch"],
-    "storage_and_practicality": ["Gepäck", "Ablage", "Kofferraum", "Getränkehalter"],
-    "driver_assistance": ["Driving Assistant", "Parking Assistant", "Parkassistent", "Fahrerassistenz"]
+    "controls_usability": [
+      "Klimaautomatik",
+      "Bedienung",
+      "Bedienkonzept",
+      "Lenkrad"
+    ],
+    "software_reliability": [
+      "ConnectedDrive",
+      "BMW Live Cockpit",
+      "Software",
+      "Display"
+    ],
+    "charging_and_range": [
+      "Laden",
+      "Ladekabel",
+      "Ladeleistung",
+      "Reichweite",
+      "Batterie"
+    ],
+    "ride_and_comfort": [
+      "Komfort",
+      "Sitze",
+      "Sitzheizung",
+      "Federung",
+      "Fahrwerk"
+    ],
+    "noise_and_refinement": [
+      "Akustik",
+      "Verglasung",
+      "Ger\u00e4usch"
+    ],
+    "storage_and_practicality": [
+      "Gep\u00e4ck",
+      "Ablage",
+      "Kofferraum",
+      "Getr\u00e4nkehalter"
+    ],
+    "driver_assistance": [
+      "Driving Assistant",
+      "Parking Assistant",
+      "Parkassistent",
+      "Fahrerassistenz"
+    ]
   },
-  "powertrain_aliases": {
-    "BEVE": "BEV"
-  },
-  "alias_assumptions": {
-    "BEVE": "BEVE is provisionally interpreted as BEV; the supplied raw label is retained and data-owner confirmation remains pending."
-  },
+  "powertrain_aliases": {},
+  "alias_assumptions": {},
   "planning_date": "2026-10-10",
   "launch_window": null,
   "objectives": [],
-  "uncovered_regions": ["CN"],
+  "uncovered_regions": [
+    "CN"
+  ],
   "notes": [
     "The first candidate slice is scoped to US G60 feedback records.",
     "No China verbatims are supplied; the China customer study is contextual aggregate evidence only.",
-    "Source A-D identities and verified owner/expert status are unavailable."
+    "Source A-D identities and verified owner/expert status are unavailable.",
+    "Evidence-only policy: BEVE remains an uninterpreted source label, never silently mapped to BEV."
   ]
 }

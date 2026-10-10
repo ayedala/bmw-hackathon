@@ -44,6 +44,15 @@ def test_review_revision_idempotency_stale_conflict_and_replay(tmp_path: Path) -
         _requirement(), request_id="create-1", run_id="run-test"
     )
     service = ReviewService(database)
+    with pytest.raises(ValueError, match="explicit acknowledgement"):
+        service.decide(
+            requirement_id=requirement.requirement_id,
+            expected_revision=1,
+            action=DecisionAction.APPROVE,
+            rationale="Synthetic PM acknowledgement of remaining uncertainty.",
+            actor_id="pm-test",
+            request_id="approve-without-ack",
+        )
     first = service.decide(
         requirement_id=requirement.requirement_id,
         expected_revision=1,
@@ -51,6 +60,7 @@ def test_review_revision_idempotency_stale_conflict_and_replay(tmp_path: Path) -
         rationale="Synthetic PM acknowledgement of remaining uncertainty.",
         actor_id="pm-test",
         request_id="approve-1",
+        uncertainty_acknowledged=True,
     )
     duplicate = service.decide(
         requirement_id=requirement.requirement_id,
@@ -59,8 +69,10 @@ def test_review_revision_idempotency_stale_conflict_and_replay(tmp_path: Path) -
         rationale="Synthetic PM acknowledgement of remaining uncertainty.",
         actor_id="pm-test",
         request_id="approve-1",
+        uncertainty_acknowledged=True,
     )
     assert first.decision_id == duplicate.decision_id
+    assert first.uncertainty_acknowledged
 
     _, edited = service.edit(
         requirement_id=requirement.requirement_id,
