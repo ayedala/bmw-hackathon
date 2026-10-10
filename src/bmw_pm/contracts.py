@@ -28,6 +28,27 @@ class SourceDocument(Contract):
     rights_notes: str
 
 
+class WebResearchSeed(Contract):
+    """A curated discovery note that is not yet a verified source claim."""
+
+    schema_version: str = "1"
+    research_id: str
+    source_key: str
+    source_url: str
+    page_title: str
+    retrieved_at: datetime
+    publication_date: date | None = None
+    market_code: str | None = None
+    vehicle_scope: dict[str, Any] = Field(default_factory=dict)
+    themes: list[str] = Field(default_factory=list)
+    observation: str
+    locator_hint: str
+    capture_method: Literal["web_search_curated", "official_api_docs_curated"]
+    verification_state: Literal["candidate_needs_snapshot"] = "candidate_needs_snapshot"
+    access_notes: str
+    limitations: str
+
+
 class SourceLocator(Contract):
     schema_version: str = "1"
     source_id: str
