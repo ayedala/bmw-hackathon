@@ -2,6 +2,37 @@
 
 A local decision-support prototype for turning customer evidence into reviewable requirements for future BMW vehicles. The first working scope is 5 Series G60 feedback from the US; F70 and G70 are used to check whether the method transfers to other vehicles.
 
+## Repository map
+
+```text
+src/bmw_pm/
+  data_pipeline/      # Search, ingestion, cleaning and source provenance
+    feedback.py       # Supplied feedback workbooks
+    studies.py        # Aggregate customer studies
+    legacy_database.py
+    web_research/     # Optional public-web collector, local dependencies
+    youtube_research/ # Optional video/transcript collector, local dependencies
+  intelligence/       # Bounded AI extraction and labelled offline baseline
+  decision/           # Deterministic requirement consolidation and scoring
+  review/             # PM actions and immutable edits
+  storage/            # SQLite persistence and application audit history
+  contracts.py        # Shared typed data contracts
+  pipeline.py         # Orchestrates the modules
+  cli.py              # Application commands
+ui/                   # Primary PM review workbench
+configs/              # Versioned scope, taxonomy and scoring policies
+prompts/              # Extraction and proposed stage contracts
+scripts/              # Local diagnostics and hosting utilities
+research/             # Curated source seeds; collection code is in data_pipeline/
+tests/                # Core regression checks
+docs/                 # Architecture, challenge assessment and design documents
+internal/             # Historical development plans and agent guidance
+```
+
+Each application module has a README explaining its inputs, responsibilities and limits. Start with the [module guide](src/bmw_pm/README.md), [file inventory](docs/FILE_INVENTORY.md) or [cleanup and challenge report](docs/REPOSITORY_REVIEW.md).
+
+The collectors remain independently runnable. Web/YouTube findings are not yet consumed by the core requirement pipeline; grouping the files does not close that integration gap.
+
 ## Approach
 
 1. **Preserve and reconcile evidence.** Keep the supplied files unchanged and record source hashes, spreadsheet rows, cells, pages, and any cleaning transformations. Multiple annotation rows for one feedback ID remain one feedback record for recurrence counts.

@@ -1,3 +1,5 @@
+"""Command-line application boundary; domain rules live in the underlying services."""
+
 from __future__ import annotations
 
 import argparse
@@ -89,12 +91,12 @@ def main(argv: list[str] | None = None) -> int:
         _json_print(result)
         return 1 if result["rejected"] else 0
     if args.command == "import-workspace":
-        from .ingestion.legacy_database import import_workspace
+        from .data_pipeline.legacy_database import import_workspace
         _json_print(import_workspace(database=database, source_root=args.source,
                                     local_root=Path.cwd(), profile=load_json(args.profile)))
         return 0
     if args.command == "context":
-        from .ingestion.legacy_database import evidence_context
+        from .data_pipeline.legacy_database import evidence_context
         _json_print([row.model_dump(mode="json") for row in evidence_context(database, args.table, args.limit)])
         return 0
     if args.command == "ingest":

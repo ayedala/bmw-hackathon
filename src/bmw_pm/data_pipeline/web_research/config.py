@@ -119,7 +119,7 @@ class Settings:
         if not self.firecrawl_api_key:
             raise ConfigError(
                 "FIRECRAWL_API_KEY is not set. Copy .env.example to .env inside "
-                "external_research_pipeline/ and add your Firecrawl key "
+                "src/bmw_pm/data_pipeline/web_research/ and add your Firecrawl key "
                 "(https://www.firecrawl.dev/app/api-keys)."
             )
         return self.firecrawl_api_key
@@ -135,7 +135,7 @@ class Settings:
             if not self.openai_api_key:
                 raise ConfigError(
                     "LLM_PROVIDER=openai but OPENAI_API_KEY is not set. "
-                    "Set OPENAI_API_KEY in external_research_pipeline/.env, or "
+                    "Set OPENAI_API_KEY in src/bmw_pm/data_pipeline/web_research/.env, or "
                     "switch to LLM_PROVIDER=anthropic."
                 )
             return provider, self.openai_model, self.openai_api_key
@@ -143,7 +143,7 @@ class Settings:
             if not self.anthropic_api_key:
                 raise ConfigError(
                     "LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set. "
-                    "Set ANTHROPIC_API_KEY in external_research_pipeline/.env, or "
+                    "Set ANTHROPIC_API_KEY in src/bmw_pm/data_pipeline/web_research/.env, or "
                     "switch to LLM_PROVIDER=openai."
                 )
             return provider, self.anthropic_model, self.anthropic_api_key

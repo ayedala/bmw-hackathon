@@ -2,7 +2,7 @@
 import pytest
 
 from bmw_pm.contracts import ImportedEvidenceRow
-from bmw_pm.ingestion.legacy_database import copy_immutable, evidence_context
+from bmw_pm.data_pipeline.legacy_database import copy_immutable, evidence_context
 from bmw_pm.storage import Database
 
 

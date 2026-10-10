@@ -1,3 +1,5 @@
+"""Streamlit PM workbench; delegate workflow rules to core application services."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -55,7 +57,7 @@ if hosted_mode():
             request_id=f"hosted-view:{uuid4().hex}", result="success")
         connection.commit()
 with st.sidebar.expander("Imported evidence context", expanded=False):
-    from bmw_pm.ingestion.legacy_database import evidence_context
+    from bmw_pm.data_pipeline.legacy_database import evidence_context
     channels = ["sales_observation", "equipment_fact", "external_claim",
         "web_research_seed", "benchmark_vehicle", "source_document"]
     if not hosted_mode():

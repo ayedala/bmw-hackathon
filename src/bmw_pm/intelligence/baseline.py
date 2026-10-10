@@ -1,3 +1,5 @@
+"""Offline keyword extraction fallback; its output must never be presented as AI inference."""
+
 from __future__ import annotations
 
 import json

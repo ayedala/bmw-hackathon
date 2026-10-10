@@ -1,3 +1,5 @@
+"""Application orchestration: compose ingestion, extraction, deterministic decisions and persistence."""
+
 from __future__ import annotations
 
 import json
@@ -8,10 +10,9 @@ from uuid import uuid4
 
 from .contracts import CriterionInput, PolicyVersion, RunManifest
 from .decision import assess_ranking, reach_input, score_requirement
-from .ingestion import CustomerStudyWorkbookAdapter, FeedbackWorkbookAdapter
+from .data_pipeline import CustomerStudyWorkbookAdapter, FeedbackWorkbookAdapter
 from .intelligence.provider import ExtractionProvider
 from .intelligence.requirements import build_requirement_candidates
-from .intelligence.fusion import FUSION_VERSION, fuse_candidates, fusion_manifest, import_youtube_run, read_fusion_inputs
 from .storage import Database
 from .utils import content_hash, utc_now
 
@@ -136,6 +137,7 @@ def run_candidate_pipeline(
             "taxonomy": load_json(taxonomy_path),
         }
     )
+    # Model output is validated evidence; consolidation and score arithmetic stay in decision/.
     signals = provider.extract(selected, run_id=run_id)
     candidates = build_requirement_candidates(
         signals=signals,

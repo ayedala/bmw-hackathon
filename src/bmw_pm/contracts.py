@@ -1,3 +1,5 @@
+"""Typed evidence, requirement, score and audit contracts shared across modules."""
+
 from __future__ import annotations
 
 from datetime import date, datetime

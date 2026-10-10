@@ -1,3 +1,5 @@
+"""Bounded model extraction with typed output and exact evidence-span validation."""
+
 from __future__ import annotations
 
 import json
