@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4KEP4Q215N77AX925S60AND",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "README.md",
+    "TASKS.md",
+    "docs/IMPLEMENTATION_PLAN.md",
+    "docs/REPORT.md",
+    "docs/WEB_RESEARCH.md",
+    "internal/AGENTS.md",
+    "internal/CODEX_KICKOFF.md",
+    "internal/DECISIONS.md",
+    "internal/IMPLEMENTATION_PLAN.md",
+    "internal/README.md",
+    "internal/TASKS.md",
+    "internal/agent-guides/core.md",
+    "internal/agent-guides/tests.md",
+    "internal/agent-guides/ui.md",
+    "prompts/CODEX_KICKOFF.md",
+    "prompts/README.md",
+    "scripts/validate_preparation.py",
+    "src/bmw_pm/AGENTS.md",
+    "tests/AGENTS.md",
+    "ui/AGENTS.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 155894,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6696618,
+    "output_tokens": 16719,
+    "api_call_count": 47,
+    "subagent_tokens_complete": true
+  }
+}

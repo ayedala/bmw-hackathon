@@ -1,0 +1,5 @@
+push with entire
+
+---
+
+organize the repository such as the internal files like tasks.md agents.md are in a seperate folder so it is easy to delete them when we make the final submission and create an initial readme file for our approach
