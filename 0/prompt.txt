@@ -1,0 +1,1 @@
+ok so basically go to this folder C:\Users\firas\Documents\Codex\2026-10-10\can-x20\work\bmw-hackathon go to it and get the databases etc and everythng and make it  compatible with our repo be sure first to pull the latest from our repo then make the changes to add that database to our model
