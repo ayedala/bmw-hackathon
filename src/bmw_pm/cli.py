@@ -26,6 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--input", default="data/raw/provided")
     ingest.add_argument("--profile", default="configs/g60.json")
 
+    imported = subparsers.add_parser("import-workspace", help="import a legacy local evidence workspace")
+    imported.add_argument("source", type=Path)
+    imported.add_argument("--profile", default="configs/g60.json")
+    context = subparsers.add_parser("context", help="inspect imported unreviewed evidence")
+    context.add_argument("table")
+    context.add_argument("--limit", type=int, default=100)
+
     run = subparsers.add_parser("run", help="derive and score requirement candidates")
     run.add_argument("--profile", default="configs/g60.json")
     run.add_argument("--policy", default="configs/exploratory_equal_v1.json")
@@ -69,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     database = Database(Path(args.db))
     database.initialize()
+    if args.command == "import-workspace":
+        from .ingestion.legacy_database import import_workspace
+        _json_print(import_workspace(database=database, source_root=args.source,
+                                    local_root=Path.cwd(), profile=load_json(args.profile)))
+        return 0
+    if args.command == "context":
+        from .ingestion.legacy_database import evidence_context
+        _json_print([row.model_dump(mode="json") for row in evidence_context(database, args.table, args.limit)])
+        return 0
     if args.command == "ingest":
         report = ingest_supplied_data(
             database=database,

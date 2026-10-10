@@ -50,7 +50,9 @@ class CustomerStudyWorkbookAdapter:
             parser_version=self.parser_version,
             rights_notes="Supplied aggregate challenge material; respondent counts and scale endpoints are absent.",
         )
-        workbook = load_workbook(file_path, read_only=True, data_only=False)
+        # Study parsing uses random cell access; streaming mode repeatedly reparses XML.
+        # The supplied aggregate workbook is small. Formulas remain unevaluated.
+        workbook = load_workbook(file_path, read_only=False, data_only=False)
         observations: list[SurveyObservation] = []
         quarantined: list[QuarantineFinding] = []
         try:

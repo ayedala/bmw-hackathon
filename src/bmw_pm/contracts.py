@@ -28,6 +28,27 @@ class SourceDocument(Contract):
     rights_notes: str
 
 
+class WebResearchSeed(Contract):
+    """A curated discovery note that is not yet a verified source claim."""
+
+    schema_version: str = "1"
+    research_id: str
+    source_key: str
+    source_url: str
+    page_title: str
+    retrieved_at: datetime
+    publication_date: date | None = None
+    market_code: str | None = None
+    vehicle_scope: dict[str, Any] = Field(default_factory=dict)
+    themes: list[str] = Field(default_factory=list)
+    observation: str
+    locator_hint: str
+    capture_method: Literal["web_search_curated", "official_api_docs_curated"]
+    verification_state: Literal["candidate_needs_snapshot"] = "candidate_needs_snapshot"
+    access_notes: str
+    limitations: str
+
+
 class SourceLocator(Contract):
     schema_version: str = "1"
     source_id: str
@@ -410,3 +431,21 @@ class AuditEvent(Contract):
     previous_event_hash: str
     event_hash: str
     result: Literal["success", "failure", "noop"]
+
+
+class ImportedEvidenceRow(Contract):
+    """Unmodified foreign-schema evidence; import is not semantic verification."""
+
+    schema_version: str = "1"
+    archive_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    table_name: str
+    row_key: str
+    payload: dict[str, Any]
+    verification_status: Literal["imported_unreviewed"] = "imported_unreviewed"
+
+
+class HostedSettings(Contract):
+    database_path: str
+    app_password: str = Field(min_length=20, repr=False)
+    admin_password: str = Field(min_length=20, repr=False)
+    bootstrap_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

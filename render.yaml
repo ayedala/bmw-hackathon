@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: bmw-product-decision-lab
+    runtime: docker
+    region: frankfurt
+    plan: 1c-2g
+    numInstances: 1
+    autoDeployTrigger: off
+    healthCheckPath: /_stcore/health
+    disk:
+      name: bmw-evidence
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: BMW_PM_HOSTED
+        value: "1"
+      - key: BMW_PM_DB_PATH
+        value: /var/data/bmw_pm.db
+      - key: BMW_PM_APP_PASSWORD
+        generateValue: true
+      - key: BMW_PM_ADMIN_PASSWORD
+        generateValue: true
+      - key: BMW_PM_BOOTSTRAP_SHA256
+        sync: false
