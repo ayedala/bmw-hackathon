@@ -453,8 +453,58 @@ class Decision(Contract):
     recorded_at: datetime
     policy_revision: int | None = None
     score_snapshot_id: str | None = None
+    priority_assessment_id: str | None = None
     expected_revision: int
     request_id: str
+
+
+class PriorityFactors(Contract):
+    impact: int = Field(ge=0, le=4)
+    evidence: int = Field(ge=0, le=4)
+    relevance: int = Field(ge=0, le=4)
+    uncertainty: int = Field(ge=0, le=4)
+
+
+class PriorityPolicy(Contract):
+    impact: float = Field(default=.35, ge=0, le=1)
+    evidence: float = Field(default=.25, ge=0, le=1)
+    relevance: float = Field(default=.25, ge=0, le=1)
+    uncertainty: float = Field(default=.15, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def normalized(self):
+        if abs(sum(self.model_dump().values()) - 1) > 1e-9:
+            raise ValueError("priority weights must sum to one")
+        return self
+
+
+class PriorityAssessment(Contract):
+    assessment_id: str
+    requirement_id: str
+    requirement_revision: int = Field(ge=1)
+    sequence: int = Field(ge=1)
+    factors: PriorityFactors
+    policy: PriorityPolicy
+    score: float = Field(ge=0, le=100)
+    actor_id: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    recorded_at: datetime
+    request_id: str
+    interpretation: str = "Declared PM judgement, not measured customer prevalence or calibrated confidence."
+
+
+class SuccessorProposal(Contract):
+    domain: str
+    title: str
+    outcome: str
+    value: str
+    interpretation: str
+    future_assumption: str
+    contrary: str
+    validation: str
+    review_trigger: str
+    anchor_ids: list[str]
+    factors: PriorityFactors
 
 
 class AuditEvent(Contract):

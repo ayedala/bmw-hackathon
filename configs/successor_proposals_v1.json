@@ -1,0 +1,98 @@
+{
+  "version": "successor_us_g60_v1",
+  "status": "Authored hypotheses from supplied records; factor ratings are illustrative assumptions, not measured impacts.",
+  "planning_window": "2029-2031",
+  "proposals": [
+    {
+      "domain": "controls_usability",
+      "title": "Adjust everyday climate functions without menu hunting",
+      "outcome": "Drivers shall be able to change temperature, fan speed and demisting from a persistent, immediately discoverable control surface, with an optional voice path and clear confirmation of the change.",
+      "value": "Reduce everyday interaction burden while retaining the digital features customers enjoy.",
+      "interpretation": "G60-0271 reports distracting airflow controls but also lack of awareness of existing voice capability. This suggests both access and onboarding problems; it does not prove new hardware is the only answer.",
+      "future_assumption": "In the 2029-2031 planning scenario, essential control access remains valuable even if conversational interfaces improve. Persistent access is a proposed design requirement, not a proven optimum.",
+      "contrary": "G60-0092 praises climate performance; other linked records praise the touchscreen. Climate performance and control usability are different outcomes. Compare tactile controls, persistent shortcuts and discoverable voice before choosing an implementation.",
+      "validation": "Compare current and candidate interfaces in matched climate tasks, including first-time users. Record task completion, errors and perceived effort; agree a baseline and success threshold before commitment.",
+      "review_trigger": "Review after a US usability study or a material interface redesign; check whether onboarding alone resolves the reported difficulty.",
+      "anchor_ids": ["G60-0271", "G60-0092"],
+      "factors": {"impact": 4, "evidence": 2, "relevance": 3, "uncertainty": 2}
+    },
+    {
+      "domain": "software_reliability",
+      "title": "Make remote commands trustworthy and recoverable",
+      "outcome": "Customers shall see whether a remote lock, climate or charging command is pending, confirmed by the vehicle, or failed, and receive an actionable recovery option rather than a success message for an unconfirmed action.",
+      "value": "Increase trust in routine connected functions and reduce repeated attempts or unnecessary support contacts.",
+      "interpretation": "G60-0051 reports remote commands labelled successful without the expected effect. This supports investigating truthful state feedback; it does not establish a measured failure rate or a network root cause.",
+      "future_assumption": "Connected services remain part of everyday ownership in 2029-2031. Connectivity interruptions remain possible; local connectivity is an alternative to test, not a mandated architecture.",
+      "contrary": "The same multi-topic record cannot show that every app function fails. Existing useful connected features should be preserved, and broad software-theme praise must not be treated as direct proof of reliable command confirmation.",
+      "validation": "Run representative remote tasks under normal, delayed and interrupted connectivity. Observe customer understanding, actual vehicle outcome and recovery completion. Agree targets after establishing a baseline.",
+      "review_trigger": "Review after matched app/vehicle telemetry and customer task testing, or a major connected-service release.",
+      "anchor_ids": ["G60-0051"],
+      "factors": {"impact": 4, "evidence": 2, "relevance": 3, "uncertainty": 2}
+    },
+    {
+      "domain": "charging_and_range",
+      "title": "Explain trip energy uncertainty before departure",
+      "outcome": "BEV and PHEV customers shall receive a trip plan showing expected arrival energy, relevant cold-weather and route assumptions, and charging alternatives when the expected margin changes, while preserving a simple daily-commute view.",
+      "value": "Help customers judge whether a trip is practical without promising an unsupported battery-range or charging-speed target.",
+      "interpretation": "G60-0051 reports inaccurate range estimates and cold-weather difficulty; G60-0078 reports a successful short commute with home charging. Long-trip uncertainty and routine commuting must be evaluated separately.",
+      "future_assumption": "The 2029-2031 scenario includes both home-charging users and public-charging journeys. Charging availability and customer adoption vary; no universal EV mix or infrastructure forecast is assumed.",
+      "contrary": "G60-0078 already finds the car suitable for a 20-mile commute. More battery capacity may add little value for that use case. A planning improvement cannot itself solve unreliable public chargers.",
+      "validation": "Compare customers' predicted versus observed arrival energy on matched commute and longer-trip scenarios, including cold weather. Test whether assumptions and alternative stops are understood. Set numeric targets only after a baseline.",
+      "review_trigger": "Revisit with US trip/charging evidence, a confirmed BEVE mapping, and updated infrastructure scenarios. Do not use family-level sales as a BEV denominator.",
+      "anchor_ids": ["G60-0051", "G60-0078"],
+      "factors": {"impact": 3, "evidence": 2, "relevance": 3, "uncertainty": 3}
+    },
+    {
+      "domain": "ride_and_comfort",
+      "title": "Help drivers find and retain a comfortable seating setup",
+      "outcome": "Drivers shall receive guided seat and lumbar setup, be able to save a preferred position with clear confirmation, and recover it when returning to the vehicle without repeating the setup.",
+      "value": "Reduce setup frustration and preserve comfort across shared-car and repeated-journey use.",
+      "interpretation": "G60-0320 reports difficulty finding a comfortable position; G60-1877 reports memory trouble followed by guidance on the existing profile/save behavior. Separate ergonomics from discoverability.",
+      "future_assumption": "Personal profiles and shared vehicle use remain relevant in 2029-2031. Guided setup is a proposed intervention; it is not a medical claim or proof that current seat hardware is deficient.",
+      "contrary": "G60-0092 praises cabin comfort. Avoid changing the seat experience for satisfied customers merely because a subset reports adjustment difficulty.",
+      "validation": "Test first-time setup and return-to-car recovery with a varied US user panel. Collect comfort self-reports and task errors; preserve successful existing configurations. Agree sample and targets with PM/user research.",
+      "review_trigger": "Revisit after trim-matched ergonomic testing and a setup-versus-hardware root-cause review.",
+      "anchor_ids": ["G60-0320", "G60-1877", "G60-0092"],
+      "factors": {"impact": 3, "evidence": 2, "relevance": 3, "uncertainty": 2}
+    },
+    {
+      "domain": "driver_assistance",
+      "title": "Make assistance states and driver handover understandable",
+      "outcome": "Drivers shall be able to distinguish assistance available, active, limited and cancelled states, understand the expected response to resume/cancel inputs, and return to manual control with clear feedback.",
+      "value": "Reduce confusion and preserve useful assistance without promising autonomy or verified safety performance.",
+      "interpretation": "G60-2545 describes confusing cancel/resume behavior. G60-1602 reports a frightening parking-assistance event. Both deserve review, but neither establishes a verified system defect or its frequency.",
+      "future_assumption": "Human-supervised assistance remains a relevant use case in the 2029-2031 scenario. We do not assume a particular automation level for the successor.",
+      "contrary": "The broader corpus includes praise for adaptive cruise. Preserve valued support and investigate whether confusing controls, scenario limits or functionality explain the reports. Rare potentially severe reports need separate attention regardless of rank.",
+      "validation": "Use supervised scenario walkthroughs to assess state comprehension and predictable cancellation/resumption. Route reported incidents to qualified investigation separately; this prototype does not certify safety.",
+      "review_trigger": "Immediate qualified review of potentially severe reports; reassess after a matched interface study and investigation of actual conditions.",
+      "anchor_ids": ["G60-2545", "G60-1602"],
+      "factors": {"impact": 4, "evidence": 2, "relevance": 3, "uncertainty": 3}
+    },
+    {
+      "domain": "storage_and_practicality",
+      "title": "Keep everyday drinks and devices secure and accessible",
+      "outcome": "Front occupants shall be able to secure representative everyday bottles and cups and access a stored or charging phone without the containers obstructing it during normal journey use.",
+      "value": "Remove a concrete daily-use irritation with a focused, customer-testable package requirement.",
+      "interpretation": "G60-3055 reports tipping bottles and blocked phone access. It motivates representative object and reach tests, not a claim that every user experiences the problem.",
+      "future_assumption": "Customers continue to carry drinks and personal devices in 2029-2031. The set of objects must be refreshed rather than freezing today's phone dimensions.",
+      "contrary": "Cupholder access competes with other storage, styling and console uses. The current record does not establish an optimal layout or a market-wide object-size distribution.",
+      "validation": "Compare candidate layouts with an agreed US object set and user reach tasks. Record retention and access failures and preference trade-offs; establish targets before design commitment.",
+      "review_trigger": "Revisit when a physical mock-up and representative object set are available.",
+      "anchor_ids": ["G60-3055"],
+      "factors": {"impact": 2, "evidence": 2, "relevance": 3, "uncertainty": 1}
+    },
+    {
+      "domain": "noise_and_refinement",
+      "title": "Preserve cabin refinement and resolve intrusive trim noises",
+      "outcome": "Occupants shall retain the valued quiet cabin experience while recurring intrusive window or trim noises can be identified and resolved through a clear customer reporting and service path.",
+      "value": "Protect perceived premium quality while targeting reported irritations rather than adding speculative soundproofing everywhere.",
+      "interpretation": "G60-0051 describes a window rattle and creaking trim. The broader noise theme contains both complaints and praise, which supports preservation as well as targeted improvement.",
+      "future_assumption": "Refinement remains a valued differentiator in the 2029-2031 scenario; quieter powertrains may expose local trim noises, an unverified hypothesis to test.",
+      "contrary": "The linked theme has more preservation than complaint records in the current baseline. Counts are not independent customers or verified defect rates. Preserve successful configurations before redesigning the entire cabin.",
+      "validation": "Collect condition-specific recordings and matched customer assessments on representative routes and trims. Separate wind, road and local trim noise and test service resolution; do not invent a decibel target.",
+      "review_trigger": "Review after root-cause evidence and matched customer listening tests.",
+      "anchor_ids": ["G60-0051"],
+      "factors": {"impact": 2, "evidence": 2, "relevance": 3, "uncertainty": 2}
+    }
+  ]
+}

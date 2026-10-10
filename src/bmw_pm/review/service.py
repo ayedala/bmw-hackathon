@@ -10,7 +10,7 @@ from ..utils import stable_id, utc_now
 class ReviewService:
     """Application-level PM workflow; role selection is demonstrative, not authentication."""
 
-    EDITABLE_FIELDS = {"title", "customer_outcome", "use_conditions", "assumptions"}
+    EDITABLE_FIELDS = {"title", "customer_outcome", "use_conditions", "assumptions", "acceptance_proposal", "target_status"}
 
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -28,6 +28,8 @@ class ReviewService:
     ) -> Decision:
         if action == DecisionAction.EDIT:
             raise ValueError("use edit() for requirement changes")
+        if not actor_id.strip():
+            raise ValueError("a reviewer ID is required")
         if not rationale.strip():
             raise ValueError("a review rationale is required")
         decision, _ = self.database.atomic_review(
@@ -52,6 +54,8 @@ class ReviewService:
         request_id: str,
         role: str = "demo_pm",
     ) -> tuple[Decision, RequirementRevision]:
+        if not actor_id.strip():
+            raise ValueError("a reviewer ID is required")
         if not rationale.strip():
             raise ValueError("an edit rationale is required")
         unsupported = set(changes) - self.EDITABLE_FIELDS
@@ -60,6 +64,8 @@ class ReviewService:
         if not changes:
             raise ValueError("at least one edited field is required")
         current = self.database.requirement(requirement_id, expected_revision)
+        actual_changes = {key for key, value in changes.items()
+            if current.model_dump(mode="python")[key] != value}
         payload = current.model_dump(mode="python")
         payload.update(changes)
         payload.update(
@@ -84,7 +90,7 @@ class ReviewService:
         )
         assert new_revision is not None
         previous_score = self.database.latest_score(requirement_id, expected_revision)
-        if previous_score:
+        if previous_score and actual_changes <= {"title"}:
             copied_score = previous_score.model_copy(
                 update={
                     "score_snapshot_id": stable_id(

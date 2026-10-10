@@ -15,6 +15,8 @@ The [strategy report](docs/REPORT.md), [data audit](docs/DATA_AUDIT.md), [decisi
 
 ## Current prototype
 
+The completed [successor-planning demo and handover](docs/SUCCESSOR_DEMO.md) adds seven specific US 5 Series hypotheses for an assumed 2029–2031 horizon, a ranked portfolio with adjustable weights, saved PM priority ratings/rationale, immutable assessment references on decisions, and a private Markdown export. All initial ratings are visibly illustrative. Run `python scripts/demo_successor.py` for an isolated, explicitly scripted approval walkthrough on a database copy; the canonical BMW database is not changed.
+
 The Python/SQLite core ingests feedback and customer-study workbooks, builds candidates with a deterministic keyword baseline or a bounded structured model call, scores them under an unapproved exploratory policy, and records local review revisions and audit events. The combined engine aligns BMW feedback with saved YouTube findings, relevant study observations and imported sales/equipment/web context in one versioned requirement card. A Streamlit workbench shows the requirement queue, outcomes, evidence scope and exact spans, score contributions, run provenance, uncertainty, review actions, and audit history. Large evidence sets are paginated. The earlier feedback-only baseline produced seven US G60 candidates from 3,610 eligible feedback IDs. This is a software demonstration, not measured extraction accuracy or a BMW-approved priority order.
 
 ## Run locally

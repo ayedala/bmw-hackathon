@@ -138,6 +138,21 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 CREATE INDEX IF NOT EXISTS ix_feedback_scope
   ON feedback_records(model_code, country, powertrain);
+CREATE TABLE IF NOT EXISTS priority_assessments (
+    assessment_id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    requirement_revision INTEGER NOT NULL,
+    sequence INTEGER NOT NULL,
+    request_id TEXT NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    UNIQUE(requirement_id, requirement_revision, sequence),
+    FOREIGN KEY(requirement_id,requirement_revision) REFERENCES requirement_revisions(requirement_id,revision)
+);
+CREATE TRIGGER IF NOT EXISTS priorities_no_update BEFORE UPDATE ON priority_assessments
+BEGIN SELECT RAISE(ABORT, 'priorities are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS priorities_no_delete BEFORE DELETE ON priority_assessments
+BEGIN SELECT RAISE(ABORT, 'priorities are immutable'); END;
 CREATE INDEX IF NOT EXISTS ix_signals_domain ON signals(need_domain);
 CREATE INDEX IF NOT EXISTS ix_requirements_latest
   ON requirement_revisions(requirement_id, revision DESC);
@@ -876,6 +891,10 @@ class Database:
                     """,
                     (requirement_id, expected_revision),
                 ).fetchone()
+                priority_row = connection.execute(
+                    "SELECT assessment_id FROM priority_assessments WHERE requirement_id=? AND requirement_revision=? ORDER BY sequence DESC LIMIT 1",
+                    (requirement_id, expected_revision),
+                ).fetchone()
                 decision = Decision(
                     decision_id=f"decision_{uuid4().hex}",
                     requirement_id=requirement_id,
@@ -886,6 +905,7 @@ class Database:
                     role=role,
                     recorded_at=utc_now(),
                     score_snapshot_id=score_row["score_snapshot_id"] if score_row else None,
+                    priority_assessment_id=priority_row["assessment_id"] if priority_row else None,
                     expected_revision=expected_revision,
                     request_id=request_id,
                 )

@@ -1,0 +1,20 @@
+[
+  {
+    "title": "ADAC BMW i5 test — 30 January 2025",
+    "url": "https://www.adac.de/rund-ums-fahrzeug/autokatalog/marken-modelle/bmw/bmw-i5/",
+    "observation": "ADAC describes an instrumented i5 eDrive40 test and a broader review of the 5 Series electric variants. The test is a source for condition-specific journey and refinement questions.",
+    "use": "German test context, not a US customer sample or a successor target. Do not compare its test results directly with a manufacturer specification under different conditions."
+  },
+  {
+    "title": "Mercedes-Benz USA — 2026 EQE 320 4MATIC specifications",
+    "url": "https://www.mbusa.com/en/vehicles/model/eqe/sedan/eqe320v4",
+    "observation": "The manufacturer lists electric-navigation support and distinguishes standard dual-zone climate control from optional four-zone climate control for this US sedan.",
+    "use": "A plausible premium-electric-sedan comparator for feature packaging and trip-support questions. Manufacturer availability does not establish customer preference, real-world reliability or superiority over BMW. Relevant to charging/range, controls and comfort proposals only as context."
+  },
+  {
+    "title": "IEA Global EV Outlook 2026 — published 20 May 2026",
+    "url": "https://www.iea.org/reports/global-ev-outlook-2026",
+    "observation": "The report separates historical observations from projections and covers charging infrastructure and software/AI technology developments.",
+    "use": "Use multiple EV and charging scenarios when reviewing the 2029-2031 charging proposal. No numeric US adoption forecast or BMW-specific demand rating is imported from the overview."
+  }
+]

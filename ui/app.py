@@ -107,6 +107,9 @@ if not summaries:
     )
     st.stop()
 
+from planning_view import portfolio, selected_planning
+summaries, successor_proposals, priority_policy = portfolio(database, summaries)
+
 ranking_assessment = assess_ranking(
     [item["score"] for item in summaries if item["score"] is not None]
 )
@@ -125,9 +128,11 @@ labels = {
     for item in summaries
 }
 st.sidebar.markdown("### Requirement queue")
-st.sidebar.caption("Exploratory order by lower value bound; overlapping ranges remain unresolved.")
+st.sidebar.caption("Compare ranks in the portfolio table. Selection stays on the same requirement when its priority changes.")
+if st.session_state.get("selected_requirement") not in labels:
+    st.session_state["selected_requirement"] = summaries[0]["requirement"].requirement_id
 selected_id = st.sidebar.radio(
-    "Requirement", options=list(labels), format_func=lambda key: labels[key]
+    "Requirement", options=sorted(labels), format_func=lambda key: labels[key], key="selected_requirement"
 )
 selected = next(
     item for item in summaries if item["requirement"].requirement_id == selected_id
@@ -153,6 +158,8 @@ st.caption(
     f"{requirement.title} · revision {requirement.revision} · {status} · "
     f"{requirement.requirement_id}"
 )
+
+selected_planning(database, requirement, successor_proposals, priority_policy, decision)
 
 if score:
     left, middle, right = st.columns(3, gap="large")
@@ -362,7 +369,7 @@ with history_tab:
 
 st.divider()
 st.subheader("PM review")
-st.caption("Record a rationale for every decision. Edits create an immutable new revision.")
+st.caption(f"Decisions apply to stored revision {requirement.revision}: {requirement.title}. Adopt a successor draft first if that is the wording you intend to review. Record a rationale for every decision; edits create an immutable new revision.")
 actor = st.text_input("Reviewer ID", "local-demo-pm")
 reason = st.text_area("Decision rationale (required)")
 service = ReviewService(database)
@@ -394,13 +401,19 @@ with st.expander("Edit into a new revision"):
         title = st.text_input("Title", requirement.title)
         outcome = st.text_area("Customer outcome", requirement.customer_outcome)
         edit_reason = st.text_area("Edit rationale")
+        conditions = st.text_area("Use conditions (one per line)", "\n".join(requirement.use_conditions))
+        assumptions = st.text_area("Assumptions (one per line)", "\n".join(requirement.assumptions))
+        validation_method = st.text_area("Proposed customer validation", requirement.acceptance_proposal.method)
         submitted = st.form_submit_button("Create new revision")
         if submitted:
             try:
                 _, new_revision = service.edit(
                     requirement_id=requirement.requirement_id,
                     expected_revision=requirement.revision,
-                    changes={"title": title, "customer_outcome": outcome},
+                    changes={"title": title, "customer_outcome": outcome,
+                        "use_conditions": [x.strip() for x in conditions.splitlines() if x.strip()],
+                        "assumptions": [x.strip() for x in assumptions.splitlines() if x.strip()],
+                        "acceptance_proposal": {**requirement.acceptance_proposal.model_dump(), "method": validation_method}},
                     rationale=edit_reason,
                     actor_id=actor,
                     request_id=f"ui_{uuid4().hex}",

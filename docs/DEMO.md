@@ -1,5 +1,7 @@
 # Demonstration and presentation plan
 
+**Current runnable demonstration:** see [Successor demo and handover](SUCCESSOR_DEMO.md) for the implemented seven-proposal portfolio, priority editing, private export and isolated decision walkthrough. The sections below preserve the earlier sprint plan; statements about features still to complete describe that earlier state, not the current implementation.
+
 Target a five-minute presentation plus live questions. Adjust to the organizer's actual timing. The currently working G60 US baseline provides seven traceable candidate cards, score ranges, PM review and audit replay. Live AI quality, linked sales/equipment/web facts, sensitivity and the export are still to be completed. Only show a segment as implemented after its recorded acceptance evidence exists.
 
 ## Five-minute story
