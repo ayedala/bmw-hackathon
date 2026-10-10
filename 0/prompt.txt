@@ -1,0 +1,3 @@
+PS C:\Users\firas\Desktop\bmw-hackathon> python youtube_research_agent\agent.py --max-videos 1 --probe-only --out youtube_research_agent/output/probe
+HTTPError: 429 Client Error: Too Many Requests for url: https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=BMW+5+Series+G60+owner+review&maxResults=50&order=relevance&relevanceLanguage=en&regionCode=DE&publishedAfter=2023-01-01T00%3A00%3A00Z&publishedBefore=2026-10-10T23%3A59%3A59Z&REDACTED
+PS C:\Users\firas\Desktop\bmw
