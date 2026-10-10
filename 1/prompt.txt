@@ -1,5 +1,1 @@
-check the decision engine state
-
----
-
-explain how the decision engine works
+push with entire
