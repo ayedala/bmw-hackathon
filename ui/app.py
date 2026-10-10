@@ -20,6 +20,14 @@ st.caption(
 db_path = Path(st.sidebar.text_input("SQLite database", "data/processed/bmw_pm.db"))
 database = Database(db_path)
 database.initialize()
+with st.expander("Imported evidence context", expanded=False):
+    from bmw_pm.ingestion.legacy_database import evidence_context
+    context_table = st.selectbox("Evidence channel", ["sales_observation", "equipment_fact",
+        "external_claim", "web_research_seed", "benchmark_vehicle", "source_locator", "source_document"])
+    st.caption("Imported context retains original scope and locators. Claims await entailment review; context does not automatically change scores.")
+    if st.button("Read evidence context"):
+        st.json([row.model_dump(mode="json") for row in evidence_context(database, context_table)])
+
 summaries = database.requirement_summaries()
 
 if not summaries:

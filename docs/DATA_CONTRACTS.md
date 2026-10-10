@@ -81,3 +81,7 @@ Schema-valid content can still be wrong. Use structured generation plus independ
 ## Required export
 
 Produce JSON/CSV requirements, a readable Markdown decision report, and a manifest. Include version IDs, customer outcome, scope, acceptance status, evidence locators, counterevidence, rationale, score policy, missing inputs, PM decisions and history links. CSV exports should neutralize formula-like text for safe spreadsheet viewing while preserving raw text in the private source store. Export only the authorized scope; record an export audit event.
+
+## Foreign database compatibility
+
+`ImportedEvidenceRow` carries the snapshot SHA-256, original table name, row identity, unchanged column/value payload and `imported_unreviewed` status. Original JSON column strings and nulls remain intact. Foreign locators and sources are retained in the same snapshot namespace; these are separate from canonical feedback IDs. Canonical feedback and study records are reconstructed from original workbooks using our existing contracts, retaining all annotation rows. Imported context cannot authorize a transition or substitute for reviewed scoring inputs.

@@ -410,3 +410,14 @@ class AuditEvent(Contract):
     previous_event_hash: str
     event_hash: str
     result: Literal["success", "failure", "noop"]
+
+
+class ImportedEvidenceRow(Contract):
+    """Unmodified foreign-schema evidence; import is not semantic verification."""
+
+    schema_version: str = "1"
+    archive_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    table_name: str
+    row_key: str
+    payload: dict[str, Any]
+    verification_status: Literal["imported_unreviewed"] = "imported_unreviewed"

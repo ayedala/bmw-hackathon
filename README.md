@@ -66,3 +66,19 @@ Use your Python environment, or the bundled Python executable reported by Codex'
 ## Next implementation instruction
 
 Begin with **T04 in [TASKS.md](TASKS.md)**: freeze the grouped 120-record development/test/transfer manifest and obtain independent human labels before changing extraction prompts. Then compare the keyword baseline with bounded live AI extraction on the same examples. Add scoped sales, verified equipment and sourced public claims to actual requirement cards before populating business ratings. Record PM objectives and weights only after the BMW PM reviews them; do not infer feasibility or expertise.
+
+## Import another local evidence workspace
+
+Use the compatibility adapter instead of opening the foreign-schema database as our active database:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m bmw_pm.cli import-workspace "C:/path/to/other/bmw-hackathon"
+python -m bmw_pm.cli validate --expect-supplied-shape
+python -m bmw_pm.cli run --provider baseline
+python -m bmw_pm.cli context sales_observation --limit 36
+```
+
+The active database remains `data/processed/bmw_pm.db`. The adapter copies original raw files with hash checks, preserves a consistent SQLite snapshot under `data/processed/imports/`, and rebuilds feedback and studies through our canonical adapters. Foreign evidence, source locators, transformations, sales, equipment, external claims, source access restrictions, competitor cohorts and discovery leads are retained as typed `ImportedEvidenceRow` records. Read these through `evidence_context` or the UI's Imported evidence context panel; reads are audited. Source database SQL, triggers, keys and foreign agent code are never imported into the active application.
+
+The archive hash, original table, row payload hash and original locator IDs preserve foreign lineage. Import does not establish entailment or engineering feasibility: these extra channels remain unreviewed context and do not automatically populate scores or approve requirements. The model pipeline uses the rebuilt feedback records. Repeating an identical import is idempotent; different local raw bytes cause a conflict instead of an overwrite. Raw data, snapshots and import manifests remain ignored by Git.
