@@ -1,4 +1,5 @@
 import json
+import base64
 import threading
 from http.client import HTTPConnection
 from http.server import ThreadingHTTPServer
@@ -49,6 +50,27 @@ def test_paths_cannot_escape_output(server):
 
 def test_cross_origin_run_rejected(server):
     assert request(server, '/api/run', 'POST', '{}', {'Origin': 'https://example.com'})[0] == 403
+
+
+def test_upload_route_origin_validation_and_launch(server, monkeypatch):
+    calls = []
+    monkeypatch.setattr(web, 'execute_upload', lambda upload, run: calls.append((upload, run)))
+    body = dict(video_id='aoXRE2kob0o', title='Review', vehicle='BMW', generation='G60',
+                authorized=True, filename='review.srt', content=base64.b64encode(b'fixture').decode())
+    assert request(server, '/api/upload', 'POST', json.dumps(body), {'Origin': 'https://example.com'})[0] == 403
+    headers = {'Origin': f'http://127.0.0.1:{server}'}
+    assert request(server, '/api/upload', 'POST', json.dumps({**body, 'authorized': False}), headers)[0] == 400
+    try:
+        status, result = request(server, '/api/upload', 'POST', json.dumps(body), headers)
+        assert status == 200
+        for thread in threading.enumerate():
+            if thread is not threading.current_thread() and thread.name.endswith('(execute_upload)'):
+                thread.join(timeout=1)
+        assert calls and calls[0][1] == json.loads(result)['run']
+        assert calls[0][0].content == b'fixture'
+    finally:
+        with web.LOCK:
+            web.STATE['running'] = False
 
 
 def test_run_passes_form_as_arguments(server, monkeypatch):

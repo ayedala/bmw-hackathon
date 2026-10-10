@@ -1,6 +1,106 @@
 from types import SimpleNamespace
 import pytest
 from agent import queries,select,validate_evidence,parse_observations
+import agent
+import requests
+
+
+def test_daily_quota_does_not_retry(monkeypatch):
+    response = requests.Response()
+    response.status_code = 429
+    response._content = b'{"error":{"message":"Quota exceeded: Search Queries per day"}}'
+    calls = []
+    monkeypatch.setattr(agent.requests, 'get', lambda *a, **kw: calls.append(kw) or response)
+    monkeypatch.setattr(agent.time, 'sleep', lambda delay: pytest.fail('Daily quota must not retry'))
+    with pytest.raises(requests.HTTPError, match='per day'):
+        agent.yt_get('search', {}, 'secret')
+    assert len(calls) == 1
+
+
+def test_ip_block_stops_requests_but_processes_saved_transcripts(monkeypatch, tmp_path):
+    from youtube_transcript_api._errors import IpBlocked
+    monkeypatch.setenv('YOUTUBE_API_KEY', 'secret')
+    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+    videos = [dict(video_id=vid, url='https://youtube.com/watch?v='+vid,
+                   selected=True, retrieval_status='not_attempted')
+              for vid in ('blocked', 'uncached', 'cached')]
+    def discover(key, args):
+        args.discovery_warnings = []
+        return videos
+    monkeypatch.setattr(agent, 'discover', discover)
+    monkeypatch.setattr(agent, 'select', lambda found, args: found)
+    calls = []
+    def read(video_id, languages):
+        calls.append(video_id)
+        raise IpBlocked(video_id)
+    monkeypatch.setattr(agent, 'read_transcript', read)
+    segments = [dict(start=1, duration=2, text='Quiet cabin')]
+    agent.cache_transcript(tmp_path, 'cached', ['en', 'de'], segments)
+    assert agent.main(['--out', str(tmp_path)]) == 4
+    assert calls == ['blocked']
+    assert videos[1]['retrieval_status'] == 'skipped_ip_blocked'
+    assert videos[2]['retrieval_status'] == 'retrieved'
+    assert videos[2]['transcript_origin'] == 'saved'
+    assert (tmp_path / 'transcripts/cached.json').exists()
+
+
+def test_transcript_cache_language_scope_and_corruption(tmp_path):
+    segments = [dict(start=1, duration=2, text='Quiet cabin')]
+    agent.cache_transcript(tmp_path, 'abc', ['en'], segments)
+    assert agent.cached_transcript(tmp_path, 'abc', ['en']) == segments
+    assert agent.cached_transcript(tmp_path, 'abc', ['de']) is None
+    (tmp_path / 'transcript_cache/abc.en.json').write_text('broken')
+    assert agent.cached_transcript(tmp_path, 'abc', ['en']) is None
+
+
+def test_rate_limit_retries_and_redacts(monkeypatch):
+    calls, delays = [], []
+    response = requests.Response()
+    response.status_code = 429
+    response._content = b'{"error":{"message":"Too many requests key=secret"}}'
+    def get(*args, **kwargs):
+        calls.append(kwargs)
+        return response
+    monkeypatch.setattr(agent.requests, 'get', get)
+    monkeypatch.setattr(agent.time, 'sleep', delays.append)
+    with pytest.raises(requests.HTTPError) as error:
+        agent.yt_get('search', {}, 'secret')
+    assert len(calls) == 3 and delays == [2, 4]
+    assert 'secret' not in str(error.value)
+    assert error.value.response.status_code == 429
+
+
+def test_discovery_preserves_results_when_limited(monkeypatch):
+    args = SimpleNamespace(vehicle='BMW', generation='G60', languages=['en'],
+                           region='DE', from_date='2023-01-01', to_date='2026-10-10')
+    saved = []
+    args.discovery_checkpoint = lambda videos: saved.append(list(videos))
+    response = requests.Response()
+    response.status_code = 429
+    response._content = b'{}'
+    calls = []
+    def get(endpoint, params, key):
+        calls.append(endpoint)
+        if len(calls) > 1:
+            raise requests.HTTPError('limited', response=response)
+        return {'items': [{'id': {'videoId': 'abc'}, 'snippet': {
+            'title': 'BMW G60', 'channelTitle': 'test', 'channelId': 'ch',
+            'publishedAt': '2025-01-01'}}], 'nextPageToken': 'next'}
+    monkeypatch.setattr(agent, 'yt_get', get)
+    videos = agent.discover('secret', args)
+    assert [v['video_id'] for v in videos] == ['abc']
+    assert saved[0][0]['video_id'] == 'abc'
+    assert args.discovery_warnings and calls == ['search', 'search']
+
+
+def test_rate_limit_without_results_is_not_success(monkeypatch, tmp_path):
+    monkeypatch.setenv('YOUTUBE_API_KEY', 'secret')
+    def discover(key, args):
+        args.discovery_warnings = ['YouTube stopped accepting searches.']
+        return []
+    monkeypatch.setattr(agent, 'discover', discover)
+    assert agent.main(['--out', str(tmp_path)]) == 3
+    assert 'stopped accepting' in (tmp_path / 'summary.md').read_text()
 
 def test_queries():
     q=queries('BMW 5 Series','G60',['en','de'])

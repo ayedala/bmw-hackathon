@@ -29,14 +29,41 @@ def queries(vehicle, generation, languages):
     return result
 
 
+def safe_error(error):
+    text = str(error)
+    for name in ('YOUTUBE_API_KEY', 'OPENAI_API_KEY'):
+        if os.getenv(name):
+            text = text.replace(os.environ[name], '[REDACTED]')
+    return re.sub(r'([?&]key=)[^&\s]+', r'\1[REDACTED]', text)
+
+
 def yt_get(endpoint, params, api_key):
-    response = requests.get(f'{API}/{endpoint}', params={**params,'key': api_key}, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    for attempt in range(3):
+        response = requests.get(f'{API}/{endpoint}', params={**params,'key': api_key}, timeout=30)
+        daily_quota = response.status_code >= 400 and ('per day' in response.text.lower() or 'dailylimitexceeded' in response.text.lower())
+        if not daily_quota and (response.status_code == 429 or response.status_code >= 500):
+            if attempt < 2:
+                try:
+                    delay = min(30, max(2 ** (attempt + 1), float(response.headers.get('Retry-After', 0))))
+                except ValueError:
+                    delay = 2 ** (attempt + 1)
+                print(f'YouTube is temporarily limiting requests (HTTP {response.status_code}); retrying in {delay:g}s.', flush=True)
+                time.sleep(delay)
+                continue
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get('error', {}).get('message', '')
+            except (ValueError, AttributeError):
+                detail = ''
+            message = f'YouTube {endpoint}: HTTP {response.status_code}. {detail}'
+            message = safe_error(message.replace(api_key, '[REDACTED]'))
+            raise requests.HTTPError(message, response=response)
+        return response.json()
 
 
 def discover(api_key, args):
     all_videos = {}
+    args.discovery_videos = []
     region = args.region.upper()
     args.discovery_warnings = []
     stop_search = False
@@ -55,9 +82,12 @@ def discover(api_key, args):
                     reasons = {item.get('reason') for item in ex.response.json().get('error', {}).get('errors', [])}
                 except (AttributeError, ValueError):
                     reasons = set()
-                if reasons.intersection({'quotaExceeded', 'dailyLimitExceeded'}):
+                if ex.response.status_code == 429 or reasons.intersection({'quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded', 'userRateLimitExceeded'}):
+                    daily = 'per day' in str(ex).lower() or 'dailyLimitExceeded' in reasons
                     args.discovery_warnings.append(
-                        'YouTube daily search quota was reached; processing relevant videos found so far.')
+                        ('YouTube daily search allowance is exhausted. Wait for the quota to reset or request a quota increase in Google Cloud. '
+                         if daily else 'YouTube stopped accepting searches. Temporary limits were retried; check YouTube Data API quotas in Google Cloud before retrying if this persists. ')
+                        + f'Processing {len(all_videos)} videos found so far. {safe_error(ex)}')
                     stop_search = True
                     break
                 raise
@@ -75,12 +105,17 @@ def discover(api_key, args):
                     all_videos[vid]['discovery_queries'].append(query)
                 if lang not in all_videos[vid]['language_queries']:
                     all_videos[vid]['language_queries'].append(lang)
+            args.discovery_videos = list(all_videos.values())
+            if getattr(args, 'discovery_checkpoint', None):
+                args.discovery_checkpoint(args.discovery_videos)
             page_token = data.get('nextPageToken')
             if not page_token:
                 break
         if stop_search:
             break
     ids = list(all_videos)
+    if stop_search:
+        return list(all_videos.values())
     for i in range(0,len(ids),50):
         for x in yt_get('videos', dict(part='snippet,contentDetails,status',id=','.join(ids[i:i+50])), api_key).get('items',[]):
             v = all_videos[x['id']]
@@ -126,6 +161,35 @@ def read_transcript(video_id, languages):
     segments = [{'start':round(s.start,2),'duration':round(s.duration,2),'text':s.text} for s in transcript]
     if not segments: raise RuntimeError('No readable transcript segments')
     return segments
+
+
+def cached_transcript(out, video_id, languages):
+    """Reuse only structurally valid captions for the same language preference order."""
+    path = out / 'transcript_cache' / (video_id + '.' + '-'.join(languages) + '.json')
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        segments = data['segments']
+        if data['video_id'] != video_id or data['languages'] != languages or not segments:
+            return None
+        if not all(isinstance(s['text'], str) and isinstance(s['start'], (int, float))
+                   and s['start'] >= 0 and isinstance(s['duration'], (int, float))
+                   and s['duration'] >= 0 for s in segments):
+            return None
+        return segments
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def cache_transcript(out, video_id, languages, segments):
+    directory = out / 'transcript_cache'
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / (video_id + '.' + '-'.join(languages) + '.json')
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(dict(video_id=video_id, languages=languages,
+                                        segments=segments), ensure_ascii=False), encoding='utf-8')
+    temporary.replace(path)
 
 
 def run_curl(method,url,body=None):
@@ -252,20 +316,45 @@ def main(argv=None):
     if not os.getenv('YOUTUBE_API_KEY'):
         save(out,videos,evidence,args,['YOUTUBE_API_KEY missing: live discovery not attempted']);print('Missing YOUTUBE_API_KEY. Empty diagnostic artifacts saved.',file=sys.stderr);return 2
     try:
+        args.discovery_checkpoint = lambda found: save(out, found, evidence, args, errors)
         videos=discover(os.environ['YOUTUBE_API_KEY'],args)
         errors.extend(args.discovery_warnings)
+        for warning in args.discovery_warnings:
+            print(warning, flush=True)
+        if not videos and args.discovery_warnings:
+            save(out, videos, evidence, args, errors)
+            return 3
         selected=select(videos,args)
         save(out,videos,evidence,args,errors)
         if not selected:errors.append('No generation-confirmed candidates found in YouTube metadata')
+        transcript_blocked = False
         for video in selected:
             print('Reading',video['url'],flush=True)
             try:
-                segments=read_transcript(video['video_id'],args.languages)
+                segments=cached_transcript(out, video['video_id'], args.languages)
+                video['transcript_origin'] = 'saved' if segments is not None else 'live'
+                if segments is None:
+                    if transcript_blocked:
+                        video['retrieval_status'] = 'skipped_ip_blocked'
+                        video['retrieval_error'] = 'No saved transcript; further requests stopped after YouTube blocked this connection.'
+                        save(out, videos, evidence, args, errors)
+                        continue
+                    segments=read_transcript(video['video_id'],args.languages)
+                    cache_transcript(out, video['video_id'], args.languages, segments)
+                else:
+                    print('Using saved transcript', video['video_id'], flush=True)
                 video['retrieval_status']='retrieved';video['transcript_segments']=len(segments)
                 (out/'transcripts').mkdir(exist_ok=True)
                 (out/'transcripts'/f'{video["video_id"]}.json').write_text(json.dumps(segments,ensure_ascii=False,indent=2),encoding='utf-8')
             except Exception as ex:
-                video['retrieval_status']='failed';video['retrieval_error']=f'{type(ex).__name__}: {str(ex)[:300]}'
+                from youtube_transcript_api._errors import IpBlocked, RequestBlocked
+                if isinstance(ex, (IpBlocked, RequestBlocked)):
+                    transcript_blocked = True
+                    message = ('YouTube blocked automated transcript access. Further transcript requests '
+                               'are stopped for this run; saved transcripts will still be processed.')
+                    errors.append(message)
+                    print(message, flush=True)
+                video['retrieval_status']='failed';video['retrieval_error']=f'{type(ex).__name__}: {safe_error(ex)[:300]}'
                 save(out,videos,evidence,args,errors);continue
             if not os.getenv('OPENAI_API_KEY'):
                 video['extraction_status']='skipped_missing_openai_api_key'
@@ -282,10 +371,11 @@ def main(argv=None):
             save(out,videos,evidence,args,errors)
             if args.probe_only:break
     except Exception as ex:
-        errors.append(f'{type(ex).__name__}: {str(ex)[:500]}')
+        videos = getattr(args, 'discovery_videos', videos)
+        errors.append(f'{type(ex).__name__}: {safe_error(ex)[:500]}')
         save(out,videos,evidence,args,errors);print(errors[-1],file=sys.stderr);return 1
     save(out,videos,evidence,args,errors)
     print(f'Saved {len(videos)} sources / {len(evidence)} validated observations to {out}')
-    return 0
+    return 4 if transcript_blocked else 0
 
 if __name__=='__main__':sys.exit(main())

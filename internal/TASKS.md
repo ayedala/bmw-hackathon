@@ -77,3 +77,29 @@ Record task ID, changed files, command actually run, result, evidence artifact/r
 
 - Included the remaining `WebResearchSeed` typed contract and integrated main's `internal/` reorganization. Retained both the import/hosting instructions and the updated project overview; preserved all task-board validation notes at `internal/TASKS.md`.
 - `python -m pytest -q -p no:cacheprovider --basetemp .tmp/pytest-merge` passed 19 software tests before the documentation merge. Private databases/exports remain excluded from Git. Hosting is prepared, not deployed.
+
+### 10 October 2026: YouTube search failure recovery (T10 supporting fix)
+
+- Acceptance: retry transient YouTube HTTP 429/5xx responses within a bounded budget; retain discovered videos on rate/quota interruption; checkpoint each search page; display a specific blocked-search message; redact credentials from new HTTP diagnostics.
+- Changed `youtube_research_agent/agent.py`, frontend status messaging, regression tests and temporary-output ignore rules. No provider or evidence extraction policy changed.
+- Verification: `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .test-tmp-rate-limit-approved` from the YouTube folder passed 16 tests, including retry exhaustion, credential redaction, partial discovery preservation and empty blocked-run status. Initial sandbox test attempts hit Windows temporary-directory permissions; the approved run passed.
+- The local review server was restarted. Live YouTube recovery and actual Google quota status remain unverified; no full paid research run was launched. Dataset reconciliation, unseen-model, unknown-input, revision and replay checks were not rerun for this isolated search transport/UI fix. Existing quote/timestamp and duplicate selection tests passed.
+
+### 10 October 2026: transcript IP-block handling and reuse (T10 supporting fix)
+
+- Acceptance: the first IpBlocked/RequestBlocked stops all further live transcript requests in that run; cached transcripts remain usable and origins are explicit. Cache keys include video ID and ordered requested languages; corrupt or mismatched cache entries are ignored. Original legacy transcripts are preserved.
+- Changed agent, frontend blocked status, README and tests. Newly retrieved captions are written atomically to a cache within the existing ignored output directory. No claim of live model replay: cached captions still pass to extraction normally.
+- Verification: `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .test-tmp-transcript-approved` passed 18 tests. New tests verify one blocked network attempt, subsequent uncached skip, subsequent cached processing, language isolation and corrupted-cache rejection. Live transcript availability was not tested; no attempt was made to bypass YouTube restrictions. Dataset reconciliation, unseen-model, unknown-input, revision and audit replay checks were not run for this isolated transport change.
+
+### 10 October 2026: confirmed daily YouTube search quota exhaustion
+
+- Latest local diagnostic explicitly reports HTTP 429 with quota metric Search Queries and limit Search Queries per day. No live transcript retrieval occurred in that run.
+- Daily quota responses now avoid transient retries; frontend explains daily allowance exhaustion separately from IP blocking and OpenAI tokens. HTML responses disable browser caching.
+- Verification: YouTube suite passed 19 tests with `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .test-tmp-daily-quota` (approved outside sandbox). Added daily-limit no-retry regression. Google quota increase/reset and a successful live run remain unverified. Broader dataset/revision/replay acceptance checks not rerun for this transport-message fix.
+
+### 10 October 2026: authorized file analysis fallback (T10 supporting slice)
+
+- Acceptance: analyze timestamped subtitles or transcribe authorized media without YouTube network requests; preserve original bytes and SHA-256, maintain timestamp quote validation, reuse content-identical media transcriptions, expose results in saved runs and report failed provider access honestly.
+- Added typed Upload contract, subtitle timing parser, official OpenAI whisper-1 segment transcription adapter, local ignored media cache, isolated upload runs, asynchronous HTTP upload route with size/origin validation, and Analyze a file form. Model/source provenance and unknown metadata remain explicit. No web access controls are bypassed.
+- Verification: `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp .test-tmp-upload-http` passed 32 tests. Fixture-based tests cover preserved uploads, rejected unsupported/unauthorized input, subtitle timing, source unknowns, quote rejection, media cache reuse, provider failure and HTTP routing/origin protection. `python -m compileall -q upload_research.py web.py` passed.
+- Limitations: no authorized real media file was available, so live speech transcription and extraction were not run; account model access is unverified. This fallback requires file input and does not restore automatic YouTube discovery. Browser automation unavailable; HTML/server response verified by HTTP. Broader dataset reconciliation, unseen-model, unknown-input, revision and replay evaluation checks were not rerun for this input adapter. No accuracy measurement is claimed.

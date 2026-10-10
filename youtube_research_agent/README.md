@@ -52,3 +52,19 @@ pytest -q
 Discovery follows YouTube search result pages and selects every candidate that passes the metadata relevance filter by default. `--max-videos N` optionally limits processing; `--max-videos 0` means no selection limit. The UI also offers an optional probe mode that stops after the first readable transcript.
 
 YouTube search still depends on its relevance-ranked results, and the metadata filter may miss videos that omit the generation name. Google currently assigns a default quota of 100 `search.list` requests per day; each additional result page is another request. If that quota runs out, the agent keeps and processes videos found so far and records a warning. Searching everything can therefore take a large share of daily quota. Search region and language are discovery aids, not evidence of where the vehicle was used or sold. The extractor does not assume reviewers are owners, never merges viewer comments with spoken statements, and validates excerpts by exact transcript substring and timestamp. Agents API permissions, actual model output structure and real-world transcript accessibility require a live integration test with working credentials. The saved agent's tools may be preserved, but a tool-dependent saved definition can require additional actions that this standalone no-environment runner does not service; failures are recorded instead of fabricated as success.
+
+### Transcript reuse and IP blocking
+
+Newly retrieved transcripts are cached under the selected run's `transcript_cache/`, keyed by video ID and language preference order. Repeating a browser run reuses this cache and labels the source `transcript_origin: saved`; extraction still runs again. Legacy transcript files without language provenance are retained but not automatically reused. Cache reuse is local to the output directory.
+
+After `IpBlocked` or `RequestBlocked`, no further network transcript requests are made during that run. Remaining videos with valid saved transcripts are still processed; uncached videos are explicitly marked `skipped_ip_blocked`. Exit code 4 means transcript access was blocked, not successful complete coverage. This does not lift YouTube's restriction, and a later user-started run may attempt retrieval again.
+
+## Analyze an authorized local file (no YouTube quota required)
+
+Use **Analyze a file** in the review interface. Enter the original YouTube video ID, title, vehicle and generation, then choose a full-video MP3/MP4/MPEG/MPGA/M4A/WAV/WEBM file (up to 24 MiB) or UTF-8 SRT/VTT subtitles. Supply only public material you are authorized to use, with no private personal data. Uploading sends media to OpenAI for transcription and transcript text to the configured extraction agent; API charges apply.
+
+Media transcription uses the official OpenAI audio transcription endpoint with `whisper-1` and segment timestamps. Identical media bytes reuse a local transcription cache. Subtitle files need no speech transcription. Original bytes, hashes, timestamped segments, source metadata and findings are saved in a separate `output/upload-...` run. No YouTube search or caption endpoint is called in this path. Source metadata and vehicle match are user asserted, and transcription accuracy still needs review. Supply full-video timing: an excerpt starting halfway through a video will otherwise have incorrect YouTube timestamp links.
+
+The existing OpenAI key must have billing and permission for transcription and the configured extraction agent. Live integration is not established by fixture tests. This path requires an authorized file; it does not automatically obtain blocked YouTube media or restore automatic discovery.
+
+API documentation: https://developers.openai.com/api/docs/guides/speech-to-text

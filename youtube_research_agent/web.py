@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import threading
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +13,22 @@ ROOT = Path(__file__).resolve().parent
 OUTPUT = ROOT / 'output'
 LOCK = threading.Lock()
 STATE = {'running': False, 'log': '', 'exit_code': None}
+
+
+def execute_upload(upload, run):
+    from upload_research import process
+    def log(message):
+        with LOCK:
+            STATE['log'] = (STATE['log'] + message + '\n')[-30000:]
+    try:
+        code = process(upload, OUTPUT / run, log)
+    except Exception as error:
+        from agent import safe_error
+        log(safe_error(error))
+        code = 1
+    finally:
+        with LOCK:
+            STATE.update(running=False, exit_code=locals().get('code', 1))
 
 
 def run_directory(name):
@@ -65,6 +82,7 @@ class Handler(BaseHTTPRequestHandler):
                 body = (ROOT / 'frontend' / 'index.html').read_bytes()
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Cache-Control', 'no-store')
                 self.end_headers()
                 self.wfile.write(body)
             elif url.path == '/api/runs':
@@ -96,6 +114,24 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get('Origin') != 'http://' + self.headers.get('Host', ''):
             self.reply({'error': 'Open the interface on this local server to start research.'}, 403)
             return
+        if self.path == '/api/upload':
+            try:
+                from upload_research import Upload
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 34 * 1024 * 1024:
+                    raise ValueError('Upload must be at most 24 MiB.')
+                upload = Upload.parse(json.loads(self.rfile.read(length)))
+                run = 'upload-' + uuid.uuid4().hex[:12]
+                with LOCK:
+                    if STATE['running']:
+                        self.reply({'error': 'Research is already running'}, 409)
+                        return
+                    STATE.update(running=True, log='', exit_code=None, run=run)
+                threading.Thread(target=execute_upload, args=(upload, run), daemon=True).start()
+                self.reply({'started': True, 'run': run})
+            except (ValueError, TypeError) as error:
+                self.reply({'error': str(error)}, 400)
+            return
         if self.path != '/api/run':
             self.reply({'error': 'Not found'}, 404)
             return
@@ -123,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
                 if STATE['running']:
                     self.reply({'error': 'Research is already running'}, 409)
                     return
-                STATE.update(running=True, log='', exit_code=None)
+                STATE.update(running=True, log='', exit_code=None, run='browser')
             threading.Thread(target=execute, args=(command,), daemon=True).start()
             self.reply({'started': True})
         except (ValueError, TypeError) as error:
