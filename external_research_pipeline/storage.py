@@ -102,32 +102,89 @@ def append_raw_pages(pages: list[RawPage]) -> int:
     return append_models(config.RAW_PAGES_PATH, list(pages))
 
 
-def existing_evidence_ids() -> set[str]:
-    """Return the ``evidence_id`` values already in the processed store.
+def existing_evidence_ids(path: Path | None = None) -> set[str]:
+    """Return the ``evidence_id`` values already in an evidence store.
 
     Because ids are derived from canonical URL plus normalized claim, this set
     is what makes re-running the pipeline idempotent.
     """
     return {
         row["evidence_id"]
-        for row in read_jsonl(config.PROCESSED_EVIDENCE_PATH)
+        for row in read_jsonl(path or config.PROCESSED_EVIDENCE_PATH)
         if isinstance(row.get("evidence_id"), str)
     }
 
 
-def append_processed_evidence(records: list[ProcessedEvidence]) -> int:
+def append_processed_evidence(
+    records: list[ProcessedEvidence], *, path: Path | None = None
+) -> int:
     """Append processed evidence, skipping ids already present on disk.
 
     Returns the number of records actually written.
     """
     if not records:
         return 0
-    known = existing_evidence_ids()
+    target = path or config.PROCESSED_EVIDENCE_PATH
+    known = existing_evidence_ids(target)
     fresh = [record for record in records if record.evidence_id not in known]
     skipped = len(records) - len(fresh)
     if skipped:
-        get_logger().info("skipped %d evidence record(s) already in the processed store", skipped)
-    return append_models(config.PROCESSED_EVIDENCE_PATH, list(fresh))
+        get_logger().info("skipped %d evidence record(s) already in %s", skipped, target.name)
+    return append_models(target, list(fresh))
+
+
+def rebuild_processed_evidence(
+    records: list[ProcessedEvidence],
+    *,
+    path: Path,
+    replace_source_urls: set[str],
+) -> tuple[int, int]:
+    """Replace the rows for *replace_source_urls* in *path* with *records*.
+
+    Append-only storage is right for a scrape run, where each page is fetched
+    once. It is wrong for reprocessing, which re-derives evidence for pages that
+    already have rows: appending would grow the file on every pass, and
+    id-based skipping would not catch it because a model that rewords a claim
+    produces a new ``evidence_id``.
+
+    So rows belonging to the reprocessed pages are dropped and rewritten. Rows
+    from any other page are preserved untouched. Running twice over the same
+    cache therefore yields the same file.
+
+    The write is atomic: a temp file in the same directory is moved into place,
+    so an interrupted rebuild cannot truncate the store.
+
+    Returns:
+        ``(rows_preserved, rows_written)``.
+    """
+    log = get_logger()
+    preserved = [
+        row for row in read_jsonl(path)
+        if row.get("source_url") not in replace_source_urls
+    ]
+    fresh = [record.model_dump(mode="json") for record in records]
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+    )
+    try:
+        with handle:
+            for row in preserved + fresh:
+                handle.write(json.dumps(row, ensure_ascii=False, sort_keys=False))
+                handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(handle.name, path)
+    except BaseException:
+        Path(handle.name).unlink(missing_ok=True)
+        raise
+
+    log.info(
+        "rebuilt %s: %d row(s) preserved, %d row(s) written for %d reprocessed page(s)",
+        path.name, len(preserved), len(fresh), len(replace_source_urls),
+    )
+    return len(preserved), len(fresh)
 
 
 def append_research_run(run: ResearchRun) -> None:
@@ -262,7 +319,9 @@ class VisitedUrlStore:
         save_json_atomic(self.path, self._entries)
 
 
-def load_processed_in_groups(groups: set[str]) -> list[ProcessedEvidence]:
+def load_processed_in_groups(
+    groups: set[str], *, path: Path | None = None
+) -> list[ProcessedEvidence]:
     """Load stored evidence belonging to any of *groups*.
 
     Used so that a second run over the same forum thread marks new near-
@@ -274,7 +333,7 @@ def load_processed_in_groups(groups: set[str]) -> list[ProcessedEvidence]:
         return []
     log = get_logger()
     loaded: list[ProcessedEvidence] = []
-    for row in read_jsonl(config.PROCESSED_EVIDENCE_PATH):
+    for row in read_jsonl(path or config.PROCESSED_EVIDENCE_PATH):
         if row.get("independence_group") not in groups:
             continue
         try:

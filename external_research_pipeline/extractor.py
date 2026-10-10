@@ -13,13 +13,16 @@ content rather than followed.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Iterable
 
 from pydantic import ValidationError
 
 import config
-from llm_provider import BaseLLMProvider, LLMError
+import normalization
+import relevance
+from llm_provider import BaseLLMProvider, LLMError, LLMTruncatedError
 from models import (
     ALL_SUBTOPICS,
     RawEvidence,
@@ -30,7 +33,14 @@ from models import (
     TOPICS,
 )
 from source_scoring import classify_source_family
-from utils import chunk_text, get_logger, normalize_claim, safe_truncate, trim_markdown
+from utils import (
+    chunk_text,
+    claim_similarity,
+    get_logger,
+    normalize_claim,
+    safe_truncate,
+    trim_markdown,
+)
 
 # --------------------------------------------------------------------------- #
 # Prompt contract
@@ -73,6 +83,14 @@ RULES
 - evidence_text must be an exact, verbatim, contiguous quote from the page text
   that a reader can locate. Keep it under ~300 characters; do not paraphrase.
 - claim must be one self-contained sentence stating the single observation.
+- **Write every claim in English**, whatever language the page is in. The claims
+  are read side by side downstream, so they must share one language.
+- **Never translate evidence_text.** It is a verbatim quote and must stay in the
+  page's own language, character for character, so it can be located again.
+- A row stating two labelled values is two claims, not one. Split
+  "Ladeleistung AC/DC | 11 kW / 270 kW" into an AC record and a DC record, each
+  with its own numeric_value. A single value given as a range
+  ("14,8 - 17,0 kWh/100 km") is one claim; leave numeric_value null for it.
 - Return an empty evidence array when the page holds no useful evidence.
 
 CONTROLLED VOCABULARY
@@ -138,16 +156,70 @@ EVIDENCE_SCHEMA: dict[str, Any] = {
 }
 
 
+class ExtractionOutcome(str, Enum):
+    """Why a scraped page did or did not yield evidence.
+
+    These are kept distinct because they call for different fixes: a thin page
+    means the scrape was wasted, an irrelevant page means the URL filter let
+    something through, a failure means a model or transport problem, and zero
+    evidence means the model read a legitimate page and found nothing.
+    """
+
+    EXTRACTED = "extracted"
+    SKIPPED_THIN = "skipped_thin"
+    SKIPPED_IRRELEVANT = "skipped_irrelevant"
+    EXTRACTION_FAILED = "extraction_failed"
+    NO_EVIDENCE = "no_evidence"
+
+
 @dataclass(slots=True)
+class PageExtraction:
+    """Result of attempting extraction on one page."""
+
+    outcome: ExtractionOutcome
+    records: list["RawEvidence"] = field(default_factory=list)
+    reason: str = ""
+    chunks: int = 0
+    chunks_failed: int = 0
+    content_chars: int = 0
+
+    @property
+    def reached_model(self) -> bool:
+        """Whether any extraction request was actually issued for this page."""
+        return self.outcome not in (
+            ExtractionOutcome.SKIPPED_THIN,
+            ExtractionOutcome.SKIPPED_IRRELEVANT,
+        )
+
+
+@dataclass
 class ExtractionStats:
-    """Per-page accounting for the extraction stage."""
+    """Run-level accounting for the extraction stage."""
 
     chunks: int = 0
+    chunks_failed: int = 0
     llm_calls: int = 0
     records_returned: int = 0
     records_valid: int = 0
     records_rejected: int = 0
     records_repaired: int = 0
+    records_merged_away: int = 0
+    records_split: int = 0
+    records_reclassified: int = 0
+    records_canonicalized: int = 0
+    units_normalized: int = 0
+    claims_cleaned: int = 0
+    filtered_out_of_scope: int = 0
+    kept_distinct_roles: int = 0
+    non_english_claims: int = 0
+    merged_by_span: int = 0
+    rules_fired: dict[str, int] = field(default_factory=dict)
+    pages_skipped_thin: int = 0
+    pages_skipped_irrelevant: int = 0
+    pages_failed: int = 0
+    pages_zero_evidence: int = 0
+    pages_with_evidence: int = 0
+    sub_chunk_recoveries: int = 0
 
 
 class EvidenceExtractor:
@@ -161,35 +233,151 @@ class EvidenceExtractor:
 
     # -- public API -------------------------------------------------------- #
 
-    def extract_from_page(self, page: RawPage) -> list[RawEvidence]:
-        """Extract atomic evidence from *page*.
+    def extract_from_page(self, page: RawPage) -> PageExtraction:
+        """Extract atomic evidence from *page*, or explain why it did not.
 
-        The page is trimmed, chunked to the configured character budget, and each
-        chunk is sent in its own request. Results are merged and intra-page
-        duplicate claims collapsed. A failing chunk is logged and skipped so the
-        rest of the page still contributes.
+        Two deterministic gates run before any model call, because the scrape
+        credit is already spent but the extraction request is not:
+
+        1. **Thin content** - below ``MIN_CONTENT_CHARS`` of usable text the
+           page is almost always a cookie wall, a JS shell or an error page.
+        2. **Relevance** - the page text must show topical or vehicle signal
+           (see :mod:`relevance`).
+
+        Surviving pages are chunked to ``EXTRACTION_CHUNK_CHARS`` and each chunk
+        is extracted in its own request. A chunk that fails is logged and
+        skipped, so evidence from the other chunks is kept; a chunk that
+        truncates is retried once as two halves.
         """
         body = trim_markdown(page.markdown)
-        if len(body) < config.MIN_PAGE_CHARS:
-            self._log.info("skip extraction, only %d usable chars: %s", len(body), page.canonical_url)
-            return []
+        chars = len(body)
 
-        chunks = chunk_text(body, self._settings.max_content_chars, self._settings.chunk_overlap_chars)
-        self.stats.chunks += len(chunks)
-        self._log.info("extracting from %s (%d chars, %d chunk(s))", page.canonical_url, len(body), len(chunks))
+        if chars < self._settings.min_content_chars:
+            markers = relevance.find_dead_markers(body)
+            reason = (
+                f"only {chars} usable chars (need {self._settings.min_content_chars})"
+                + (f"; dead-page markers: {', '.join(markers[:3])}" if markers else "")
+            )
+            self.stats.pages_skipped_thin += 1
+            self._log.info("skip (thin)       %s - %s", page.canonical_url, reason)
+            return PageExtraction(ExtractionOutcome.SKIPPED_THIN, reason=reason, content_chars=chars)
+
+        verdict = relevance.assess(
+            body,
+            topic=page.topic or None,
+            min_topic_hits=self._settings.min_topic_hits,
+            min_vehicle_hits=self._settings.min_vehicle_hits,
+        )
+        if not verdict.relevant:
+            self.stats.pages_skipped_irrelevant += 1
+            self._log.info("skip (off-topic)  %s - %s", page.canonical_url, verdict.reason)
+            return PageExtraction(
+                ExtractionOutcome.SKIPPED_IRRELEVANT, reason=verdict.reason, content_chars=chars
+            )
+
+        chunks = chunk_text(
+            body,
+            self._settings.extraction_chunk_chars,
+            self._settings.extraction_chunk_overlap_chars,
+        )
+        self._log.info(
+            "extracting from %s (%d chars, %d chunk(s)); relevance: %s",
+            page.canonical_url, chars, len(chunks), verdict.reason,
+        )
 
         collected: list[RawEvidence] = []
+        failed = 0
         for index, chunk in enumerate(chunks, start=1):
+            label = f"chunk {index}/{len(chunks)}"
+            self.stats.chunks += 1
             try:
                 payload = self._request(page, chunk, index, len(chunks))
+            except LLMTruncatedError as exc:
+                self._log.warning(
+                    "%s of %s truncated (%s); retrying as two halves",
+                    label, page.canonical_url, exc,
+                )
+                recovered, recovered_ok = self._extract_halves(page, chunk, index, len(chunks))
+                collected.extend(recovered)
+                if recovered_ok:
+                    self.stats.sub_chunk_recoveries += 1
+                else:
+                    failed += 1
+                    self.stats.chunks_failed += 1
+                continue
             except LLMError as exc:
-                self._log.error("extraction failed on chunk %d/%d of %s: %s", index, len(chunks), page.canonical_url, exc)
+                failed += 1
+                self.stats.chunks_failed += 1
+                self._log.error("%s of %s failed: %s", label, page.canonical_url, exc)
                 continue
             collected.extend(self._build_records(payload, page))
 
+        collected = self._normalize(collected, page)
         merged = self._merge(collected)
-        self._log.info("extracted %d atomic record(s) from %s", len(merged), page.canonical_url)
-        return merged
+
+        if merged:
+            self.stats.pages_with_evidence += 1
+            outcome = ExtractionOutcome.EXTRACTED
+            reason = f"{len(merged)} record(s) from {len(chunks)} chunk(s)"
+        elif failed:
+            self.stats.pages_failed += 1
+            outcome = ExtractionOutcome.EXTRACTION_FAILED
+            reason = f"all {failed} of {len(chunks)} chunk(s) failed"
+        else:
+            self.stats.pages_zero_evidence += 1
+            outcome = ExtractionOutcome.NO_EVIDENCE
+            reason = f"model found no usable evidence in {len(chunks)} chunk(s)"
+
+        self._log.info("%-16s %s - %s", f"{outcome.value}:", page.canonical_url, reason)
+        return PageExtraction(
+            outcome,
+            records=merged,
+            reason=reason,
+            chunks=len(chunks),
+            chunks_failed=failed,
+            content_chars=chars,
+        )
+
+    def _extract_halves(
+        self, page: RawPage, chunk: str, index: int, total: int
+    ) -> tuple[list[RawEvidence], bool]:
+        """Retry a truncated *chunk* as two overlapping halves, once.
+
+        Splitting is the only fix that works for truncation - reissuing the
+        same request truncates again. Recursion stops here: a half that
+        truncates is given up on, so one bad chunk can cost at most three
+        requests.
+
+        Returns:
+            ``(records, recovered)`` where *recovered* is true if at least one
+            half came back.
+        """
+        overlap = min(self._settings.extraction_chunk_overlap_chars, max(len(chunk) // 8, 1))
+        halves = chunk_text(chunk, max(len(chunk) // 2 + overlap, 1), overlap)
+        if len(halves) < 2:
+            return [], False
+
+        records: list[RawEvidence] = []
+        recovered = False
+        for half_index, half in enumerate(halves, start=1):
+            self.stats.chunks += 1
+            try:
+                payload = self._request(page, half, index, total)
+            except LLMError as exc:
+                self.stats.chunks_failed += 1
+                self._log.error(
+                    "sub-chunk %d/%d of chunk %d/%d failed: %s",
+                    half_index, len(halves), index, total, exc,
+                )
+                continue
+            records.extend(self._build_records(payload, page))
+            recovered = True
+        if recovered:
+            self._log.info(
+                "recovered %d record(s) from %d sub-chunk(s) of chunk %d/%d",
+                len(records), len(halves), index, total,
+            )
+        return records, recovered
 
     # -- model interaction -------------------------------------------------- #
 
@@ -319,23 +507,182 @@ class EvidenceExtractor:
             numeric_unit=str(numeric_unit) if numeric_unit else None,
         )
 
-    @staticmethod
-    def _merge(records: list[RawEvidence]) -> list[RawEvidence]:
+    def _merge(self, records: list[RawEvidence]) -> list[RawEvidence]:
         """Collapse claims repeated across overlapping chunks of the same page.
 
-        Chunk overlap means a claim near a boundary is often returned twice. An
-        exact normalized-claim match within one page is the same observation, so
-        the first occurrence is kept.
+        Overlap means a claim near a boundary is returned by both neighbouring
+        chunks. Exact normalized matches are collapsed first, then near matches
+        at the configured similarity threshold.
+
+        When two records describe the same claim the **more complete** one is
+        kept, scored by: carries a numeric value and unit, then longer
+        ``evidence_text``, then longer ``claim``. So a chunk that captured
+        "10-80% in 30 minutes" with ``numeric_value=30`` beats a neighbouring
+        chunk that only caught "charges quickly".
         """
-        seen: set[str] = set()
         merged: list[RawEvidence] = []
+        exact: dict[str, int] = {}
+
         for record in records:
             key = normalize_claim(record.claim)
-            if key in seen:
+            position = exact.get(key)
+            if position is None:
+                position = self._near_match(record, merged)
+            if position is None:
+                exact[key] = len(merged)
+                merged.append(record)
                 continue
-            seen.add(key)
-            merged.append(record)
+            self.stats.records_merged_away += 1
+            if self._completeness(record) > self._completeness(merged[position]):
+                merged[position] = record
+                exact[normalize_claim(record.claim)] = position
         return merged
+
+    def _normalize(self, records: list[RawEvidence], page: RawPage) -> list[RawEvidence]:
+        """Run the deterministic normalization pass over one page's records.
+
+        Splits multi-value rows, corrects drifted topic/subtopic from the
+        evidence text, canonicalizes deprecated subtopic names and measures
+        claim language. ``evidence_text`` and the source offsets are never
+        touched.
+        """
+        if not records:
+            return records
+        context = normalization.page_context(
+            title=page.title, extra=f"{page.query} {page.canonical_url}"
+        )
+        normalized, report = normalization.normalize_records(records, context=context)
+
+        self.stats.records_split += report.split_records
+        self.stats.records_reclassified += report.reclassified
+        self.stats.records_canonicalized += report.canonicalized
+        self.stats.units_normalized += report.units_normalized
+        self.stats.claims_cleaned += report.claims_cleaned
+        self.stats.filtered_out_of_scope += report.filtered_out_of_scope
+        self.stats.non_english_claims += report.non_english_claims
+        for name, count in report.rules_fired.items():
+            self.stats.rules_fired[name] = self.stats.rules_fired.get(name, 0) + count
+
+        if report.changed or report.non_english_claims:
+            self._log.info(
+                "normalized %s: %d split, %d reclassified%s, %d canonicalized, "
+                "%d unit(s), %d claim(s) cleaned, %d out of scope, "
+                "%d non-English claim(s)",
+                page.canonical_url,
+                report.split_records,
+                report.reclassified,
+                f" ({', '.join(f'{k}={v}' for k, v in sorted(report.rules_fired.items()))})"
+                if report.rules_fired else "",
+                report.canonicalized,
+                report.units_normalized,
+                report.claims_cleaned,
+                report.filtered_out_of_scope,
+                report.non_english_claims,
+            )
+        for reason in report.scope_reasons:
+            self._log.info("dropped from %s - %s", page.canonical_url, reason)
+        return normalized
+
+    def _near_match(self, record: RawEvidence, merged: list[RawEvidence]) -> int | None:
+        """Index of an already-kept record stating the same proposition, if any.
+
+        Two independent tests, because same-page duplicates arrive in two
+        shapes:
+
+        1. **Similar claim text** at the same-page threshold. This catches
+           overlapping-chunk repeats and ordinary paraphrases.
+        2. **Overlapping evidence span**, same topic *and* subtopic, with no
+           conflicting numbers. This is the language-independent backstop: the
+           English and German wordings of one observation quote the same German
+           sentence, so their spans coincide even though their claim texts share
+           almost no tokens.
+
+        The second test is deliberately narrow. Requiring the same subtopic
+        keeps two genuinely distinct facts drawn from one sentence apart - seat
+        comfort and ride comfort in "Die Sitze sind bequem, aber der
+        Fahrkomfort leidet" stay separate - and requiring no numeric conflict
+        keeps a split AC/DC row as two records.
+        """
+        threshold = self._settings.same_page_duplicate_threshold
+        for position, kept in enumerate(merged):
+            if claim_similarity(record.claim, kept.claim) >= threshold:
+                if self._distinct_roles(record, kept):
+                    continue
+                return position
+        for position, kept in enumerate(merged):
+            if self._same_proposition_by_span(record, kept):
+                self.stats.merged_by_span += 1
+                self._log.debug(
+                    "same-span duplicate: %r collapsed into %r",
+                    record.claim[:70], kept.claim[:70],
+                )
+                return position
+        return None
+
+    def _same_proposition_by_span(self, left: RawEvidence, right: RawEvidence) -> bool:
+        """Whether two records quote one proposition from one span."""
+        if (left.topic, left.subtopic) != (right.topic, right.subtopic):
+            return False
+        if _numerics_conflict(left, right):
+            return False
+        if self._distinct_roles(left, right):
+            return False
+        return _span_overlap_ratio(left, right) >= self._settings.span_overlap_ratio
+
+    def _distinct_roles(self, left: RawEvidence, right: RawEvidence) -> bool:
+        """Whether two records say different things about the same number.
+
+        A stated capability and an observed measurement are different evidence
+        even when they quote the same figure: "DC charging power is 270 kW" is a
+        specification, while "can reach 270 kW, but only briefly" is what a
+        reviewer saw. Merging them would delete exactly the nuance a product
+        manager needs.
+
+        The test is **observed versus not observed**, not
+        ``capability``-versus-``observed``. A flat spec statement often carries
+        no explicit capability marker and so scores ``unspecified``; requiring
+        the exact pair would merge it into the hedged observation and lose the
+        hedge. Erring toward keeping both is the right direction here, because
+        the brief is explicit that useful nuance must not be deleted - and the
+        subtopic, numeric and span guards still apply.
+        """
+        left_role = normalization.semantic_role(left)
+        right_role = normalization.semantic_role(right)
+        if (left_role == "observed") != (right_role == "observed"):
+            self.stats.kept_distinct_roles += 1
+            return True
+        return False
+
+    @staticmethod
+    def _completeness(record: RawEvidence) -> tuple[int, int, int]:
+        """Sort key for "which version of this claim is more complete"."""
+        has_number = 1 if record.numeric_value is not None and record.numeric_unit else 0
+        return (has_number, len(record.evidence_text or ""), len(record.claim or ""))
+
+
+def _span_overlap_ratio(left: RawEvidence, right: RawEvidence) -> float:
+    """Overlap of two evidence spans as a fraction of the shorter one."""
+    start = max(left.source_start_char, right.source_start_char)
+    end = min(left.source_end_char, right.source_end_char)
+    overlap = max(0, end - start)
+    shortest = min(
+        left.source_end_char - left.source_start_char,
+        right.source_end_char - right.source_start_char,
+    )
+    return overlap / shortest if shortest > 0 else 0.0
+
+
+def _numerics_conflict(left: RawEvidence, right: RawEvidence) -> bool:
+    """Whether two records state different numeric facts.
+
+    Two numbers that disagree mean two facts, however much their spans overlap -
+    this is what keeps a split ``11 kW / 270 kW`` row as two records. A number
+    on one side only is not a conflict: it is the same fact captured more
+    completely.
+    """
+    if left.numeric_value is None or right.numeric_value is None:
+        return False
+    return left.numeric_value != right.numeric_value
 
 
 # --------------------------------------------------------------------------- #

@@ -223,6 +223,11 @@ class ScrapeCoordinator:
         self.scrapes = 0
         self.failures = 0
 
+    @property
+    def scrape_call_count(self) -> int:
+        """Firecrawl scrape requests issued, retries included; 0 when planning."""
+        return self._client.call_count if self._client is not None else 0
+
     # -- planning (no network, no credits) --------------------------------- #
 
     def plan(self, hit: SearchHit) -> ScrapeOutcome:

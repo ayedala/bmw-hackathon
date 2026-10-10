@@ -7,12 +7,13 @@ from the rest of the repository.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from utils import load_env_file
+from utils import LOGGER_NAME, load_env_file
 
 # --------------------------------------------------------------------------- #
 # Paths - everything is relative to this folder
@@ -27,6 +28,9 @@ CACHE_DIR: Final[Path] = DATA_DIR / "cache"
 
 RAW_PAGES_PATH: Final[Path] = RAW_DIR / "raw_pages.jsonl"
 PROCESSED_EVIDENCE_PATH: Final[Path] = PROCESSED_DIR / "external_evidence.jsonl"
+#: Output of ``--reprocess-cache``. Kept separate from the main store so a
+#: reprocess run can never disturb evidence collected by a real scrape.
+CACHE_REPROCESS_EVIDENCE_PATH: Final[Path] = PROCESSED_DIR / "cache_reprocess_evidence.jsonl"
 VISITED_URLS_PATH: Final[Path] = METADATA_DIR / "visited_urls.json"
 RESEARCH_RUNS_PATH: Final[Path] = METADATA_DIR / "research_runs.jsonl"
 LOG_PATH: Final[Path] = BASE_DIR / "pipeline.log"
@@ -50,15 +54,46 @@ SEARCH_LOCATION: Final[str] = "Germany"
 
 DEFAULT_SEARCH_LIMIT: Final[int] = 5
 DEFAULT_MAX_PAGES_PER_RUN: Final[int] = 20
-DEFAULT_MAX_CONTENT_CHARS: Final[int] = 15_000
-DEFAULT_CHUNK_OVERLAP_CHARS: Final[int] = 400
+#: Characters of page text per extraction request. Kept well below the model's
+#: output ceiling: a chunk that is too large makes the model emit more records
+#: than fit in one response, which truncates the JSON and loses the whole chunk.
+DEFAULT_EXTRACTION_CHUNK_CHARS: Final[int] = 7_000
 
-#: Minimum trimmed markdown length worth sending to the extraction model.
-MIN_PAGE_CHARS: Final[int] = 400
+#: Characters shared between consecutive chunks, so a claim spanning a boundary
+#: is visible in full to at least one request.
+DEFAULT_EXTRACTION_CHUNK_OVERLAP_CHARS: Final[int] = 600
+
+#: Ceiling applied to a chunk size inherited from the deprecated
+#: ``MAX_CONTENT_CHARS`` variable. That name defaulted to 15000 under the old
+#: semantics, and a leftover line in an existing .env would otherwise silently
+#: restore the oversized chunking that truncates the model's response.
+MAX_SAFE_LEGACY_CHUNK_CHARS: Final[int] = 10_000
+
+#: Minimum trimmed page length worth an extraction request. Below this a page
+#: is almost always a cookie wall, a JS shell or an error page.
+DEFAULT_MIN_CONTENT_CHARS: Final[int] = 1_000
+
+#: Topic-vocabulary hits a page needs to clear the post-scrape relevance gate.
+DEFAULT_MIN_TOPIC_HITS: Final[int] = 3
+
+#: Vehicle-vocabulary hits that alone clear the gate, for a page clearly about
+#: the target car even when its topic wording is unusual.
+DEFAULT_MIN_VEHICLE_HITS: Final[int] = 2
 
 #: rapidfuzz ``token_set_ratio`` at or above which two same-origin claims are
 #: treated as the same claim. Cross-origin claims are never deduplicated.
 DUPLICATE_SIMILARITY_THRESHOLD: Final[float] = 92.0
+
+#: Threshold for two claims from the *same page*. Lower than the cross-source
+#: figure on purpose: same page plus same subtopic is a much stronger prior
+#: that two wordings describe one observation.
+SAME_PAGE_DUPLICATE_THRESHOLD: Final[float] = 88.0
+
+#: Fraction of the shorter evidence span that must overlap before two same-page
+#: records are considered to quote the same proposition. Paired with a
+#: same-subtopic check and a numeric-conflict check, this is what catches a
+#: duplicate whose two claims are written in different languages.
+SPAN_OVERLAP_RATIO: Final[float] = 0.6
 
 #: Seconds to leave between consecutive Firecrawl requests. The free tier is
 #: limited per minute, and the project values completing a run over finishing
@@ -105,12 +140,17 @@ class Settings:
     anthropic_model: str
     search_limit: int
     max_pages_per_run: int
-    max_content_chars: int
+    extraction_chunk_chars: int
+    extraction_chunk_overlap_chars: int = DEFAULT_EXTRACTION_CHUNK_OVERLAP_CHARS
+    min_content_chars: int = DEFAULT_MIN_CONTENT_CHARS
+    min_topic_hits: int = DEFAULT_MIN_TOPIC_HITS
+    min_vehicle_hits: int = DEFAULT_MIN_VEHICLE_HITS
     search_delay_seconds: float = DEFAULT_SEARCH_DELAY_SECONDS
     firecrawl_max_retries: int = DEFAULT_FIRECRAWL_MAX_RETRIES
     max_rate_limit_sleep: float = MAX_RATE_LIMIT_SLEEP_SECONDS
-    chunk_overlap_chars: int = DEFAULT_CHUNK_OVERLAP_CHARS
     duplicate_threshold: float = DUPLICATE_SIMILARITY_THRESHOLD
+    same_page_duplicate_threshold: float = SAME_PAGE_DUPLICATE_THRESHOLD
+    span_overlap_ratio: float = SPAN_OVERLAP_RATIO
 
     # -- credential guards ------------------------------------------------- #
 
@@ -186,6 +226,43 @@ def _env_str(name: str, default: str | None = None) -> str | None:
     return value or default
 
 
+def _resolve_chunk_chars() -> int:
+    """Resolve the extraction chunk size from the environment.
+
+    ``EXTRACTION_CHUNK_CHARS`` wins outright. ``MAX_CONTENT_CHARS`` is the
+    pre-rename name and is still read, but it is **clamped** to
+    :data:`MAX_SAFE_LEGACY_CHUNK_CHARS`: its old default was 15000, so an
+    untouched line in an existing ``.env`` would otherwise keep sending
+    oversized chunks that overflow the model's output budget - exactly the
+    failure the rename was made to prevent. Clamping is logged, not silent.
+    """
+    explicit = os.environ.get("EXTRACTION_CHUNK_CHARS", "").strip()
+    if explicit:
+        return _env_int("EXTRACTION_CHUNK_CHARS", DEFAULT_EXTRACTION_CHUNK_CHARS)
+
+    legacy_raw = os.environ.get("MAX_CONTENT_CHARS", "").strip()
+    if not legacy_raw:
+        return DEFAULT_EXTRACTION_CHUNK_CHARS
+
+    legacy = _env_int("MAX_CONTENT_CHARS", DEFAULT_EXTRACTION_CHUNK_CHARS)
+    log = logging.getLogger(LOGGER_NAME)
+    if legacy > MAX_SAFE_LEGACY_CHUNK_CHARS:
+        log.warning(
+            "MAX_CONTENT_CHARS=%d is the deprecated name for EXTRACTION_CHUNK_CHARS and is "
+            "too large: chunks that big overflow the model's output budget and lose the whole "
+            "chunk. Using %d instead. Remove MAX_CONTENT_CHARS from your .env, or set "
+            "EXTRACTION_CHUNK_CHARS explicitly if you really want %d.",
+            legacy, DEFAULT_EXTRACTION_CHUNK_CHARS, legacy,
+        )
+        return DEFAULT_EXTRACTION_CHUNK_CHARS
+
+    log.warning(
+        "MAX_CONTENT_CHARS is deprecated; rename it to EXTRACTION_CHUNK_CHARS "
+        "(using %d)", legacy,
+    )
+    return legacy
+
+
 def ensure_directories() -> None:
     """Create the data directories this pipeline writes to."""
     for directory in (RAW_DIR, PROCESSED_DIR, METADATA_DIR, CACHE_DIR):
@@ -196,7 +273,7 @@ def load_settings(
     *,
     search_limit: int | None = None,
     max_pages: int | None = None,
-    max_content_chars: int | None = None,
+    chunk_chars: int | None = None,
     search_delay: float | None = None,
     max_retries: int | None = None,
 ) -> Settings:
@@ -219,7 +296,13 @@ def load_settings(
         anthropic_model=_env_str("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL) or DEFAULT_ANTHROPIC_MODEL,
         search_limit=search_limit or _env_int("SEARCH_LIMIT", DEFAULT_SEARCH_LIMIT),
         max_pages_per_run=max_pages or _env_int("MAX_PAGES_PER_RUN", DEFAULT_MAX_PAGES_PER_RUN),
-        max_content_chars=max_content_chars or _env_int("MAX_CONTENT_CHARS", DEFAULT_MAX_CONTENT_CHARS),
+        extraction_chunk_chars=chunk_chars or _resolve_chunk_chars(),
+        extraction_chunk_overlap_chars=_env_int(
+            "EXTRACTION_CHUNK_OVERLAP_CHARS", DEFAULT_EXTRACTION_CHUNK_OVERLAP_CHARS
+        ),
+        min_content_chars=_env_int("MIN_CONTENT_CHARS", DEFAULT_MIN_CONTENT_CHARS),
+        min_topic_hits=_env_int("MIN_TOPIC_HITS", DEFAULT_MIN_TOPIC_HITS),
+        min_vehicle_hits=_env_int("MIN_VEHICLE_HITS", DEFAULT_MIN_VEHICLE_HITS),
         search_delay_seconds=(
             search_delay
             if search_delay is not None

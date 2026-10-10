@@ -23,6 +23,16 @@ class LLMError(RuntimeError):
     """Raised when a provider call fails or returns no usable content."""
 
 
+class LLMTruncatedError(LLMError):
+    """The model hit its output ceiling, so the JSON it returned is incomplete.
+
+    Distinct from a generic :class:`LLMError` because the fix is different:
+    retrying the identical request truncates again, whereas splitting the input
+    into smaller pieces succeeds. It is raised *outside* the retry wrapper so
+    the budget is not burned on a request that cannot succeed as written.
+    """
+
+
 class BaseLLMProvider(ABC):
     """Interface every extraction backend implements."""
 
@@ -120,11 +130,22 @@ class OpenAIProvider(BaseLLMProvider):
             params["max_tokens"] = max_output_tokens
             params["temperature"] = 0
 
-        return self._invoke(params)
+        content, finish_reason = self._invoke(params)
+        if finish_reason == "length":
+            raise LLMTruncatedError(
+                f"OpenAI hit the {max_output_tokens}-token output cap "
+                "(finish_reason=length); the chunk needs splitting"
+            )
+        return content
 
     @with_retries(attempts=3, initial_wait=2.0, max_wait=20.0, exceptions=(LLMError,))
-    def _invoke(self, params: dict[str, Any]) -> str:
-        """Call the API, downgrading unsupported parameters once if rejected."""
+    def _invoke(self, params: dict[str, Any]) -> tuple[str, str]:
+        """Call the API, returning ``(content, finish_reason)``.
+
+        Unsupported parameters are downgraded once. Truncation is *not* raised
+        here: this function is retried, and a retried truncation would simply
+        truncate again.
+        """
         self.call_count += 1
         try:
             response = self.client.chat.completions.create(**params)
@@ -146,11 +167,11 @@ class OpenAIProvider(BaseLLMProvider):
         message = choices[0].message
         if getattr(message, "refusal", None):
             raise LLMError(f"OpenAI refused the request: {message.refusal}")
+        finish_reason = str(getattr(choices[0], "finish_reason", "") or "")
         content = (getattr(message, "content", None) or "").strip()
         if not content:
-            finish = getattr(choices[0], "finish_reason", "unknown")
-            raise LLMError(f"OpenAI returned empty content (finish_reason={finish})")
-        return content
+            raise LLMError(f"OpenAI returned empty content (finish_reason={finish_reason or 'unknown'})")
+        return content, finish_reason
 
     @staticmethod
     def _downgrade(params: dict[str, Any], exc: Exception) -> dict[str, Any] | None:
@@ -225,11 +246,21 @@ class AnthropicProvider(BaseLLMProvider):
             "messages": [{"role": "user", "content": user}],
             "output_config": {"format": {"type": "json_schema", "schema": schema}},
         }
-        return self._invoke(params)
+        content, stop_reason = self._invoke(params)
+        if stop_reason == "max_tokens":
+            raise LLMTruncatedError(
+                f"Anthropic hit the {max_output_tokens}-token output cap "
+                "(stop_reason=max_tokens); the chunk needs splitting"
+            )
+        return content
 
     @with_retries(attempts=3, initial_wait=2.0, max_wait=20.0, exceptions=(LLMError,))
-    def _invoke(self, params: dict[str, Any]) -> str:
-        """Call the Messages API, dropping ``output_config`` if unsupported."""
+    def _invoke(self, params: dict[str, Any]) -> tuple[str, str]:
+        """Call the Messages API, returning ``(content, stop_reason)``.
+
+        Drops ``output_config`` if the installed SDK rejects it. Truncation is
+        raised by the caller, not here, so it is not retried verbatim.
+        """
         self.call_count += 1
         try:
             response = self.client.messages.create(**params)
@@ -257,7 +288,7 @@ class AnthropicProvider(BaseLLMProvider):
         text = self._first_text_block(response)
         if not text:
             raise LLMError(f"Anthropic returned no text content (stop_reason={stop_reason})")
-        return text
+        return text, str(stop_reason or "")
 
     @staticmethod
     def _first_text_block(response: Any) -> str:
