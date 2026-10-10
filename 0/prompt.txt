@@ -1,0 +1,1 @@
+Analyze the existing repository, explain the project architecture, and create a DEVELOPMENT_PLAN.md file containing the next implementation steps.
