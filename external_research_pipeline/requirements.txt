@@ -1,0 +1,24 @@
+# External research pipeline - isolated dependencies.
+# Install into a virtualenv inside this folder; nothing here touches the
+# dependencies of the surrounding repository.
+
+# Search + scrape provider. 4.50.0 (2026-10-08) is the release this code was
+# written against: `from firecrawl import Firecrawl`, `.search()`, `.scrape()`.
+firecrawl-py>=4.50.0,<5.0.0
+
+# Schema validation - the single source of truth for every record shape.
+pydantic>=2.7,<3.0
+
+# .env loading, retry/backoff, fuzzy claim matching.
+python-dotenv>=1.0,<2.0
+tenacity>=8.2,<10.0
+rapidfuzz>=3.6,<4.0
+
+# LLM extraction backends. Only the one named by LLM_PROVIDER is imported at
+# runtime, and only its API key is required - delete the other line if you
+# prefer not to install it.
+openai>=3.0,<4.0
+anthropic>=1.0,<2.0
+
+# Deliberately absent: `requests`. All HTTP goes through the Firecrawl and LLM
+# SDKs, so adding it would be an unused dependency.
