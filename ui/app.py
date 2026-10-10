@@ -194,8 +194,8 @@ if score:
         "Ranges are scenarios, not measured probabilities."
     )
 
-overview_tab, evidence_tab, scoring_tab, uncertainty_tab, history_tab = st.tabs(
-    ["Overview", "Evidence", "Scoring", "Uncertainty", "History"]
+overview_tab, evidence_tab, report_tab, public_tab, scoring_tab, uncertainty_tab, history_tab = st.tabs(
+    ["Overview", "Evidence", "BMW report context", "Public datasets", "Scoring", "Uncertainty", "History"]
 )
 with overview_tab:
     left, right = st.columns([1.5, 1], gap="large")
@@ -315,6 +315,66 @@ with evidence_tab:
     st.warning(
         "Evidence shown here is locally redacted by a heuristic. Privacy review is still required before hosted inference or export."
     )
+
+with report_tab:
+    report_items = database.report_context_for_requirement(requirement)
+    st.caption(
+        "Dated company-level planning context for this card. It does not count as customer feedback, "
+        "feature demand, engineering feasibility or a score input. Recheck forecasts before current decisions."
+    )
+    if not report_items:
+        st.info("No report context has been loaded. Run `bmw-pm sync-report-context`.")
+    for item in report_items:
+        with st.expander(item["id"].replace("_", " ").title()):
+            st.write(item["fact"])
+            st.markdown(f"**Consider:** {item['consideration']}")
+            st.caption(item["limitation"])
+            st.markdown(f"[BMW Group Report 2025, p. {item['page']}]({item['source_url']})")
+
+with public_tab:
+    public_items = database.public_evidence_for_requirement(requirement)
+    st.caption(
+        "Public data is scoped review context. Complaint counts are not defect rates, "
+        "charging counts are not route or reliability measures, and neither changes the value score automatically."
+    )
+    if not public_items:
+        st.info("No applicable public data has been loaded. Run `bmw-pm sync-public-datasets`.")
+    current_domain = database.source_domain_for_requirement(requirement)
+    for item in public_items:
+        payload = item["payload"]
+        if item["kind"] == "nhtsa_model_year_summary":
+            label = f"NHTSA · {payload['model_year']} BMW {payload['nhtsa_model']}"
+            with st.expander(label):
+                counts = payload["by_domain"].get(current_domain, {})
+                st.write({
+                    "complaint_endpoint_status": payload["complaint_endpoint_status"],
+                    "recall_endpoint_status": payload["recall_endpoint_status"],
+                    "all_complaints_in_model_year": payload["unique_complaint_ids"],
+                    "all_recall_campaigns_in_model_year": payload["unique_campaign_ids"],
+                    "broad_component_match_complaints": len(counts.get("complaint_ids", [])),
+                    "broad_component_match_campaigns": len(counts.get("campaign_ids", [])),
+                    "matched_complaint_ODI_numbers": counts.get("complaint_ids", []),
+                    "matched_campaign_numbers": counts.get("campaign_ids", []),
+                })
+                st.caption(item["limitations"])
+                links = [f"[Complaints]({item['source_url']})"]
+                if payload["recall_endpoint_status"] == "ok":
+                    links.append(f"[Recalls]({item['related_source_url']})")
+                st.markdown(" · ".join(links))
+        elif item["kind"] == "afdc_public_charging_ports_by_state":
+            with st.expander("AFDC · U.S. public charging ports", expanded=True):
+                st.write({"as_of": payload["data_last_updated"],
+                          "station_locations": payload["locations"],
+                          "charging_ports": payload["ports"],
+                          "DC_fast_ports": payload["dc_fast_ports"]})
+                st.caption(item["limitations"])
+                st.markdown(f"[U.S. Department of Energy data]({item['source_url']})")
+        else:
+            with st.expander(item["record_id"].split(":", 1)[-1].replace("_", " ").title()):
+                st.write(payload["fact"])
+                st.markdown(f"**Consider:** {payload['consideration']}")
+                st.caption(item["limitations"])
+                st.markdown(f"[Source]({item['source_url']})")
 
 with scoring_tab:
     st.subheader("How this value range was calculated")

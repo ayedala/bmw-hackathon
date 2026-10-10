@@ -37,6 +37,15 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--limit", type=int, default=100)
     youtube = subparsers.add_parser("import-youtube", help="validate and import a saved YouTube research run")
     youtube.add_argument("directory", type=Path)
+    report_context = subparsers.add_parser("sync-report-context", help="store curated BMW report planning context")
+    report_context.add_argument("--input", default="configs/bmw_group_report_2025_context.json")
+    public = subparsers.add_parser("sync-public-datasets", help="import bounded official and curated public context")
+    public.add_argument("--config", default="configs/public_datasets_v1.json")
+    public.add_argument("--curated", default="configs/public_evidence_curated_v1.json")
+    public.add_argument("--only", choices=("all", "nhtsa", "afdc", "curated"), default="all")
+    public_context = subparsers.add_parser("public-context", help="inspect public evidence for one requirement")
+    public_context.add_argument("requirement_id")
+    public_context.add_argument("--state", help="AFDC state name, or Total")
 
     run = subparsers.add_parser("run", help="derive and score requirement candidates")
     run.add_argument("--profile", default="configs/g60.json")
@@ -44,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--taxonomy", default="configs/baseline_taxonomy_v1.json")
     run.add_argument("--provider", choices=("auto", "baseline", "openai"), default="auto")
     run.add_argument("--limit", type=int)
+    run.add_argument("--report-context", default="configs/bmw_group_report_2025_context.json")
     run.add_argument("--full", action="store_true", help="print complete candidate payloads")
     run.add_argument("--youtube-run", type=Path, action="append", default=None,
                      help="saved YouTube output directory; repeat for multiple runs; prior imports are included automatically")
@@ -119,6 +129,35 @@ def main(argv: list[str] | None = None) -> int:
         from .ingestion.legacy_database import evidence_context
         _json_print([row.model_dump(mode="json") for row in evidence_context(database, args.table, args.limit)])
         return 0
+    if args.command == "sync-report-context":
+        _json_print({"new_context_items": database.sync_report_context(load_json(args.input))})
+        return 0
+    if args.command == "sync-public-datasets":
+        from .public_datasets import afdc_records, curated_records, nhtsa_records
+
+        config = load_json(args.config)
+        records = []
+        coverage = None
+        if args.only in ("all", "nhtsa"):
+            nhtsa, coverage = nhtsa_records(config)
+            records.extend(nhtsa)
+        if args.only in ("all", "afdc"):
+            records.extend(afdc_records(config, snapshot_root=Path("data/raw/external/afdc")))
+        if args.only in ("all", "curated"):
+            records.extend(curated_records(load_json(args.curated)))
+        inserted = database.persist_public_evidence(records)
+        _json_print({"records_collected": len(records), "new_database_rows": inserted,
+                     "nhtsa_model_coverage": coverage,
+                     "note": "Review context only; no automatic priority or safety rating."})
+        return 0
+    if args.command == "public-context":
+        summaries = database.requirement_summaries()
+        requirement = next((item["requirement"] for item in summaries
+                            if item["requirement"].requirement_id == args.requirement_id), None)
+        if requirement is None:
+            raise ValueError("requirement ID not found")
+        _json_print(database.public_evidence_for_requirement(requirement, state=args.state))
+        return 0
     if args.command == "ingest":
         report = ingest_supplied_data(
             database=database,
@@ -128,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         _json_print(report)
         return 0
     if args.command == "run":
+        database.sync_report_context(load_json(args.report_context))
         profile = load_json(args.profile)
         policy = PolicyVersion.model_validate(load_json(args.policy))
         provider = select_provider(args.provider, baseline_config=args.taxonomy)

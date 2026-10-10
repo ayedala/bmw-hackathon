@@ -162,6 +162,8 @@ def run_candidate_pipeline(
             request_id=f"{run_id}:requirement:{candidate.requirement_id}",
             run_id=run_id,
         )
+        report_items = database.report_context_for_requirement(stored)
+        public_items = database.public_evidence_for_requirement(stored)
         inputs = {
             "customer_impact": CriterionInput(
                 missing_reason="No reviewed impact-rubric rating exists; keyword or model extraction is not a severity measurement."
@@ -189,7 +191,16 @@ def run_candidate_pipeline(
             profile_revision=profile["revision"],
             corpus_manifest_hash=corpus_manifest_hash,
             run_id=run_id,
-            extra_assumptions=profile.get("notes", []),
+            # Report context is cited for review, not converted into a score.
+            extra_assumptions=[
+                *profile.get("notes", []),
+                *(["Report context for PM review (not scored): " + ", ".join(
+                    item["context_id"] for item in report_items
+                )] if report_items else []),
+                *(["Public evidence snapshots for PM review (not scored): " + ", ".join(
+                    item["record_id"] for item in public_items
+                )] if public_items else []),
+            ],
         )
         database.persist_score(score, request_id=f"{run_id}:score:{score.score_snapshot_id}")
         stored_candidates.append(stored)
