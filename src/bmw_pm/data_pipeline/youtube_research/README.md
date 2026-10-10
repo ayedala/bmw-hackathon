@@ -2,7 +2,7 @@
 
 Uses **YouTube Data API v3** to search without video URLs, selects generation-matching video metadata across channels, retrieves accessible caption segments with `youtube-transcript-api`, then passes actual retrieved transcript text to the existing saved agent using the **OpenAI Agents HTTP API**, called with `curl`. Unsupported quote/timestamp pairs are discarded. No comment scraping, DRM circumvention, or fabricated transcripts.
 
-This optional collector now lives under `src/bmw_pm/data_pipeline/youtube_research/`. It retains its own dependencies and local output. Its browser reviews collected evidence; PM requirement decisions belong to the primary Streamlit workbench. Its findings are not yet linked into core requirement cards.
+This optional collector now lives under `src/bmw_pm/data_pipeline/youtube_research/`. It retains its own dependencies and local output. The primary Streamlit workbench exposes a **YouTube research** workspace for readiness, discovery setup, saved-run review and an explicit combine action. Imported findings are revalidated against saved transcript segments before they can link to shared requirement cards. PM requirement decisions remain in the workbench.
 
 ## Setup
 
@@ -53,7 +53,7 @@ The program persists `sources.json`, `evidence.json`, `evidence.csv`, `summary.m
 
 ## Combine findings with BMW evidence
 
-From the repository root, run `bmw-pm run --provider baseline --full` after research finishes. The shared engine discovers saved YouTube output directories, revalidates quotes against saved transcripts, and combines findings with BMW feedback, studies and imported context. Alternatively select runs in the Streamlit workbench under **Combined engine**. `--youtube-run <output-directory>` selects an explicit saved run and can be repeated. Missing or blocked transcripts cannot contribute evidence. See the root README for provenance, scope and scoring limitations.
+From the repository root, run `bmw-pm run --provider baseline --full` after research finishes. The shared engine discovers saved YouTube output directories, revalidates quotes against saved transcripts, and combines findings with BMW feedback, studies and imported context. Alternatively use the Streamlit workbench's **YouTube research** view and select **Combine this run with BMW evidence**. `--youtube-run <output-directory>` selects an explicit saved run in the CLI and can be repeated. Missing or blocked transcripts cannot contribute evidence. See the root README for provenance, scope and scoring limitations.
 
 ## Verification and limitations
 

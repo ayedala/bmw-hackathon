@@ -17,7 +17,7 @@ def setup(tmp_path):
 
 def save(service, req, **overrides):
     values = dict(requirement_id=req.requirement_id, expected_revision=req.revision, expected_sequence=0,
-        factors=PriorityFactors(impact=4,evidence=2,relevance=3,uncertainty=2), policy=PriorityPolicy(),
+        factors=PriorityFactors(impact=4,evidence=2,relevance=3,uncertainty=2), policy=PriorityPolicy(impact=.35,evidence=.25,relevance=.25,uncertainty=.15),
         actor_id="synthetic-pm", rationale="Synthetic judgement, not BMW input", request_id="priority-1")
     values.update(overrides)
     return service.save(**values)
@@ -25,9 +25,9 @@ def save(service, req, **overrides):
 
 def test_priority_math_weights_and_uncertainty():
     high = PriorityFactors(impact=4,evidence=4,relevance=4,uncertainty=0)
-    assert priority_score(high,PriorityPolicy()) == 100
-    assert priority_score(PriorityFactors(impact=0,evidence=0,relevance=0,uncertainty=4),PriorityPolicy()) == 0
-    assert priority_score(high.model_copy(update={"uncertainty":4}),PriorityPolicy()) == 85
+    assert priority_score(high,PriorityPolicy(impact=.35,evidence=.25,relevance=.25,uncertainty=.15)) == 100
+    assert priority_score(PriorityFactors(impact=0,evidence=0,relevance=0,uncertainty=4),PriorityPolicy(impact=.35,evidence=.25,relevance=.25,uncertainty=.15)) == 0
+    assert priority_score(high.model_copy(update={"uncertainty":4}),PriorityPolicy(impact=.35,evidence=.25,relevance=.25,uncertainty=.15)) == 85
     with pytest.raises(ValueError):
         PriorityPolicy(impact=.9)
     with pytest.raises(ValueError):

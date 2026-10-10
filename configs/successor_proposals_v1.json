@@ -1,6 +1,6 @@
 {
   "version": "successor_us_g60_v1",
-  "status": "Authored hypotheses from supplied records; factor ratings are illustrative assumptions, not measured impacts.",
+  "status": "ACTIVE REVIEWABLE DRAFT RECIPES. Assistant-authored hypotheses and provisional ratings, not verified data or human decisions. Enabled only when matching G60 US source anchors resolve.",
   "planning_window": "2029-2031",
   "proposals": [
     {

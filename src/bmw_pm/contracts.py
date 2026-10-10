@@ -307,6 +307,7 @@ class EvidenceLinkJudgment(Contract):
 
 
 class RequirementRevision(Contract):
+    successor_draft_id: str | None = None
     schema_version: str = "1"
     requirement_id: str
     revision: int = Field(ge=1)
@@ -484,10 +485,10 @@ class PriorityFactors(Contract):
 
 
 class PriorityPolicy(Contract):
-    impact: float = Field(default=.35, ge=0, le=1)
-    evidence: float = Field(default=.25, ge=0, le=1)
-    relevance: float = Field(default=.25, ge=0, le=1)
-    uncertainty: float = Field(default=.15, ge=0, le=1)
+    impact: float = Field(ge=0, le=1)
+    evidence: float = Field(ge=0, le=1)
+    relevance: float = Field(ge=0, le=1)
+    uncertainty: float = Field(ge=0, le=1)
 
     @model_validator(mode="after")
     def normalized(self):
@@ -496,7 +497,19 @@ class PriorityPolicy(Contract):
         return self
 
 
+class PlanningCriterion(Contract):
+    name: str = Field(min_length=1)
+    rating: float = Field(ge=0, le=4, allow_inf_nan=False)
+    weight: float = Field(ge=0, allow_inf_nan=False)
+    direction: Literal["benefit", "risk"] = "benefit"
+    explanation: str = Field(min_length=1)
+
+
 class PriorityAssessment(Contract):
+    criteria: list[PlanningCriterion] = Field(default_factory=list)
+    rank_override: int | None = Field(default=None, ge=1)
+    priority_confirmed: bool = False
+    input_origin: Literal["legacy_unconfirmed", "explicit_pm"] = "legacy_unconfirmed"
     assessment_id: str
     requirement_id: str
     requirement_revision: int = Field(ge=1)
@@ -523,6 +536,22 @@ class SuccessorProposal(Contract):
     review_trigger: str
     anchor_ids: list[str]
     factors: PriorityFactors
+
+
+class SuccessorDraft(Contract):
+    draft_id: str
+    requirement_id: str
+    base_revision: int
+    recipe_version: str
+    method: str = "Assistant-authored evidence-linked template synthesis; no live model call."
+    planning_window: str = "2029–2031: scenario 3–5 years from 2026, not a launch commitment"
+    proposal: SuccessorProposal
+    quoted_records: list[FeedbackRecord]
+    context_evidence: list[CrossChannelEvidence]
+    external_context: list[dict[str, str]] = Field(default_factory=list)
+    unknowns: list[str]
+    priority_policy: PriorityPolicy
+    priority_explanations: dict[str, str]
 
 
 class AuditEvent(Contract):

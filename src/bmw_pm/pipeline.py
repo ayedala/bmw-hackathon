@@ -104,8 +104,13 @@ def run_candidate_pipeline(
     eligible = database.feedback_records(
         model_code=profile["model_family"],
         countries=profile.get("countries"),
-        powertrains=profile.get("powertrains"),
+        powertrains=None,
     )
+    # Previously imported aliases remain in immutable history, but must not drive new runs.
+    eligible = [record.model_copy(update={"powertrain":record.powertrain_raw})
+        if record.powertrain_mapping_status == "assumed_alias" else record for record in eligible]
+    if profile.get("powertrains"):
+        eligible = [record for record in eligible if record.powertrain in profile["powertrains"]]
     if youtube_runs is None:
         youtube_runs = sorted({p.parent for root in (
             Path("src/bmw_pm/data_pipeline/youtube_research/output"),

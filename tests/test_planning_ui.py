@@ -31,6 +31,10 @@ def test_priority_reordering_keeps_selected_card_and_decision_reference(tmp_path
     assert "Planning scenario: US 5 Series" not in app.session_state["planning_export"][3]
     widget(app.text_input, "Planning reviewer ID").set_value("synthetic-pm")
     for item in app.slider:
+        if item.label.endswith(" weight"):
+            item.set_value(25)
+    app.run()
+    for item in app.number_input:
         if item.label.startswith("Priority "):
             item.set_value(0 if item.label == "Priority uncertainty" else 4)
     widget(app.text_area, "Priority rationale (required)").set_value("Synthetic test judgement")
@@ -42,7 +46,7 @@ def test_priority_reordering_keeps_selected_card_and_decision_reference(tmp_path
     widget(app.text_input, "Reviewer ID (declared, not verified)").set_value("synthetic-pm").run()
     widget(app.text_area, "Decision rationale (required)").set_value("Synthetic approval of selected card").run()
     assert widget(app.button, "Approve").disabled
-    app.checkbox[0].check().run()
+    next(x for x in app.checkbox if x.label.startswith("For approval:")).check().run()
     widget(app.button, "Approve").click().run()
     assert not app.exception
     decision = db.replay_requirement("synthetic-z")["decisions"][-1]
@@ -96,3 +100,50 @@ def test_edit_creates_revision_with_no_stale_score(tmp_path, monkeypatch):
     assert db.latest_score(selected_id, after.revision) is None
     assert db.latest_score(selected_id, before.revision)
     assert db.verify_audit_chain()[0]
+
+
+def test_future_draft_seed_adoption_and_confirmed_priority_are_separate(tmp_path,monkeypatch):
+    from test_successor_drafts import fixture
+    import bmw_pm.decision.planning as planning
+    db,req,proposals=fixture(tmp_path)
+    monkeypatch.setattr(planning,"load_proposals",lambda path:proposals)
+    app=open_app(db,monkeypatch)
+    assert not app.exception
+    assert any(x.value=="Future-facing draft · not approved" for x in app.subheader)
+    # A reviewer may not accidentally approve the displayed draft while the stored wording is different.
+    widget(app.text_input,"Reviewer ID (declared, not verified)").set_value("synthetic-pm")
+    widget(app.text_area,"Decision rationale (required)").set_value("Synthetic concept-testing intent")
+    next(x for x in app.checkbox if x.label.startswith("For approval:")).check().run()
+    assert widget(app.button,"Approve").disabled
+    assert widget(app.button,"Reject").disabled
+    widget(app.button,"Use AI suggestion as editable draft inputs").click().run()
+    assert not PriorityService(db).history(req.requirement_id)
+    assert not db.replay_requirement(req.requirement_id)["decisions"]
+    widget(app.text_input,"Planning reviewer ID").set_value("synthetic-pm")
+    widget(app.text_area,"Draft adoption rationale (required)").set_value("Synthetic explicit adoption for review")
+    widget(app.button,"Adopt draft as reviewable revision").click().run()
+    assert not app.exception
+    current=db.latest_requirement(req.requirement_id)
+    assert current.revision==2 and current.successor_draft_id
+    widget(app.button,"Use AI suggestion as editable draft inputs").click().run()
+    widget(app.number_input,"Priority uncertainty").set_value(3)
+    widget(app.number_input,"Manual portfolio rank (0 = score order)").set_value(1)
+    widget(app.text_area,"Priority rationale (required)").set_value("Synthetic PM draft priority")
+    widget(app.button,"Save priority assessment").click().run()
+    assert not app.exception
+    saved=PriorityService(db).history(req.requirement_id)[-1]
+    assert not saved.priority_confirmed and saved.rank_override==1
+    assert saved.requirement_revision==2 and saved.factors.uncertainty==3
+    widget(app.button,"Use AI suggestion as editable draft inputs").click().run()
+    widget(app.text_area,"Priority rationale (required)").set_value("Synthetic explicit priority confirmation")
+    widget(app.checkbox,"I explicitly confirm this priority as the reviewer").check()
+    widget(app.button,"Save priority assessment").click().run()
+    assert not app.exception
+    assert PriorityService(db).history(req.requirement_id)[-1].priority_confirmed
+    assert not any(x["action"]=="approve" for x in db.replay_requirement(req.requirement_id)["decisions"])
+    widget(app.button,"Prepare private decision brief").click().run()
+    brief=app.session_state["planning_export"][3]
+    assert "Future assumption (not fact)" in brief and "confirmed=True" in brief
+    widget(app.radio,"Workspace").set_value("Audit trail").run()
+    assert not app.exception
+    assert any("Audit chain verified" in x.value for x in app.success)

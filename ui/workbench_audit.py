@@ -38,10 +38,16 @@ def render_audit(database, requirement):
             st.markdown("**Before → after**")
             st.write(f"Priority: {previous.score if previous else 'Not rated'} → {current.score:.1f} / 100")
             st.caption(f"Requirement r{current.requirement_revision} · assessment {current.sequence}")
-            st.dataframe([{"Factor": name.title(), "Before": getattr(previous.factors, name) if previous else None,
-                "After": getattr(current.factors, name), "Saved weight": getattr(current.policy, name)}
-                for name in ("impact", "evidence", "relevance", "uncertainty")], hide_index=True, width="stretch")
-            st.caption("These are recorded PM judgements; source evidence is unchanged by a priority assessment.")
+            if current.criteria:
+                st.dataframe([c.model_dump() for c in current.criteria],hide_index=True,width="stretch")
+                if previous and previous.criteria:
+                    with st.expander("Previous custom criteria"):
+                        st.json([c.model_dump() for c in previous.criteria])
+            else:
+                st.dataframe([{"Factor": name.title(), "Before": getattr(previous.factors, name) if previous and not previous.criteria else None,
+                    "After": getattr(current.factors, name), "Saved weight": getattr(current.policy, name)}
+                    for name in ("impact", "evidence", "relevance", "uncertainty")], hide_index=True, width="stretch")
+            st.caption(f"Origin: {current.input_origin}; priority confirmed: {current.priority_confirmed}; manual rank: {current.rank_override or 'score order'}. A priority assessment does not approve a requirement.")
         if event.object_revision:
             revision = database.requirement(requirement.requirement_id, event.object_revision)
             st.divider()

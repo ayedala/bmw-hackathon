@@ -7,13 +7,16 @@ from bmw_pm.review import ReviewService
 from bmw_pm.storage import RevisionConflict, WorkflowError
 from planning_view import selected_planning
 
-def render_review(database, requirement, run, mode_label, reviewed_link_count, linked_signal_ids):
+def render_review(database, requirement, run, mode_label, reviewed_link_count, linked_signal_ids,
+                  expected_priority_sequence=None, needs_adoption=False):
     st.subheader("Record a PM decision")
     st.caption(
         f"Only {reviewed_link_count} of {len(linked_signal_ids)} candidate links have a recorded human "
         "assessment for this revision. The ranking policy is exploratory and unapproved; "
         "engineering feasibility remains a separate review."
     )
+    if needs_adoption:
+        st.info("Adopt the future-facing draft as a reviewable revision before approving, rejecting or deferring it. You can then edit the wording, assess its priority and record a decision.")
     st.caption(
         "Review the evidence and priority limits before deciding. Actions apply to "
         f"revision {requirement.revision} and enter the audit history."
@@ -46,6 +49,7 @@ def render_review(database, requirement, run, mode_label, reviewed_link_count, l
             type="primary" if action == DecisionAction.CHALLENGE else "secondary",
             disabled=(
                 not actor.strip() or not reason.strip()
+                or (needs_adoption and action in {DecisionAction.APPROVE, DecisionAction.REJECT, DecisionAction.DEFER})
                 or (action == DecisionAction.APPROVE and not acknowledge)
             ),
         ):
@@ -58,6 +62,7 @@ def render_review(database, requirement, run, mode_label, reviewed_link_count, l
                     actor_id=actor,
                     request_id=f"ui_{uuid4().hex}",
                     uncertainty_acknowledged=acknowledge,
+                    expected_priority_sequence=expected_priority_sequence,
                 )
                 st.success(f"Recorded {action.value} for revision {requirement.revision}.")
                 st.session_state.pop("planning_export", None)
@@ -313,7 +318,7 @@ def render_evidence(database, requirement, judgments, reviewed_link_count, linke
 
 
 def render_priority(database, requirement, score, decision, ranking_assessment, successor_proposals, priority_policy):
-    selected_planning(database, requirement, successor_proposals, priority_policy, decision)
+    sequence = selected_planning(database, requirement, successor_proposals, priority_policy, decision)
     with st.expander("Value ranges, methodology and missing evidence", expanded=False):
         st.subheader("Priority assessment")
         unresolved_count = len(ranking_assessment["unresolved_value_pairs"])
@@ -406,6 +411,9 @@ def render_priority(database, requirement, score, decision, ranking_assessment, 
             )
             st.markdown("**Implementation cost**")
             st.caption(requirement.implementation_cost_missing_reason)
+
+
+    return sequence
 
 
 def render_history_records(database, requirement):

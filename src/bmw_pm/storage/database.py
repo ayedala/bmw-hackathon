@@ -630,7 +630,8 @@ class Database:
             target = requirement
             if row:
                 current = RequirementRevision.model_validate_json(row["payload_json"])
-                if self._requirement_semantic_payload(current) == self._requirement_semantic_payload(
+                reviewed = connection.execute("SELECT 1 FROM decisions WHERE requirement_id=? LIMIT 1", (requirement.requirement_id,)).fetchone()
+                if reviewed or self._requirement_semantic_payload(current) == self._requirement_semantic_payload(
                     requirement
                 ):
                     target = current
@@ -942,6 +943,7 @@ class Database:
         request_id: str,
         edited_revision: RequirementRevision | None = None,
         uncertainty_acknowledged: bool = False,
+        expected_priority_sequence: int | None = None,
     ) -> tuple[Decision, RequirementRevision | None]:
         self.initialize()
         conflict_message: str | None = None
@@ -956,8 +958,16 @@ class Database:
                     connection.rollback()
                     raise RevisionConflict(existing_event.reason)
                 decision = Decision.model_validate_json(row["payload_json"])
+                if (decision.requirement_id, decision.expected_revision, decision.action, decision.rationale, decision.actor_id, decision.role, decision.uncertainty_acknowledged) != (requirement_id, expected_revision, action, rationale, actor_id, role, uncertainty_acknowledged):
+                    raise WorkflowError("Request ID reused with a different review payload")
+                replayed_revision = None
+                if edited_revision is not None:
+                    saved_row = connection.execute("SELECT payload_json FROM requirement_revisions WHERE requirement_id=? AND revision=?", (requirement_id, expected_revision+1)).fetchone()
+                    replayed_revision = RequirementRevision.model_validate_json(saved_row[0])
+                    if self._requirement_semantic_payload(replayed_revision) != self._requirement_semantic_payload(edited_revision):
+                        raise WorkflowError("Request ID reused with a different edit payload")
                 connection.rollback()
-                return decision, None
+                return decision, replayed_revision
             row = connection.execute(
                 """
                 SELECT payload_json FROM requirement_revisions
@@ -1043,9 +1053,11 @@ class Database:
                     (requirement_id, expected_revision),
                 ).fetchone()
                 priority_row = connection.execute(
-                    "SELECT assessment_id FROM priority_assessments WHERE requirement_id=? AND requirement_revision=? ORDER BY sequence DESC LIMIT 1",
+                    "SELECT assessment_id,sequence FROM priority_assessments WHERE requirement_id=? AND requirement_revision=? ORDER BY sequence DESC LIMIT 1",
                     (requirement_id, expected_revision),
                 ).fetchone()
+                if expected_priority_sequence is not None and expected_priority_sequence != (priority_row["sequence"] if priority_row else 0):
+                    raise RevisionConflict("Priority changed since this review opened; reload before deciding")
                 decision = Decision(
                     decision_id=f"decision_{uuid4().hex}",
                     requirement_id=requirement_id,

@@ -104,7 +104,7 @@ def build_requirement_candidates(
                 requirement_id=requirement_id,
                 revision=1,
                 title=domain.replace("_", " ").title(),
-                customer_outcome=outcome,
+                customer_outcome=f"Evidence topic: {domain.replace('_', ' ')}. A product requirement must be defined and reviewed by the PM from the linked source wording.",
                 scope=RequirementScope(
                     models=[str(profile["model_family"])],
                     countries=list(profile.get("countries", [])),
@@ -114,7 +114,7 @@ def build_requirement_candidates(
                     "Conditions are limited to those stated in linked feedback; a reviewed test protocol is pending."
                 ],
                 acceptance_proposal=AcceptanceProposal(
-                    method="Comparative customer task/experience study; protocol and target pending PM and engineering review."
+                    method="Not supplied. A PM must explicitly define the validation method and target."
                 ),
                 target_status="pending_engineering_review",
                 supporting_signal_ids=sorted({item.signal_id for item in support_signals}),

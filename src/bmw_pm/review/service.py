@@ -12,7 +12,7 @@ from ..utils import stable_id, utc_now
 class ReviewService:
     """Application-level PM workflow; role selection is demonstrative, not authentication."""
 
-    EDITABLE_FIELDS = {"title", "customer_outcome", "use_conditions", "assumptions", "acceptance_proposal", "target_status"}
+    EDITABLE_FIELDS = {"title", "customer_outcome", "use_conditions", "assumptions", "acceptance_proposal", "target_status", "successor_draft_id"}
 
     def __init__(self, database: Database) -> None:
         self.database = database
@@ -49,6 +49,7 @@ class ReviewService:
         request_id: str,
         role: str = "demo_pm",
         uncertainty_acknowledged: bool = False,
+        expected_priority_sequence: int | None = None,
     ) -> Decision:
         if action == DecisionAction.EDIT:
             raise ValueError("use edit() for requirement changes")
@@ -67,6 +68,7 @@ class ReviewService:
             role=role,
             request_id=request_id,
             uncertainty_acknowledged=uncertainty_acknowledged,
+            expected_priority_sequence=expected_priority_sequence,
         )
         return decision
 

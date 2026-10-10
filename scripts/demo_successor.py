@@ -1,65 +1,68 @@
-"""Rehearse an explicitly illustrative PM decision in an isolated database copy.
-
-No API calls, gold labels or real BMW approvals are generated.
-"""
-from pathlib import Path
+"""Copy real evidence and generate drafts. Decisions require explicit reviewer flags."""
 import argparse
+from pathlib import Path
 import sqlite3
-
-from bmw_pm.contracts import DecisionAction, PriorityPolicy
-from bmw_pm.decision.planning import PriorityService, decision_brief, load_proposals, proposal_for
-from bmw_pm.review import ReviewService
+from uuid import uuid4
 from bmw_pm.storage import Database
+from bmw_pm.contracts import DecisionAction
+from bmw_pm.decision.planning import load_proposals, priority_score, PriorityService, decision_brief
+from bmw_pm.decision.drafts import ROOT, generate_draft, adopt_draft
+from bmw_pm.review import ReviewService
+from bmw_pm.validation import validate_database
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", default="data/processed/bmw_pm.db")
-    parser.add_argument("--output", default="data/processed/successor-demo.db")
-    args = parser.parse_args()
-    source, output = Path(args.source).resolve(), Path(args.output).resolve()
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source",default="data/processed/bmw_pm.db")
+    parser.add_argument("--output",default="data/processed/draft-demo.db")
+    parser.add_argument("--decision",choices=["approve","reject","defer"])
+    parser.add_argument("--reviewer")
+    parser.add_argument("--rationale")
+    parser.add_argument("--domain",default="controls_usability")
+    parser.add_argument("--confirm-priority",action="store_true")
+    parser.add_argument("--acknowledge-uncertainty",action="store_true")
+    args=parser.parse_args()
+    if args.decision == "approve" and not args.acknowledge_uncertainty:
+        parser.error("Approval requires --acknowledge-uncertainty after reviewing unresolved evidence and policy limits.")
+    if args.decision and (not args.reviewer or not args.rationale or not args.reviewer.strip() or not args.rationale.strip()):
+        parser.error("A decision requires explicit --reviewer and --rationale; there is no automatic approval.")
+    if args.confirm_priority and not args.decision:
+        parser.error("--confirm-priority requires an explicit reviewer decision in this demo.")
+    source,output=Path(args.source),Path(args.output)
     if not source.is_file():
-        parser.error("Source database is absent. Ingest the authorized files first.")
-    if output.exists() or output == source:
-        parser.error("Choose a new output path; the demonstration never overwrites a database.")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as original:
-        with sqlite3.connect(output) as copied:
-            original.backup(copied)
-    database = Database(output)
-    database.initialize()
-    proposals = load_proposals("configs/successor_proposals_v1.json")
-    selected = next((item for item in database.requirement_summaries()
-        if (proposal := proposal_for(database, item["requirement"], proposals)) and proposal.domain == "controls_usability"), None)
-    if not selected:
-        parser.error("The demonstration needs a US G60 controls card.")
-    requirement = selected["requirement"]
-    proposal = proposal_for(database, requirement, proposals)
-    review = ReviewService(database)
-    actor = "illustrative-scripted-pm-not-bmw-approval"
-    _, revised = review.edit(requirement_id=requirement.requirement_id, expected_revision=requirement.revision,
-        changes={"title":proposal.title, "customer_outcome":proposal.outcome,
-            "assumptions":[*requirement.assumptions, proposal.future_assumption, "Illustrative scripted PM walkthrough, not an actual BMW approval."],
-            "acceptance_proposal":{"method":proposal.validation}, "target_status":"proposed_target"},
-        rationale="Illustrative PM challenge: distinguish difficult access from missing functionality. Compare persistent controls and voice discoverability before choosing hardware.",
-        actor_id=actor, request_id="successor-demo-edit")
-    priorities = PriorityService(database)
-    first = priorities.save(requirement_id=revised.requirement_id, expected_revision=revised.revision,
-        expected_sequence=0, factors=proposal.factors, policy=PriorityPolicy(), actor_id=actor,
-        rationale="Illustrative starting judgement: high everyday impact, traceable but unreviewed evidence, material usability gaps.", request_id="successor-demo-priority-1")
-    second = priorities.save(requirement_id=revised.requirement_id, expected_revision=revised.revision,
-        expected_sequence=1, factors=proposal.factors.model_copy(update={"uncertainty":3}), policy=PriorityPolicy(), actor_id=actor,
-        rationale="Illustrative PM challenge: existing voice capability may address part of the issue, so increase uncertainty until first-time-user testing.", request_id="successor-demo-priority-2")
-    decision = review.decide(requirement_id=revised.requirement_id, expected_revision=revised.revision,
-        action=DecisionAction.APPROVE, rationale="ILLUSTRATIVE SCRIPTED APPROVAL: approve the customer outcome for concept testing only, conditional on a US task baseline; no hardware commitment or BMW sign-off.",
-        actor_id=actor, request_id="successor-demo-approve")
-    assert decision.priority_assessment_id == second.assessment_id
-    assert database.replay_requirement(revised.requirement_id)["audit_valid"]
-    report = output.with_suffix(".md")
-    report.write_text("# Illustrative scripted PM walkthrough — not BMW approval\n\n"
-        f"Original database preserved. Controls priority changed {first.score} → {second.score} after a declared uncertainty challenge.\n\n"
-        + decision_brief(database, [next(i for i in database.requirement_summaries() if i["requirement"].requirement_id == revised.requirement_id)], proposals, PriorityPolicy()), encoding="utf-8")
-    print(f"Illustrative demo database: {output}\nPrivate walkthrough report: {report}\nAudit chain valid; original database untouched.")
+        parser.error("Source database is missing; supply authorized real data.")
+    if output.exists():
+        parser.error("Output already exists; choose a new path. Existing decisions are never overwritten.")
+    output.parent.mkdir(parents=True,exist_ok=True)
+    with sqlite3.connect(source) as src,sqlite3.connect(output) as dst:
+        src.backup(dst)
+    db=Database(output)
+    db.initialize()
+    proposals=load_proposals(ROOT / "configs/successor_proposals_v1.json")
+    drafts=[draft for item in db.requirement_summaries() if (draft:=generate_draft(db,item["requirement"],proposals))]
+    if not drafts:
+        raise ValueError("No matching real source anchors: no unsupported demonstration is generated.")
+    if args.decision:
+        draft=next(d for d in drafts if d.proposal.domain==args.domain)
+        token=uuid4().hex
+        _,revision=adopt_draft(db,draft,actor_id=args.reviewer,rationale=args.rationale,request_id=f"demo-adopt:{token}")
+        PriorityService(db).save(requirement_id=revision.requirement_id,expected_revision=revision.revision,
+            expected_sequence=0,factors=draft.proposal.factors,policy=draft.priority_policy,
+            actor_id=args.reviewer,rationale="Reviewer explicitly accepted AI-suggested inputs for this demo: " + args.rationale,
+            priority_confirmed=args.confirm_priority,request_id=f"demo-priority:{token}")
+        ReviewService(db).decide(requirement_id=revision.requirement_id,expected_revision=revision.revision,
+            action=DecisionAction(args.decision),actor_id=args.reviewer,rationale=args.rationale,request_id=f"demo-decision:{token}",uncertainty_acknowledged=args.acknowledge_uncertainty)
+    summaries=[x for x in db.requirement_summaries() if x["requirement"].scope.models==["G60"] and x["requirement"].scope.countries==["US"]]
+    brief=decision_brief(db,summaries,proposals,None)
+    report=output.with_suffix(".md")
+    report.write_text(brief,encoding="utf-8")
+    validation=validate_database(db,expect_supplied_shape=True)
+    if not validation["passed"]:
+        raise ValueError(validation)
+    for draft in sorted(drafts,key=lambda d:(-priority_score(d.proposal.factors,d.priority_policy),d.proposal.domain)):
+        print(f"AI DRAFT {priority_score(draft.proposal.factors,draft.priority_policy):.2f}: {draft.proposal.title}")
+    print(f"Private database: {output}; private report: {report}; data validation passed.")
+    print("No new decisions generated." if not args.decision else "Recorded only the explicit CLI reviewer decision. Declared identity is not authentication or BMW sign-off.")
 
 
 if __name__ == "__main__":

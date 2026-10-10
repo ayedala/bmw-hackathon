@@ -1,5 +1,7 @@
 # BMW successor decision prototype
 
+> Historical walkthrough. Follow [the current draft decision-support guide](DRAFT_DECISION_SUPPORT.md) for active labels, scoring, raw BEVE handling and reviewer-only decisions. The older automatic scripted approval described below is no longer performed. No historical mapping or example judgement is a verified fact or BMW approval.
+
 This is a working decision-support prototype, not a BMW-approved product plan. It extends the existing local workbench; the previously removed 3D frontend has not been restored.
 
 ## Run and demonstrate
