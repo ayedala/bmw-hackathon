@@ -17,7 +17,7 @@ Required: **YOUTUBE_API_KEY** (enable YouTube Data API v3 on a Google Cloud proj
 
 ## Local review interface
 
-Run `python web.py` from the project folder, then open http://127.0.0.1:8765.
+On Windows, run `.venv\Scripts\python.exe web.py` from this folder, then open http://127.0.0.1:8765.
 The interface loads saved runs under `output/`, filters findings, links to the
 original video at each quote's timestamp, and displays the retrieved transcript
 with the matching segment highlighted. The Sources tab shows retrieval and
