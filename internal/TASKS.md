@@ -68,3 +68,12 @@ Record task ID, changed files, command actually run, result, evidence artifact/r
 - Full private restore to `.tmp/hosted-restore/bmw_pm.db` passed integrity/reference checks, supplied dataset reconciliation, citations, unique-ID recurrence, unknown engineering inputs and audit validation. Authenticated Streamlit AppTest rendered the actual restored cards successfully; full restore/validation/UI check took 16.2 seconds on this machine (not a cloud latency result). Evidence: ignored `exports/hosted/verification.json`.
 - Hosting tests cover fail-closed and incorrect-password access, unicode comparison, approved hash/tamper detection, invalid source rejection, existing-history preservation, login-before-evidence and audited hosted reads. No live inference or model-quality claim. Shared passwords do not establish personal reviewer identity.
 - Deployment blocker: no Render account connection is confirmed. Docker's engine is not running, so no container-build or real HTTPS/redeploy test was run. Paid compute/disk provisioning remains unapproved. `docs/HOSTING.md` describes the concrete plan and setup; the app is not live.
+### 10 October 2026: repository organization
+
+- Moved agent instructions, the task and decision registers, the implementation plan, and the Codex kickoff into `internal/`; kept runtime prompt specifications under `prompts/`. Rewrote the root `README.md` around the project approach. The root `AGENTS.md` is intentionally absent, so coding agents must read `internal/AGENTS.md` explicitly during development.
+- Updated path references and the preparation validator to inspect repository-owned Markdown and to tolerate removal of `internal/` for submission. `scripts/validate_preparation.py` passed all 12 checks across 29 Markdown files; `pytest -q -p no:cacheprovider` passed 12 software tests; `git diff --check` passed. No model-quality measurement was made.
+
+### 10 October 2026: merge integration and hosting
+
+- Included the remaining `WebResearchSeed` typed contract and integrated main's `internal/` reorganization. Retained both the import/hosting instructions and the updated project overview; preserved all task-board validation notes at `internal/TASKS.md`.
+- `python -m pytest -q -p no:cacheprovider --basetemp .tmp/pytest-merge` passed 19 software tests before the documentation merge. Private databases/exports remain excluded from Git. Hosting is prepared, not deployed.

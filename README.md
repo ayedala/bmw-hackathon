@@ -1,71 +1,37 @@
 # BMW Product Decision Lab
 
-Preparation and working prototype, 10 October 2026. Build window: **24 hours**.
+A local decision-support prototype for turning customer evidence into reviewable requirements for future BMW vehicles. The first working scope is 5 Series G60 feedback from the US; F70 and G70 are used to check whether the method transfers to other vehicles.
 
-The proposed app turns evidence into customer-facing successor-vehicle requirements, shows why they deserve attention, and lets a product manager challenge and revise them over time. The primary demonstration is the 5 Series; the 1 and 7 Series provide transfer tests.
+## Approach
 
-**Current status:** a local Python/SQLite decision-engine slice ingests the supplied feedback and customer-study workbooks, extracts candidate signals, drafts seven G60 US requirement candidates with exact source links, computes customer and business scenario ranges, keeps feasibility unknown, and records PM reviews in an audit chain. The default extractor is a deterministic keyword baseline. The structured OpenAI extractor is available for bounded runs but has not been quality-evaluated. The supplied sales/equipment facts and public web claims are not yet linked to requirement cards; a separate YouTube research module has been added but is not integrated into this decision path. A frozen human-labelled set, sensitivity analysis and measured model accuracy are pending. No product requirement or scoring policy has been approved by BMW.
+1. **Preserve and reconcile evidence.** Keep the supplied files unchanged and record source hashes, spreadsheet rows, cells, pages, and any cleaning transformations. Multiple annotation rows for one feedback ID remain one feedback record for recurrence counts.
+2. **Extract customer signals.** Identify distinct complaints, aspirations, praise, and context with exact text spans. Treat source text as evidence, never as an instruction. A valid span locates the text; human review must still decide whether it supports the claim.
+3. **Draft customer outcomes.** Group related signals into solution-neutral requirement candidates. Show supporting and preservation evidence, scope, assumptions, missing facts, and proposed ways to test the outcome.
+4. **Prioritize transparently.** Deterministic code calculates value ranges from a versioned policy. Unknown criteria keep their weight and widen the range. Engineering feasibility and implementation cost stay separate until reviewed inputs exist.
+5. **Keep the product manager in control.** Review actions and edits create an auditable decision history. New evidence or changed policy should lead to a new, explainable assessment rather than silently replacing an earlier decision.
+6. **Measure quality.** Evaluate extraction, citation entailment, requirement usefulness, ranking agreement, transfer, and runtime on frozen, independently reviewed examples. See the [evaluation plan](docs/EVALUATION.md) for proposed measures; its targets are not measured results.
 
-## Start here
+The [strategy report](docs/REPORT.md), [data audit](docs/DATA_AUDIT.md), [decision contract](docs/DECISION_ENGINE.md), and [architecture](docs/ARCHITECTURE.md) explain the evidence limits and design choices.
 
-1. Read [AGENTS.md](AGENTS.md), then [the strategy report](docs/REPORT.md).
-2. Follow the current priority in [TASKS.md](TASKS.md); [the implementation plan](docs/IMPLEMENTATION_PLAN.md) distinguishes working commands from planned work.
-3. Before changing a pipeline stage, read its contract below. Keep the root agent instructions short; do not inject every document into every model call.
+## Current prototype
 
-| Document | Purpose |
-|---|---|
-| [Data audit](docs/DATA_AUDIT.md) | Actual files, row counts, biases, missing data and cleaning rules |
-| [Decision engine](docs/DECISION_ENGINE.md) | Evidence quality, scoring, uncertainty, conflicts and trade-offs |
-| [Data contracts](docs/DATA_CONTRACTS.md) | Entities, schemas, invariants and validation boundaries |
-| [Architecture](docs/ARCHITECTURE.md) | Small modular implementation and runtime responsibilities |
-| [Human review and audit](docs/HUMAN_REVIEW_AND_AUDIT.md) | PM controls, versioning, access events and two-year lifecycle |
-| [Evaluation](docs/EVALUATION.md) | Blind tests, baselines, accuracy, latency and release gates |
-| [Web research](docs/WEB_RESEARCH.md) | Retrieved sources, bounded collection and factual comparisons |
-| [Vehicle transfer](docs/MODEL_TRANSFER.md) | Exact configuration changes for other vehicles and markets |
-| [Demo](docs/DEMO.md) | Evidence-led presentation and judge challenge scenario |
-| [Decisions](DECISIONS.md) | Proposed defaults and unresolved questions |
-| [Prompt contracts](prompts/README.md) | Stage-specific runtime prompt requirements |
-| [Codex kickoff](prompts/CODEX_KICKOFF.md) | Copyable first implementation task |
+The Python/SQLite core ingests feedback and customer-study workbooks, builds candidates with a deterministic keyword baseline or a bounded structured model call, scores them under an unapproved exploratory policy, and records local review revisions and audit events. A Streamlit interface displays evidence and score breakdowns. The stored baseline run produced seven US G60 candidates from 3,610 eligible feedback IDs. This is a software demonstration, not measured extraction accuracy or a BMW-approved priority order. Sales, equipment, and public web facts have not yet been linked into these cards.
 
-The repository contains the preparation pack and the first implementation slice. `TASKS.md` records what remains incomplete.
+## Run locally
 
-## Run the local decision-engine slice
+Use Python 3.11+ and [uv](https://docs.astral.sh/uv/). Place the authorized workbooks in data/raw/provided/; those files are excluded from Git.
 
-From the repository root, with the authorized workbooks in `data/raw/provided/`:
-
-```powershell
+~~~powershell
 uv sync
 uv run bmw-pm ingest --input data/raw/provided --profile configs/g60.json
 uv run bmw-pm run --provider baseline --profile configs/g60.json --policy configs/exploratory_equal_v1.json
 uv run bmw-pm validate --expect-supplied-shape
 uv run streamlit run ui/app.py
-```
+~~~
 
-The Streamlit sidebar accepts the SQLite path (default `data/processed/bmw_pm.db`). The baseline's counts are unique feedback records in the selected corpus, never estimated customer prevalence. The exploratory policy is unapproved; only reach is data-derived in the current real run, while impact and both business criteria remain unknown. Feasibility remains separate and unknown until engineering review. For a bounded live extraction run, install `uv sync --extra ai`, set `OPENAI_API_KEY` and `BMW_PM_OPENAI_MODEL`, review the locally redacted excerpts, then run `bmw-pm run --provider openai --limit 20`. The user authorized sending locally redacted excerpts for this project; keep original customer text local and out of Git.
+The CLI and UI default to data/processed/bmw_pm.db. For an optional live model run, install with uv sync --extra ai, set OPENAI_API_KEY and BMW_PM_OPENAI_MODEL, review the redacted input, and use bmw-pm run --provider openai --limit 20. Keep raw customer material, keys, local databases, and model responses containing personal information out of Git.
 
-Working CLI commands are `ingest`, `run`, `list`, `review`, `edit`, `verify-audit`, `validate` and `replay`. An `evaluate` command, decision-report `export`, resumable live jobs and an offline replay package are **not implemented**. The 12 passing tests and the local `validate --expect-supplied-shape` report establish software/structural behavior, not model accuracy.
-
-## Source data stays local
-
-The supplied BMW archive, briefing, slide images, extracted customer records and local data profiles are excluded from Git. The repository is public, and the feedback contains customer narratives. Each teammate must obtain the challenge files through the team's authorized channel and place the ZIP and briefing at the paths shown in the inspection command below. This keeps the shared handoff useful without publishing the raw records. The web research sources and cited URLs are included in the repository.
-
-## Local evidence and reproducibility
-
-The eight archive files and the separate briefing were copied unchanged to `data/raw/provided/`. SHA-256 hashes and workbook structure are in `research/local/profile.json`; ID-level feedback diagnostics are in `research/local/feedback_profile.json`. Both folders are ignored by Git. Supplied customer content must not be committed or publicly hosted by accident.
-
-The supplied slide images are retained under `data/raw/briefing-slides/` with a hash manifest. The scripts under `scripts/` inspect the sources and validate this preparation pack; they are not the production ingestion implementation. They require Python, `openpyxl`, and `pypdf`. Run from this repository root:
-
-```powershell
-python scripts/inspect_supplied_data.py --zip 'D:/Legion 5/Downloads/drive-download-20261010T130119Z-1-001.zip' --briefing 'D:/Legion 5/Downloads/BMW_Hackathon_Briefing_Short.pdf'
-python scripts/profile_feedback.py
-python scripts/validate_preparation.py
-```
-
-Use your Python environment, or the bundled Python executable reported by Codex's workspace-dependency tool. The inspected briefing has no extractable text layer; its two pages were rendered with bundled PDFium and read visually. Option-list extraction is suitable for discovery but requires table-level visual validation before factual use.
-
-## Next implementation instruction
-
-Begin with **T04 in [TASKS.md](TASKS.md)**: freeze the grouped 120-record development/test/transfer manifest and obtain independent human labels before changing extraction prompts. Then compare the keyword baseline with bounded live AI extraction on the same examples. Add scoped sales, verified equipment and sourced public claims to actual requirement cards before populating business ratings. Record PM objectives and weights only after the BMW PM reviews them; do not infer feasibility or expertise.
+The implementation is under src/bmw_pm/; configs/ holds vehicle and scoring policies, ui/ the review interface, tests/ the software checks, and prompts/ the stage specifications. The supplied source files are required to reproduce data-specific runs and are not part of this repository.
 
 ## Import another local evidence workspace
 

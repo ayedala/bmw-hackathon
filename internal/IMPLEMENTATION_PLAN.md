@@ -1,6 +1,6 @@
 # Remaining-work implementation plan
 
-The user confirmed a 24-hour build window and reported more than 12 hours remaining when this sequence was agreed. Stack: Python, SQLite and Streamlit with a provider-neutral extraction boundary. `TASKS.md` is the status source of truth. Do not restart completed bootstrap or claim the original hour-by-hour schedule still describes actual progress.
+The user confirmed a 24-hour build window and reported more than 12 hours remaining when this sequence was agreed. Stack: Python, SQLite and Streamlit with a provider-neutral extraction boundary. `internal/TASKS.md` is the status source of truth. Do not restart completed bootstrap or claim the original hour-by-hour schedule still describes actual progress.
 
 ## Ordered milestones from the working slice
 

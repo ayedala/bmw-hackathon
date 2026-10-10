@@ -1,6 +1,6 @@
 # UI implementation rules
 
-Follow root instructions. The UI is a review surface for the model, not the primary sprint deliverable.
+Follow internal/AGENTS.md. The UI is a review surface for the model, not the primary sprint deliverable.
 
 - Use Streamlit unless the user chooses another stack. Call core services; do not duplicate scoring logic.
 - Show requirement status, scope, support, counterevidence, source locators, assumptions, coverage and value interval together.
