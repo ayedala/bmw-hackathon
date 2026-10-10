@@ -49,6 +49,17 @@ The active database remains `data/processed/bmw_pm.db`. The adapter copies origi
 
 The archive hash, original table, row payload hash and original locator IDs preserve foreign lineage. Import does not establish entailment or engineering feasibility: these extra channels remain unreviewed context and do not automatically populate scores or approve requirements. The model pipeline uses the rebuilt feedback records. Repeating an identical import is idempotent; different local raw bytes cause a conflict instead of an overwrite. Raw data, snapshots and import manifests remain ignored by Git.
 
+## Financial scenarios for update decisions
+
+The separate [business-case calculator](docs/BUSINESS_CASES.md) accepts private,
+hashed cost, revenue, adoption and sales-lift assumptions for each proposed
+update. It reports downside/base/upside annual cash flow, discounted value,
+break even sales lift, evidence and scope gates, and unresolved comparisons.
+The current database has no approved feature-level finance inputs, so it does
+not yet identify a profit-maximizing update. Run
+`python scripts/evaluate_business_cases.py --template runs/business-cases.json`
+with `PYTHONPATH=src` to create the blank private worksheet.
+
 ## Hosted app
 
 A protected Docker/Render deployment is prepared in `Dockerfile` and `render.yaml`. Read [hosting setup](docs/HOSTING.md) for account connection, generated access secrets, persistent storage, private database upload and actual verification limits. The database is uploaded separately through authenticated setup, not included in Git or the image. The app is not live until a hosting service is provisioned.

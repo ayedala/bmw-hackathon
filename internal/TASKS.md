@@ -22,6 +22,7 @@ Update this board with actual outcomes and evidence. Preparation and the first l
 - [ ] **T03 — partial:** The feedback and customer-study adapters work. Add sales observations and 10–20 manually verified, market/derivative/date-scoped equipment facts with exact cell/page/table locators. Reconcile accepted plus quarantined source units.
 - [ ] **T06 — partial:** Customer-outcome candidates, support, praise/preservation, context and explicit assumptions work for feedback. Link the separately scoped study, sales, equipment and public-source facts to actual cards; obtain human review of material claims.
 - [ ] **T07 — partial:** Deterministic four-criterion score intervals and customer/business views work. Only reach is data-derived in the real run. Obtain PM objectives, anchored impact/strategy/competitive ratings and swing weights; implement reproducible weight/evidence-removal sensitivity. Keep engineering feasibility and cost separate and unknown without reviewed inputs.
+- [ ] **T07 financial follow-up — partial:** A separate deterministic business-case calculator now accepts explicit revenue, cost, adoption and extra-sales scenarios for exact requirement revisions. It reports annual cash flow, NPV and break-even sales lift. Unmatched sales scope or unreviewed competitor/finance inputs exclude a case from comparison; unknown feasibility separately blocks commitment. The seven-card private worksheet is blank; no company estimates or financial ranking have been entered. Obtain reviewed inputs and matched competitor evidence, then assess portfolio dependencies and cannibalization.
 - [ ] **T08 — partial:** Review transitions, immutable revisions, audit events and replay work locally. Verify a PM challenge against new evidence creates a new score/revision while the earlier decision remains reconstructable; document local identity limits.
 - [ ] **T09 — partial:** The thin Streamlit UI exposes evidence, score contributions, uncertainty, review and history. Add a clear run-mode/replay label and the completed evidence channels when available; check source drill-down and access/export audit behavior.
 - [ ] **T10:** Import 3–4 permitted public sources with URL/date/origin and scoped claims; reject or flag mismatched model, market, year and test conditions. A standalone YouTube research module is present in the repository but is not yet integrated or verified as decision-engine evidence.
@@ -47,6 +48,13 @@ Sequence: T04 before prompt tuning or AI quality claims; then T05 and scoped T03
 - [ ] Expand gold annotations and PM preference judgments.
 
 ## Per-task completion note
+
+### 10 October 2026: financial business-case foundation (T07 partial)
+
+- Added typed, source-referenced financial scenarios in `decision/economics.py`, a private worksheet/evaluation command, and `docs/BUSINESS_CASES.md`. The input separates additional vehicle revenue, baseline vehicle cost, revenue uplift on existing sales, update-specific unit cost, annual fixed cost and upfront cost. Downside/base/upside cases produce discounted cash flow and base-case break-even flat extra sales. Financial comparison and commitment readiness are separate gates.
+- The current US G60 database has no approved feature-level costs, revenue/lift estimates, or matched reviewed US competitor comparison. Generated ignored `runs/business-cases.json` with seven blank options; no real financial order or PM decision was produced.
+- Focused verification: six new financial tests plus seven existing scoring tests passed; Python compilation passed. A synthetic script smoke case gave NPV 230.00 and remained excluded because sales, competitor and finance review statuses were draft or unassessed. The blank worksheet returned `needs_inputs` with JSON field paths. The full app suite was not rerun in this isolated dependency environment.
+- Next: receive internal estimates with provenance and owner review; verify model/market/powertrain exposure, competitor match, cross-feature interactions and budget constraints before making an investment recommendation.
 
 ### 10 October 2026: frozen evaluation foundation (T04 partial)
 
