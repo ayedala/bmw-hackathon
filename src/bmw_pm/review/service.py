@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+from typing import Any
+
+from ..contracts import Decision, DecisionAction, RequirementRevision
+from ..storage import Database
+from ..utils import stable_id, utc_now
+
+
+class ReviewService:
+    """Application-level PM workflow; role selection is demonstrative, not authentication."""
+
+    EDITABLE_FIELDS = {"title", "customer_outcome", "use_conditions", "assumptions"}
+
+    def __init__(self, database: Database) -> None:
+        self.database = database
+
+    def decide(
+        self,
+        *,
+        requirement_id: str,
+        expected_revision: int,
+        action: DecisionAction,
+        rationale: str,
+        actor_id: str,
+        request_id: str,
+        role: str = "demo_pm",
+    ) -> Decision:
+        if action == DecisionAction.EDIT:
+            raise ValueError("use edit() for requirement changes")
+        if not rationale.strip():
+            raise ValueError("a review rationale is required")
+        decision, _ = self.database.atomic_review(
+            requirement_id=requirement_id,
+            expected_revision=expected_revision,
+            action=action,
+            rationale=rationale.strip(),
+            actor_id=actor_id,
+            role=role,
+            request_id=request_id,
+        )
+        return decision
+
+    def edit(
+        self,
+        *,
+        requirement_id: str,
+        expected_revision: int,
+        changes: dict[str, Any],
+        rationale: str,
+        actor_id: str,
+        request_id: str,
+        role: str = "demo_pm",
+    ) -> tuple[Decision, RequirementRevision]:
+        if not rationale.strip():
+            raise ValueError("an edit rationale is required")
+        unsupported = set(changes) - self.EDITABLE_FIELDS
+        if unsupported:
+            raise ValueError(f"unsupported edit fields: {sorted(unsupported)}")
+        if not changes:
+            raise ValueError("at least one edited field is required")
+        current = self.database.requirement(requirement_id, expected_revision)
+        payload = current.model_dump(mode="python")
+        payload.update(changes)
+        payload.update(
+            {
+                "revision": current.revision + 1,
+                "supersedes_revision": current.revision,
+                "lifecycle_status": "needs_review",
+                "created_by": actor_id,
+                "created_at": utc_now(),
+            }
+        )
+        edited = RequirementRevision.model_validate(payload)
+        decision, new_revision = self.database.atomic_review(
+            requirement_id=requirement_id,
+            expected_revision=expected_revision,
+            action=DecisionAction.EDIT,
+            rationale=rationale.strip(),
+            actor_id=actor_id,
+            role=role,
+            request_id=request_id,
+            edited_revision=edited,
+        )
+        assert new_revision is not None
+        previous_score = self.database.latest_score(requirement_id, expected_revision)
+        if previous_score:
+            copied_score = previous_score.model_copy(
+                update={
+                    "score_snapshot_id": stable_id(
+                        "score", previous_score.score_snapshot_id, str(new_revision.revision)
+                    ),
+                    "requirement_revision": new_revision.revision,
+                    "assumptions": [
+                        *previous_score.assumptions,
+                        "This PM edit did not change scope or evidence links, so recorded criterion inputs were carried forward.",
+                    ],
+                }
+            )
+            self.database.persist_score(
+                copied_score,
+                request_id=f"{request_id}:score-recalculation",
+            )
+        return decision, new_revision

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bmw-product-decision-lab"
+version = "0.1.0"
+description = "Evidence-grounded BMW product requirement decision-support prototype"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "openpyxl>=3.1,<4",
+  "pydantic>=2.10,<3",
+  "streamlit>=1.40,<2",
+]
+
+[project.optional-dependencies]
+ai = ["openai>=2,<3"]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10"]
+
+[project.scripts]
+bmw-pm = "bmw_pm.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bmw_pm"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
+testpaths = ["tests"]

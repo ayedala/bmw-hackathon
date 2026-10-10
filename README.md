@@ -1,10 +1,10 @@
 # BMW Product Decision Lab
 
-Preparation and coding handoff, 10 October 2026. Build window: **24 hours**.
+Preparation and working prototype, 10 October 2026. Build window: **24 hours**.
 
 The proposed app turns evidence into customer-facing successor-vehicle requirements, shows why they deserve attention, and lets a product manager challenge and revise them over time. The primary demonstration is the 5 Series; the 1 and 7 Series provide transfer tests.
 
-**Current status:** supplied data inspected locally, strategy and implementation contracts prepared, primary web sources reviewed. The application, automated web collector, human-labelled evaluation set, and measured model performance are **not built yet**. No product requirement has been approved by BMW.
+**Current status:** a local Python/SQLite decision-engine slice ingests the supplied feedback and customer-study workbooks, extracts candidate signals, drafts seven G60 US requirement candidates with exact source links, computes customer and business scenario ranges, keeps feasibility unknown, and records PM reviews in an audit chain. The default extractor is a deterministic keyword baseline. Live AI extraction is optional and has not been quality-evaluated. Sales/equipment adapters, automated web enrichment, a human-labelled evaluation set, and measured model accuracy are still pending. No product requirement has been approved by BMW.
 
 ## Start here
 
@@ -27,7 +27,21 @@ The proposed app turns evidence into customer-facing successor-vehicle requireme
 | [Prompt contracts](prompts/README.md) | Stage-specific runtime prompt requirements |
 | [Codex kickoff](prompts/CODEX_KICKOFF.md) | Copyable first implementation task |
 
-The repository contains a preparation pack, not a pre-built application. Proposed commands in the implementation plan become runnable only when their corresponding tasks are complete.
+The repository contains the preparation pack and the first implementation slice. `TASKS.md` records what remains incomplete.
+
+## Run the local decision-engine slice
+
+From the repository root, with the authorized workbooks in `data/raw/provided/`:
+
+```powershell
+uv sync
+uv run bmw-pm ingest --input data/raw/provided --profile configs/g60.json
+uv run bmw-pm run --provider baseline --profile configs/g60.json --policy configs/exploratory_equal_v1.json
+uv run bmw-pm validate --expect-supplied-shape
+uv run streamlit run ui/app.py
+```
+
+The Streamlit sidebar accepts the SQLite path (default `data/processed/bmw_pm.db`). The baseline's counts are unique feedback records in the selected corpus, never estimated customer prevalence. The exploratory policy is unapproved; its bounds expose missing impact and business evidence. Feasibility remains a separate unknown until engineering review. For optional live extraction, install `uv sync --extra ai`, set `OPENAI_API_KEY` and `BMW_PM_OPENAI_MODEL`, then run `bmw-pm run --provider openai --limit 20`. Keep customer text local unless your team has approved hosted processing.
 
 ## Source data stays local
 
@@ -47,6 +61,6 @@ python scripts/validate_preparation.py
 
 Use your Python environment, or the bundled Python executable reported by Codex's workspace-dependency tool. The inspected briefing has no extractable text layer; its two pages were rendered with bundled PDFium and read visually. Option-list extraction is suitable for discovery but requires table-level visual validation before factual use.
 
-## First implementation instruction
+## Next implementation instruction
 
-Use [CODEX_KICKOFF.md](prompts/CODEX_KICKOFF.md). It starts with deterministic ingestion, traceability, and a fixed evaluation split before paid inference or frontend polish.
+Continue with [TASKS.md](TASKS.md). The next quality gate is a grouped, independently labelled evaluation split before tuning prompts or declaring model accuracy. Sales, equipment and sourced web claims should then enrich the business dimension with scoped facts rather than guessed values.

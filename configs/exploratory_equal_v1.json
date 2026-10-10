@@ -1,0 +1,36 @@
+{
+  "schema_version": "1",
+  "policy_id": "exploratory_equal",
+  "revision": 1,
+  "name": "Exploratory equal-weight policy (unapproved)",
+  "criteria": {
+    "customer_impact": {
+      "dimension": "customer",
+      "weight": 0.25,
+      "anchor_0": "No demonstrated improvement in the specified customer task",
+      "anchor_4": "Material improvement to a repeatedly blocked core use case"
+    },
+    "evidence_backed_reach": {
+      "dimension": "customer",
+      "weight": 0.25,
+      "anchor_0": "No observed affected eligible feedback records with sufficient processing coverage",
+      "anchor_4": "Scoped corpus mention share reaches the declared saturation point"
+    },
+    "strategic_contribution": {
+      "dimension": "business",
+      "weight": 0.25,
+      "anchor_0": "No contribution to an agreed product objective",
+      "anchor_4": "Strong direct contribution to an approved objective"
+    },
+    "competitive_outlook_need": {
+      "dimension": "business",
+      "weight": 0.25,
+      "anchor_0": "Verified adequate position for the planning scenario",
+      "anchor_4": "Material matched gap or well-supported scenario pressure"
+    }
+  },
+  "saturation_share": 0.05,
+  "unknown_rule": "Missing dimensions retain their weight and contribute [0, 4] scenario bounds; known weights are not renormalized.",
+  "approved": false,
+  "elicitation_record": "Seed policy for exploration only. Weights and the 5% corpus saturation point have not been elicited from or approved by BMW."
+}
