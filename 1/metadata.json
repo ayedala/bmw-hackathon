@@ -1,0 +1,112 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4K8WRAQ7HQH5JR69P5S371Z",
+  "session_id": "01a1267e-cbf7-75a0-83ce-f0a6a42f9785",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-10T16:10:12.9844412Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    ".gitignore",
+    "README.md",
+    "TASKS.md",
+    "docs/DECISION_ENGINE.md"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-sol",
+  "turn_id": "a06f9d076677",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 113426,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6902175,
+    "output_tokens": 20792,
+    "api_call_count": 89,
+    "subagent_tokens_complete": true
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-10T16:10:12.9363509Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 168,
+    "human_modified": 8,
+    "human_removed": 0,
+    "total_committed": 168,
+    "total_lines_changed": 176,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 6360,
+      "user_lines_removed": 8,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88,
+        ".env.example": 4,
+        ".gitignore": 4,
+        "README.md": 19,
+        "TASKS.md": 11,
+        "configs/baseline_taxonomy_v1.json": 35,
+        "configs/exploratory_equal_v1.json": 36,
+        "configs/g60.json": 26,
+        "docs/DECISION_ENGINE.md": 6,
+        "pyproject.toml": 32,
+        "src/bmw_pm/__init__.py": 3,
+        "src/bmw_pm/cli.py": 206,
+        "src/bmw_pm/contracts.py": 412,
+        "src/bmw_pm/decision/__init__.py": 3,
+        "src/bmw_pm/decision/scoring.py": 178,
+        "src/bmw_pm/ingestion/__init__.py": 4,
+        "src/bmw_pm/ingestion/feedback.py": 268,
+        "src/bmw_pm/ingestion/studies.py": 255,
+        "src/bmw_pm/intelligence/__init__.py": 11,
+        "src/bmw_pm/intelligence/baseline.py": 129,
+        "src/bmw_pm/intelligence/provider.py": 192,
+        "src/bmw_pm/intelligence/requirements.py": 144,
+        "src/bmw_pm/pipeline.py": 210,
+        "src/bmw_pm/review/__init__.py": 3,
+        "src/bmw_pm/review/service.py": 104,
+        "src/bmw_pm/storage/__init__.py": 3,
+        "src/bmw_pm/storage/database.py": 972,
+        "src/bmw_pm/utils.py": 118,
+        "src/bmw_pm/validation.py": 208,
+        "tests/test_audit.py": 116,
+        "tests/test_provenance.py": 173,
+        "tests/test_scoring.py": 316,
+        "ui/app.py": 225,
+        "uv.lock": 1846
+      },
+      "user_removed_per_file": {
+        "README.md": 5,
+        "TASKS.md": 3
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 88,
+      "user_lines_removed": 0,
+      "agent_lines_added": 6272,
+      "agent_lines_removed": 8,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 88,
+      "user_lines_removed": 0,
+      "agent_lines_added": 6272,
+      "agent_lines_removed": 8,
+      "user_added_per_file": {
+        ".codex/hooks.json": 88
+      }
+    }
+  ]
+}
