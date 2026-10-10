@@ -6,6 +6,7 @@ from bmw_pm.contracts import AcceptanceProposal, RequirementRevision, Requiremen
 from bmw_pm.decision.economics import (
     FinancialCase, UpdateBusinessCase, compare_business_cases, evaluate_business_case,
 )
+from bmw_pm.decision.portfolio import PortfolioPlan, evaluate_portfolio
 from bmw_pm.utils import utc_now
 
 
@@ -109,3 +110,108 @@ def test_discounting_and_horizon_alignment():
             "cases": {"downside": two_years.model_dump(mode="json"),
                       "base": original.cases["base"].model_dump(mode="json"),
                       "upside": original.cases["upside"].model_dump(mode="json")}})
+
+
+def varied_plan(requirement_id="a"):
+    original = plan(requirement_id)
+    base = original.cases["base"]
+    downside = base.model_copy(update={"years": [base.years[0].model_copy(
+        update={"incremental_units": 0})]})
+    upside = base.model_copy(update={"years": [base.years[0].model_copy(
+        update={"incremental_units": 4})]})
+    return original.model_copy(update={"cases": {
+        "downside": downside, "base": base, "upside": upside}})
+
+
+def reviewed_portfolio(budget="300", **changes):
+    payload = {
+        "capital_budget": budget,
+        "budget_review_status": "reviewed",
+        "interaction_review_status": "reviewed_none",
+        "evidence_refs": ["synthetic:budget-review"],
+    }
+    payload.update(changes)
+    return PortfolioPlan.model_validate(payload)
+
+
+def test_sensitivity_uses_supplied_driver_range_and_shows_order_changes():
+    a = evaluate_business_case(requirement("a", "conditional"), varied_plan())
+    b = evaluate_business_case(requirement("b", "conditional"), plan("b", upfront="150"))
+    driver = a.driver_sensitivity[0]
+    assert driver.driver == "incremental_units"
+    assert (driver.downside_input_npv, driver.base_npv, driver.upside_input_npv) == (
+        Decimal("40.00"), Decimal("230.00"), Decimal("420.00"))
+    orders = compare_business_cases([a, b])["scenario_npv_orders"]
+    assert orders["downside"] == ["b", "a"]
+    assert orders["base"] == ["a", "b"]
+
+
+def test_portfolio_budget_dependency_and_exclusion_are_explicit():
+    results = [evaluate_business_case(requirement(key, "conditional"), case)
+               for key, case in (("a", plan("a")), ("b", plan("b", upfront="150")))]
+    assert evaluate_portfolio(results, reviewed_portfolio("300")).selected_base.requirement_ids == ["a", "b"]
+    budgeted = evaluate_portfolio(results, reviewed_portfolio("200"))
+    assert budgeted.selected_base.requirement_ids == ["a"]
+    assert budgeted.selected_base.upfront_capital == Decimal("100.00")
+    dependent = evaluate_portfolio(results, reviewed_portfolio("200", dependencies=[
+        {"selected": "a", "requires": "b"}]))
+    assert dependent.selected_base.requirement_ids == ["b"]
+    excluded = evaluate_portfolio(results, reviewed_portfolio("300", mutually_exclusive=[
+        {"first": "a", "second": "b"}]))
+    assert excluded.selected_base.requirement_ids == ["a"]
+
+
+def test_sourced_interaction_changes_portfolio_without_changing_standalone_order():
+    results = [evaluate_business_case(requirement(key, "conditional"), case)
+               for key, case in (("a", plan("a")), ("b", plan("b", upfront="150")))]
+    interaction = {"pair": {"first": "a", "second": "b"},
+                   "additional_upfront_cost": "20",
+                   "operating_npv_adjustment": {name: "-280" for name in
+                                                ("downside", "base", "upside")},
+                   "review_status": "reviewed", "evidence_refs": ["synthetic:overlap"],
+                   "rationale": "Shared customers reduce combined incremental sales."}
+    assessed = evaluate_portfolio(results, reviewed_portfolio("300",
+        interaction_review_status="reviewed_adjustments", interactions=[interaction]))
+    assert assessed.status == "assessed"
+    assert assessed.selected_base.requirement_ids == ["a"]
+    assert compare_business_cases(results)["base_npv_order"] == ["a", "b"]
+
+
+def test_unreviewed_budget_or_interactions_block_portfolio_selection():
+    result = evaluate_business_case(requirement("a", "conditional"), plan("a"))
+    draft = PortfolioPlan(capital_budget="100")
+    assessment = evaluate_portfolio([result], draft)
+    assert assessment.status == "needs_review"
+    assert assessment.selected_base is None
+    assert len(assessment.blockers) == 2
+    unknown_engineering = evaluate_business_case(requirement("a"), plan("a"))
+    empty = evaluate_portfolio([unknown_engineering], reviewed_portfolio("100"))
+    assert empty.status == "no_eligible_options"
+    assert empty.excluded_options == ["a"]
+
+
+def test_three_series_use_separate_scopes_and_one_reviewed_budget():
+    specs = (("one", "F70", "GB", [], "100"),
+             ("five", "G60", "US", ["US"], "150"),
+             ("seven", "G70", "US", ["US"], "200"))
+    results = []
+    for key, model, market, countries, upfront in specs:
+        scoped_requirement = requirement(key, "conditional").model_copy(update={
+            "scope": RequirementScope(models=[model], countries=countries, powertrains=["ICE"])})
+        scoped_plan = plan(key, upfront=upfront).model_copy(update={
+            "model": model, "market": market,
+            "market_applicability_status": "matched_reviewed" if not countries else "unassessed"})
+        results.append(evaluate_business_case(scoped_requirement, scoped_plan))
+    assert {item.model for item in results} == {"F70", "G60", "G70"}
+    assessed = evaluate_portfolio(results, reviewed_portfolio("500"))
+    assert assessed.selected_base.requirement_ids == ["five", "one", "seven"]
+    f70_unreviewed = evaluate_business_case(
+        requirement("one", "conditional").model_copy(update={
+            "scope": RequirementScope(models=["F70"], countries=[], powertrains=["ICE"])}),
+        plan("one").model_copy(update={"model": "F70", "market": "GB"}))
+    assert not f70_unreviewed.ready_for_comparison
+    assert "Market applicability" in f70_unreviewed.blockers[0]
+    with pytest.raises(ValueError, match="market must match"):
+        evaluate_business_case(requirement("five").model_copy(update={
+            "scope": RequirementScope(models=["G60"], countries=["US"], powertrains=["ICE"])}),
+            plan("five").model_copy(update={"model": "G60", "market": "GB"}))

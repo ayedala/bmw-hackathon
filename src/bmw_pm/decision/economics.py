@@ -6,6 +6,7 @@ feedback counts or turn an imported competitor claim into a verified benchmark.
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_CEILING, ROUND_HALF_UP
+from itertools import combinations
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -47,12 +48,13 @@ class UpdateBusinessCase(Contract):
     schema_version: str = "1"
     requirement_id: str
     requirement_revision: int = Field(ge=1)
-    model: str
-    market: str
+    model: str = Field(min_length=1)
+    market: str = Field(min_length=2)
     powertrains: list[str] = Field(min_length=1)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     discount_rate: Decimal = Field(ge=0, lt=1)
     cases: dict[CaseName, FinancialCase]
+    market_applicability_status: Literal["matched_reviewed", "unassessed"] = "unassessed"
     sales_scope_status: Literal["matched", "combined_proxy", "unassessed"] = "unassessed"
     competitor_status: Literal["matched_reviewed", "candidate_only", "unassessed"] = "unassessed"
     finance_status: Literal["reviewed", "draft"] = "draft"
@@ -88,18 +90,33 @@ class FinancialResult(Contract):
     annual: list[AnnualResult]
 
 
+class DriverSensitivity(Contract):
+    driver: str
+    base_npv: Money
+    downside_input_npv: Money
+    upside_input_npv: Money
+    min_npv: Money
+    max_npv: Money
+    max_absolute_change: Money
+
+
 class BusinessCaseResult(Contract):
     requirement_id: str
     requirement_revision: int
+    model: str
+    market: str
+    powertrains: list[str]
     input_hash: str
     currency: str
     discount_rate: Decimal
+    market_applicability_status: str
     sales_scope_status: str
     competitor_status: str
     finance_status: str
     evidence_refs: list[str]
     assumptions: list[str]
     scenarios: dict[CaseName, FinancialResult]
+    driver_sensitivity: list[DriverSensitivity]
     break_even_flat_incremental_units_per_year: int | None
     ready_for_comparison: bool
     blockers: list[str]
@@ -167,18 +184,56 @@ def _break_even_flat_units(case: FinancialCase, discount_rate: Decimal) -> int |
     return int((-without_incremental / contribution_per_extra_unit).to_integral_value(rounding=ROUND_CEILING))
 
 
+_ANNUAL_DRIVERS = (
+    "baseline_units", "incremental_units", "adoption_rate",
+    "net_revenue_per_incremental_vehicle", "baseline_vehicle_cost_per_incremental_vehicle",
+    "net_revenue_uplift_per_existing_adopter", "variable_cost_per_adopter",
+    "annual_fixed_cost",
+)
+
+
+def _driver_sensitivity(plan: UpdateBusinessCase) -> list[DriverSensitivity]:
+    """Swap one supplied scenario input series at a time into the base case."""
+    base = plan.cases["base"]
+    base_npv = evaluate_case(base, plan.discount_rate).net_present_value
+    impacts = []
+    for driver in ("upfront_cost", *_ANNUAL_DRIVERS):
+        alternative_npvs = []
+        for source_name in ("downside", "upside"):
+            source = plan.cases[source_name]
+            if driver == "upfront_cost":
+                changed = base.model_copy(update={"upfront_cost": source.upfront_cost})
+            else:
+                years = [base_year.model_copy(update={driver: getattr(source_year, driver)})
+                         for base_year, source_year in zip(base.years, source.years, strict=True)]
+                changed = base.model_copy(update={"years": years})
+            alternative_npvs.append(evaluate_case(changed, plan.discount_rate).net_present_value)
+        low, high = min(base_npv, *alternative_npvs), max(base_npv, *alternative_npvs)
+        impacts.append(DriverSensitivity(
+            driver=driver, base_npv=base_npv,
+            downside_input_npv=alternative_npvs[0], upside_input_npv=alternative_npvs[1],
+            min_npv=low, max_npv=high,
+            max_absolute_change=max(abs(value - base_npv) for value in alternative_npvs),
+        ))
+    return sorted(impacts, key=lambda item: (-item.max_absolute_change, item.driver))
+
+
 def evaluate_business_case(requirement: RequirementRevision,
                            plan: UpdateBusinessCase) -> BusinessCaseResult:
     if (requirement.requirement_id, requirement.revision) != (plan.requirement_id, plan.requirement_revision):
         raise ValueError("business case must reference this exact requirement revision")
-    if plan.model not in requirement.scope.models or plan.market not in requirement.scope.countries:
-        raise ValueError("business case model and market must match requirement scope")
+    if plan.model not in requirement.scope.models:
+        raise ValueError("business case model must match requirement scope")
+    if requirement.scope.countries and plan.market not in requirement.scope.countries:
+        raise ValueError("business case market must match requirement scope")
     if not set(plan.powertrains) <= set(requirement.scope.powertrains):
         raise ValueError("business case powertrains exceed requirement scope")
 
     scenarios = {name: evaluate_case(plan.cases[name], plan.discount_rate)
                  for name in ("downside", "base", "upside")}
     blockers = []
+    if not requirement.scope.countries and plan.market_applicability_status != "matched_reviewed":
+        blockers.append("Market applicability needs review because the requirement has no country scope.")
     if plan.sales_scope_status != "matched":
         blockers.append("Sales exposure is not verified for this model, market, and powertrain scope.")
     if plan.competitor_status != "matched_reviewed":
@@ -196,15 +251,20 @@ def evaluate_business_case(requirement: RequirementRevision,
     return BusinessCaseResult(
         requirement_id=plan.requirement_id,
         requirement_revision=plan.requirement_revision,
+        model=plan.model,
+        market=plan.market,
+        powertrains=plan.powertrains,
         input_hash=content_hash(plan),
         currency=plan.currency,
         discount_rate=plan.discount_rate,
+        market_applicability_status=plan.market_applicability_status,
         sales_scope_status=plan.sales_scope_status,
         competitor_status=plan.competitor_status,
         finance_status=plan.finance_status,
         evidence_refs=plan.evidence_refs,
         assumptions=plan.assumptions,
         scenarios=scenarios,
+        driver_sensitivity=_driver_sensitivity(plan),
         break_even_flat_incremental_units_per_year=_break_even_flat_units(
             plan.cases["base"], plan.discount_rate),
         ready_for_comparison=not blockers,
@@ -237,7 +297,14 @@ def compare_business_cases(results: list[BusinessCaseResult]) -> dict[str, objec
                 resolved.append((right.requirement_id, left.requirement_id))
             else:
                 unresolved.append((left.requirement_id, right.requirement_id))
+    scenario_orders = {
+        name: [item.requirement_id for item in sorted(
+            ready, key=lambda result: (-result.scenarios[name].net_present_value,
+                                       result.requirement_id))]
+        for name in ("downside", "base", "upside")
+    }
     return {"base_npv_order": [item.requirement_id for item in ordered],
+            "scenario_npv_orders": scenario_orders,
             "excluded_unreviewed": [item.requirement_id for item in results if not item.ready_for_comparison],
             "resolved_pairs": resolved, "unresolved_pairs": unresolved,
-            "interpretation": "Standalone reviewed scenarios; shared customers, dependencies and budget constraints are not modeled."}
+            "interpretation": "Standalone reviewed scenarios. Scenario orders are simultaneous stress views, not probabilities or a portfolio optimum."}

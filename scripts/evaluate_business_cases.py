@@ -12,6 +12,7 @@ from pathlib import Path
 from bmw_pm.decision.economics import (
     UpdateBusinessCase, compare_business_cases, evaluate_business_case,
 )
+from bmw_pm.decision.portfolio import PortfolioPlan, evaluate_portfolio
 from bmw_pm.storage import Database
 
 
@@ -28,10 +29,11 @@ def blank_option(requirement) -> dict:
         "requirement_id": requirement.requirement_id,
         "requirement_revision": requirement.revision,
         "model": requirement.scope.models[0],
-        "market": requirement.scope.countries[0],
+        "market": requirement.scope.countries[0] if requirement.scope.countries else None,
         "powertrains": requirement.scope.powertrains,
         "currency": None,
         "discount_rate": None,
+        "market_applicability_status": "unassessed",
         "sales_scope_status": "unassessed",
         "competitor_status": "unassessed",
         "finance_status": "draft",
@@ -92,6 +94,8 @@ def imported_context(database: Database, plan: UpdateBusinessCase) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=Path("data/processed/bmw_pm.db"))
+    parser.add_argument("--require-model", action="append", default=[], metavar="CODE",
+                        help="require a scoped option for this model; repeat for F70, G60, G70")
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--template", type=Path, help="write an empty private JSON worksheet")
     action.add_argument("--input", type=Path, help="assess a filled private JSON worksheet")
@@ -103,8 +107,12 @@ def main(argv: list[str] | None = None) -> int:
     requirements = {item["requirement"].requirement_id: item["requirement"]
                     for item in summaries}
     if args.template:
+        available = {model for item in summaries for model in item["requirement"].scope.models}
+        absent = sorted(set(args.require_model) - available)
+        if absent:
+            parser.error("no requirement cards for requested model(s): " + ", ".join(absent))
         payload = {"schema_version": "1", "options": [blank_option(item["requirement"])
-                   for item in summaries]}
+                   for item in summaries], "portfolio": None}
         args.template.parent.mkdir(parents=True, exist_ok=True)
         with args.template.open("x", encoding="utf-8") as output:
             json.dump(payload, output, indent=2)
@@ -114,13 +122,18 @@ def main(argv: list[str] | None = None) -> int:
     payload = json.loads(args.input.read_text(encoding="utf-8"))
     if payload.get("schema_version") != "1" or not isinstance(payload.get("options"), list):
         parser.error("expected schema_version 1 and an options list")
-    missing = missing_fields(payload)
+    missing = missing_fields(payload["options"], "/options")
+    if payload.get("portfolio") is not None:
+        missing.extend(missing_fields(payload["portfolio"], "/portfolio"))
     if missing:
         print(json.dumps({"status": "needs_inputs", "missing_fields": missing}, indent=2))
         return 2
     plans = [UpdateBusinessCase.model_validate(option) for option in payload["options"]]
     if not plans:
         parser.error("business case input contains no options")
+    absent = sorted(set(args.require_model) - {plan.model for plan in plans})
+    if absent:
+        parser.error("business case input has no option for requested model(s): " + ", ".join(absent))
     identities = [(plan.requirement_id, plan.requirement_revision) for plan in plans]
     if len(identities) != len(set(identities)):
         parser.error("duplicate requirement revision in business case input")
@@ -143,7 +156,12 @@ def main(argv: list[str] | None = None) -> int:
                       ),
                       "note": "Current exploratory customer/business score; policy and evidence are unreviewed.",
                   } for plan in plans},
-              "comparison": compare_business_cases(results)}
+              "comparison": compare_business_cases(results),
+              "portfolio": (
+                  evaluate_portfolio(results, PortfolioPlan.model_validate(payload["portfolio"])).model_dump(mode="json")
+                  if payload.get("portfolio") is not None else
+                  {"status": "not_requested", "note": "Add a reviewed portfolio plan to assess budget and interactions."}
+              )}
     print(json.dumps(report, indent=2))
     return 0
 

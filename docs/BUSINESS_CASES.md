@@ -23,6 +23,37 @@ are available. Then run:
 python scripts/evaluate_business_cases.py --input runs/business-cases.json
 ```
 
+For a comparison spanning the 1, 5 and 7 Series, require a scoped case for each
+model in both commands:
+
+```powershell
+python -m bmw_pm.cli run --profile configs/f70.json --provider baseline
+python -m bmw_pm.cli run --profile configs/g70.json --provider baseline
+python scripts/evaluate_business_cases.py --require-model F70 --require-model G60 --require-model G70 --template runs/all-series-business-cases.json
+python scripts/evaluate_business_cases.py --require-model F70 --require-model G60 --require-model G70 --input runs/all-series-business-cases.json
+```
+
+Run the first two commands only after the supplied feedback has been ingested;
+they create local baseline candidates and do not use a live LLM. Existing cards
+are preserved by requirement ID. The final command will report missing inputs
+until estimates are supplied.
+
+The private database now has seven G60, six F70 and seven G70 baseline candidate
+cards. They use separate vehicle profiles and evidence; none has PM or finance
+approval. The required-model check stops a partial all-series comparison. A G60
+case cannot stand in for another series. F70 cards leave country scope open
+because that profile spans all supplied countries; the worksheet leaves their
+`market` empty until a specific market and matching exposure estimate are
+chosen and reviewed. For a F70 card with no country scope, set
+`market_applicability_status` to `matched_reviewed` only after confirming that
+the feature claim transfers to that market; otherwise it remains excluded.
+
+BMW's public deliveries, segment accounts and German list prices were checked
+for possible inputs. [PUBLIC_FINANCIAL_CONTEXT.md](PUBLIC_FINANCIAL_CONTEXT.md)
+records the sourced figures and why none supplies feature development cost,
+unit margin, adoption or causal sales lift. The worksheet therefore retains
+unknowns rather than generating a financial order from these proxies.
+
 An incomplete worksheet returns the missing JSON paths. The calculation reads
 the active database without creating a PM decision or altering its scores. The
 result includes a hash of each validated input, cash flow for each year,
@@ -32,6 +63,13 @@ file and output together if a reviewer relies on a result. The report also
 lists potentially relevant imported sales rows and competitor candidates so
 their exact model/market scope is visible; these rows are not silently used as
 the plan's estimates.
+
+The result also includes a driver sensitivity list. For each input, it swaps
+that input's annual series (or upfront cost) from the supplied downside and
+upside case into the base case while holding other base inputs fixed. The
+largest absolute NPV change appears first. These are one-at-a-time diagnostics,
+not independent forecasts; dependencies between assumptions can matter. The
+standalone comparison also reports the NPV order under each whole scenario.
 
 ## Inputs the company needs to provide
 
@@ -92,8 +130,46 @@ other's upside NPV. Overlapping cases stay unresolved. The output also shows the
 existing exploratory customer-value interval separately. A higher NPV does not
 cancel a severe customer need, regulatory constraint or product objective.
 
-This calculator does not yet model shared sales between two updates, mutually
-exclusive designs, dependencies, a capital budget, or uncertainty in the
-underlying forecasts. Those are required before calling the highest standalone
-NPV the best portfolio choice. PM and finance must review the assumptions and
-competitor applicability; the software cannot confer that approval.
+The calculator handles shared sales, mutually exclusive designs, dependencies
+and a capital budget only when an optional reviewed `portfolio` block is
+supplied. Example:
+
+```json
+"portfolio": {
+  "schema_version": "1",
+  "capital_budget": "10000000",
+  "budget_review_status": "reviewed",
+  "interaction_review_status": "reviewed_adjustments",
+  "evidence_refs": ["internal:approved-capital-plan"],
+  "dependencies": [{"selected": "requirement-a", "requires": "requirement-b"}],
+  "mutually_exclusive": [],
+  "interactions": [{
+    "pair": {"first": "requirement-a", "second": "requirement-b"},
+    "additional_upfront_cost": "0",
+    "operating_npv_adjustment": {
+      "downside": "-200000", "base": "-150000", "upside": "-100000"
+    },
+    "review_status": "reviewed",
+    "evidence_refs": ["internal:shared-buyer-analysis"],
+    "rationale": "Shared buyers reduce combined incremental sales."
+  }]
+}
+```
+
+These numbers are illustrative, not BMW estimates. Set
+`interaction_review_status` to `reviewed_none` with no interactions only after
+reviewing that no material pairwise overlap remains. Draft or unassessed status
+yields no portfolio selection. `additional_upfront_cost` is signed: negative
+means reviewed shared capital savings. Operating NPV adjustments exclude that
+capital amount and must already be discounted to the same planning date,
+currency and rate as the standalone cases. The calculator uses each option's
+highest scenario upfront cost for budget enforcement, applies dependencies and
+exclusions, and enumerates at most 15 commitment-ready options. It shows the
+highest base NPV feasible subset and the best subset in each simultaneous
+downside/upside stress view. Unreviewed or engineering-blocked options are
+listed as excluded.
+
+This bounded calculation cannot verify reviewer identity, estimate interactions,
+infer retention or sales lift from feedback, or capture undeclared three-way
+effects. PM and finance must review assumptions and competitor applicability;
+the software cannot confer that approval.
