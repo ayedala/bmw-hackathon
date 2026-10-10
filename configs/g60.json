@@ -1,12 +1,21 @@
 {
   "schema_version": "1",
   "profile_id": "g60_us_feedback_mvp",
-  "revision": 1,
+  "revision": 2,
   "model_family": "G60",
   "countries": ["US"],
   "powertrains": ["ICE", "PHEV", "BEV"],
   "domain_applicability": {
     "charging_and_range": ["BEV", "PHEV"]
+  },
+  "equipment_context_phrases": {
+    "controls_usability": ["Klimaautomatik", "Bedienung", "Bedienkonzept", "Lenkrad"],
+    "software_reliability": ["ConnectedDrive", "BMW Live Cockpit", "Software", "Display"],
+    "charging_and_range": ["Laden", "Ladekabel", "Ladeleistung", "Reichweite", "Batterie"],
+    "ride_and_comfort": ["Komfort", "Sitze", "Sitzheizung", "Federung", "Fahrwerk"],
+    "noise_and_refinement": ["Akustik", "Verglasung", "Geräusch"],
+    "storage_and_practicality": ["Gepäck", "Ablage", "Kofferraum", "Getränkehalter"],
+    "driver_assistance": ["Driving Assistant", "Parking Assistant", "Parkassistent", "Fahrerassistenz"]
   },
   "powertrain_aliases": {
     "BEVE": "BEV"

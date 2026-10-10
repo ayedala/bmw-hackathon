@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .contracts import FeedbackRecord, RequirementRevision, Signal, SourceDocument
+from .contracts import BMWContextObservation, FeedbackRecord, RequirementRevision, Signal, SourceDocument
+from .utils import content_hash
 from .storage import Database
 
 
@@ -66,6 +67,23 @@ def validate_database(database: Database, *, expect_supplied_shape: bool = False
                 "SELECT source_id,payload_json FROM sources"
             ).fetchall()
         }
+        if connection.execute("SELECT 1 FROM sqlite_master WHERE name='bmw_context'").fetchone():
+            context_rows = connection.execute("SELECT payload_json,payload_hash FROM bmw_context").fetchall()
+            context_errors, counts = [], {"bmw_sales": 0, "bmw_equipment": 0}
+            for row in context_rows:
+                observation = BMWContextObservation.model_validate_json(row["payload_json"])
+                counts[observation.channel] += 1
+                source = sources.get(observation.source_id)
+                if (not source or source.sha256 != observation.source_hash
+                    or observation.locator.source_id != observation.source_id
+                    or observation.locator.source_hash != observation.source_hash
+                    or content_hash(observation) != row["payload_hash"]):
+                    context_errors.append(observation.observation_id)
+                if observation.channel == "bmw_equipment" and observation.locator.exact_quote != observation.raw_payload.get("text"):
+                    context_errors.append(observation.observation_id + ":page text mismatch")
+            checks.append({"check": "provided_context_reconciliation", "passed": not context_errors and (
+                counts == {"bmw_sales": 36, "bmw_equipment": 78} if expect_supplied_shape else True),
+                "detail": {"counts": counts, "errors": context_errors}})
         records = {
             row["record_id"]: FeedbackRecord.model_validate_json(row["payload_json"])
             for row in connection.execute(
@@ -197,6 +215,10 @@ def validate_database(database: Database, *, expect_supplied_shape: bool = False
             }
         )
 
+    from .intelligence.fusion import validate_cross_channel_links
+    cross_errors = validate_cross_channel_links(database, latest_requirements)
+    checks.append({"check": "cross_channel_citation_resolution", "passed": not cross_errors,
+                   "detail": {"errors": cross_errors, "links": sum(len(r.cross_channel_evidence) for r in latest_requirements)}})
     audit_valid, checkpoint = database.verify_audit_chain()
     checks.append(
         {

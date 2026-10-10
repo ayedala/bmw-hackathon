@@ -246,6 +246,49 @@ class RequirementEvidenceLink(Contract):
     author_expertise: Literal["unknown"] = "unknown"
 
 
+class CrossChannelEvidence(Contract):
+    evidence_id: str
+    channel: Literal["youtube", "bmw_study", "bmw_sales", "bmw_equipment", "imported_context"]
+    role: Literal["supports", "preserves", "context"]
+    source_family: str
+    claim: str
+    locator: dict[str, Any]
+    payload: dict[str, Any]
+    applicability: Literal["matched", "scope_unconfirmed"]
+    limitations: list[str]
+    semantic_entailment: Literal["unreviewed"] = "unreviewed"
+
+
+class BMWContextObservation(Contract):
+    observation_id: str
+    channel: Literal["bmw_sales", "bmw_equipment"]
+    source_id: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_codes: list[str]
+    market: str
+    metric: str
+    year: int | None = None
+    value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    locator: SourceLocator
+    raw_payload: dict[str, Any]
+    limitations: list[str]
+
+
+class YouTubeFinding(Contract):
+    evidence_id: str
+    video_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    generation: str
+    topic: str
+    feedback_type: Literal["positive", "pain_point", "requested_improvement"]
+    source_statement: str
+    supporting_excerpt: str = Field(min_length=1)
+    timestamp_seconds: float = Field(ge=0, allow_inf_nan=False)
+    transcript_segment: dict[str, Any]
+    transcript_sha256: str
+    bundle_sha256: str
+    payload: dict[str, Any]
+
+
 class RequirementRevision(Contract):
     schema_version: str = "1"
     requirement_id: str
@@ -275,6 +318,8 @@ class RequirementRevision(Contract):
     processed_feedback_records: int = Field(ge=0)
     support_count: int = Field(ge=0)
     counter_count: int = Field(ge=0)
+    cross_channel_evidence: list[CrossChannelEvidence] = Field(default_factory=list)
+    evidence_synthesis: list[str] = Field(default_factory=list)
 
 
 class CriterionDefinition(Contract):

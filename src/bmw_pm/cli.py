@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,7 +15,9 @@ from .validation import validate_database
 
 
 def _json_print(value: object) -> None:
-    print(json.dumps(value, indent=2, ensure_ascii=False, default=str))
+    # Preserve valid JSON when Windows redirects output through a legacy code page.
+    encoding = (getattr(sys.stdout, "encoding", None) or "utf-8").lower().replace("-", "")
+    print(json.dumps(value, indent=2, ensure_ascii=encoding != "utf8", default=str))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
     context = subparsers.add_parser("context", help="inspect imported unreviewed evidence")
     context.add_argument("table")
     context.add_argument("--limit", type=int, default=100)
+    youtube = subparsers.add_parser("import-youtube", help="validate and import a saved YouTube research run")
+    youtube.add_argument("directory", type=Path)
 
     run = subparsers.add_parser("run", help="derive and score requirement candidates")
     run.add_argument("--profile", default="configs/g60.json")
@@ -40,6 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--provider", choices=("auto", "baseline", "openai"), default="auto")
     run.add_argument("--limit", type=int)
     run.add_argument("--full", action="store_true", help="print complete candidate payloads")
+    run.add_argument("--youtube-run", type=Path, action="append", default=None,
+                     help="saved YouTube output directory; repeat for multiple runs; prior imports are included automatically")
 
     subparsers.add_parser("list", help="list latest requirement cards")
 
@@ -76,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     database = Database(Path(args.db))
     database.initialize()
+    if args.command == "import-youtube":
+        from .intelligence.fusion import import_youtube_run
+        result = import_youtube_run(database, args.directory)
+        _json_print(result)
+        return 1 if result["rejected"] else 0
     if args.command == "import-workspace":
         from .ingestion.legacy_database import import_workspace
         _json_print(import_workspace(database=database, source_root=args.source,
@@ -103,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
             policy=policy,
             provider=provider,
             limit=args.limit,
+            youtube_runs=args.youtube_run,
+            taxonomy_path=args.taxonomy,
         )
         if args.full:
             _json_print(result)
@@ -117,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
                             "title": item["title"],
                             "support_count": item["support_count"],
                             "praise_or_preservation_count": item["counter_count"],
+                            "evidence_synthesis": item["evidence_synthesis"],
+                            "cross_channel_evidence_count": len(item["cross_channel_evidence"]),
                         }
                         for item in result["requirements"]
                     ],
@@ -136,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
                     ],
                     "limitations": result["limitations"],
                     "ranking_assessment": result["ranking_assessment"],
+                    "youtube_imports": result["youtube_imports"],
+                    "unlinked_youtube_findings": result["unlinked_youtube_findings"],
                 }
             )
         return 0

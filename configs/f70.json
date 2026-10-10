@@ -1,0 +1,79 @@
+{
+  "schema_version": "1",
+  "profile_id": "f70_provided_feedback",
+  "revision": 1,
+  "model_family": "F70",
+  "countries": [],
+  "powertrains": [
+    "ICE"
+  ],
+  "domain_applicability": {
+    "charging_and_range": [
+      "BEV",
+      "PHEV"
+    ]
+  },
+  "equipment_context_phrases": {
+    "controls_usability": [
+      "Klimaautomatik",
+      "Bedienung",
+      "Bedienkonzept",
+      "Lenkrad"
+    ],
+    "software_reliability": [
+      "ConnectedDrive",
+      "BMW Live Cockpit",
+      "Software",
+      "Display"
+    ],
+    "charging_and_range": [
+      "Laden",
+      "Ladekabel",
+      "Ladeleistung",
+      "Reichweite",
+      "Batterie"
+    ],
+    "ride_and_comfort": [
+      "Komfort",
+      "Sitze",
+      "Sitzheizung",
+      "Federung",
+      "Fahrwerk"
+    ],
+    "noise_and_refinement": [
+      "Akustik",
+      "Verglasung",
+      "GerÃ¤usch"
+    ],
+    "storage_and_practicality": [
+      "GepÃ¤ck",
+      "Ablage",
+      "Kofferraum",
+      "GetrÃ¤nkehalter"
+    ],
+    "driver_assistance": [
+      "Driving Assistant",
+      "Parking Assistant",
+      "Parkassistent",
+      "Fahrerassistenz"
+    ]
+  },
+  "powertrain_aliases": {
+    "BEVE": "BEV"
+  },
+  "alias_assumptions": {
+    "BEVE": "BEVE is provisionally interpreted as BEV; the supplied raw label is retained and data-owner confirmation remains pending."
+  },
+  "planning_date": "2026-10-10",
+  "launch_window": null,
+  "objectives": [],
+  "uncovered_regions": [
+    "CN"
+  ],
+  "notes": [
+    "Candidate scope is F70 supplied feedback; vehicle generations are not pooled.",
+    "All supplied feedback countries are retained; the supplied sample is ICE-only.",
+    "Supplied equipment pages are German-market context and require derivative/date review.",
+    "Feedback IDs are records, not verified people; source identities and engineering inputs remain unknown."
+  ]
+}
