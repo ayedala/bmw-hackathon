@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Collected data: keep the folder structure, ignore everything in it.
+# NB: `data/*` does not work here - `*` does not cross `/`, so it only matches
+# the four directories and never the files inside them. `data/**` excludes the
+# subtree; the directory re-includes let git descend to reach the .gitkeep files.
+data/**
+!data/raw/
+!data/processed/
+!data/metadata/
+!data/cache/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/metadata/.gitkeep
+!data/cache/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.log
+.venv/
+venv/
