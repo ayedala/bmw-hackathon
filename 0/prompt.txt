@@ -1,0 +1,2 @@
+IpBlocked: Could not retrieve a transcript for the video https://www.youtube.com/watch?v=aoXRE2kob0o! This is most likely caused by: YouTube is blocking requests from your IP. This usually is due to one of the following reasons: - You have done too many requests and your IP has been blocked by YouTube - You1. requesting other videos through the same blocked connection.
+2. Reuse saved transcripts so rerunning analysis doesn’t download them again.
