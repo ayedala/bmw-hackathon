@@ -17,7 +17,7 @@ Update this board with actual outcomes and evidence. Preparation and the first l
 
 - [x] **T01** Bootstrap environment, package, schemas, minimal persistence and run manifest.
 - [x] **T02** Implement idempotent feedback adapter and annotation grouping; reconcile 10,128 IDs.
-- [ ] **T04 — next:** Freeze a hash/versioned 120-record grouped manifest: 60 G60 development, 30 blind G60 test, 15 blind F70, 15 blind G70. Team-label atomic needs, polarity, scope and exact spans without legacy labels; double-label 30 difficult records and adjudicate disagreements. Keep evaluation records out of prompt tuning.
+- [ ] **T04 — partial, next human review:** Frozen `runs/evaluation-v1/` contains 60 G60 development, 30 reserved G60 holdout, 15 F70 and 15 G70 transfer records with hashes/group membership and 30 provisional second-review assignments. Prior baseline exposure prevents claiming these are completely unseen. Human difficulty/near-duplicate screening, labels, double review and adjudication remain open. Keep held-out records out of future prompt tuning. See `docs/EVALUATION_LABELING.md`.
 - [ ] **T05 — partial:** The keyword baseline and bounded structured OpenAI provider validate exact spans. After T04, add per-record resumable live jobs, persisted failures/abstentions and model/latency/token metadata; compare both extractors on identical frozen examples. Human entailment review is outstanding.
 - [ ] **T03 — partial:** The feedback and customer-study adapters work. Add sales observations and 10–20 manually verified, market/derivative/date-scoped equipment facts with exact cell/page/table locators. Reconcile accepted plus quarantined source units.
 - [ ] **T06 — partial:** Customer-outcome candidates, support, praise/preservation, context and explicit assumptions work for feedback. Link the separately scoped study, sales, equipment and public-source facts to actual cards; obtain human review of material claims.
@@ -32,12 +32,37 @@ Sequence: T04 before prompt tuning or AI quality claims; then T05 and scoped T03
 
 ## P1 only after P0
 
+### 10 October 2026: YouTube standalone diagnostics (T10 remains open)
+
+- Acceptance: missing configuration/dependencies stop before discovery; all-failed runs return failure; a successfully extracted transcript with no relevant findings remains a valid empty result.
+- Found no local YouTube `.env`, no `YOUTUBE_API_KEY` in the inspected process, no saved run artifacts, and missing `youtube-transcript-api`. Installed declared dependencies with `python -m pip install -r youtube_research_agent/requirements.txt` (youtube-transcript-api 1.2.4).
+- `agent.py` now loads its adjacent `.env`, checks both keys and the transcript dependency, and returns failure if no video completes extraction. Added four synthetic outcome regression cases and README behavior notes.
+- `python youtube_research_agent/agent.py --max-videos 1 --probe-only --out .tmp/youtube-diagnostic` stopped at missing YouTube key and saved diagnostics. No live request was made. `python -m pytest -q tests -p no:cacheprovider --basetemp ../.tmp/youtube-tests-unrestricted-20261010` from `youtube_research_agent/` passed all 17 tests outside the sandbox; earlier runs hit temporary-directory and loopback socket restrictions. `git diff --check` passed before the final documentation note.
+- Live discovery, caption access, OpenAI saved-agent access/output compatibility and integration into decision-engine evidence remain unverified. Configure credentials locally, then run a bounded probe before a broad search. No model-quality claim or PM approval.
+- Follow-up: one authorized live search returned HTTP 429 `rateLimitExceeded`, with Google explicitly reporting exhaustion of the project's daily Search Queries limit. Fixed HTTP/network error redaction and actionable reason/message reporting; probe discovery now stops after its first metadata-matched result page. Added regressions for error redaction and early discovery stop. `python -m pytest -q tests -p no:cacheprovider --basetemp ../.tmp/youtube-quota-tests-20261010` passed all 19 tests outside the sandbox. Live end-to-end extraction remains blocked by Google quota; no successful live research result claimed.
+
 - [ ] Expand full-corpus model processing if measured cost/time allow.
 - [ ] Improve multilingual or unseen-schema robustness based on observed failures.
 - [ ] Add embeddings only after retrieval evaluation demonstrates a need.
 - [ ] Expand gold annotations and PM preference judgments.
 
 ## Per-task completion note
+
+### 10 October 2026: frozen evaluation foundation (T04 partial)
+
+- Acceptance: reproducible source/content-hashed 120-record split, no exact normalized-text group crossing splits, hidden legacy/model annotations, preserved human work on retry, private packets excluded from Git and audited export.
+- Added Pydantic evaluation contracts, `evaluation.py`, `freeze-evaluation` CLI and three regression tests covering deterministic ordering/grouping, cross-model duplicate exclusion, insufficient groups, packet isolation, hash/tamper detection, retry preservation and audit validity. Documentation: `docs/EVALUATION_LABELING.md`.
+- Actual commands: `$env:PYTHONPATH = 'src'; python -m bmw_pm.cli freeze-evaluation` created 120 records and 30 second-review assignments; repeat returned `unchanged`. Inspection confirmed counts 60/30/15/15, 120 distinct groups, all 120 unlabelled. `git check-ignore runs/evaluation-v1/manifest.json` confirmed exclusion.
+- `python -m pytest -q tests -p no:cacheprovider --basetemp .tmp/evaluation-acceptance-20261010` passed 24 tests outside the sandbox. Dataset reconciliation, all 2,518 exact citation checks, duplicate/recurrence, synthetic unseen-model/unknown-input, revision/replay and audit validation passed via tests plus `python -m bmw_pm.cli validate --expect-supplied-shape`. `git diff --check` passed before this task note.
+- No prompt changes, paid inference, gold labels, training or accuracy claim. Prior baseline/preparation exposure, exact-text-only grouping, provisional difficulty assignments and stratified non-representative sampling are explicit. Team human labels/adjudication and held-out comparison remain required; T04 is not complete.
+
+### 10 October 2026: decision-logic audit and review safeguards (T07/T08/T09 partial)
+
+- Acceptance: substantive PM edits must not reuse old scores; commitment-readiness gaps must be explicit; arithmetic validity must not be mistaken for reviewed evidence or market decision quality.
+- Added typed `DecisionReadiness`, deterministic readiness assessment, CLI `decision-readiness`, and workbench warnings. Title-only edits retain scores; outcome/conditions/assumption edits leave the new revision unscored and preserve old history. Added regression checks for semantic edits and incomplete readiness.
+- Actual current-database diagnostic: seven cards, zero ready for commitment, zero resolved and 21 unresolved pairwise comparisons. Missing impact/strategy/competitive ratings, unapproved policy, unreviewed entailment and unknown feasibility remain explicit. No existing PM decisions were created or changed.
+- `$env:PYTHONPATH = 'src'; python -m pytest -q tests -p no:cacheprovider --basetemp .tmp/decision-final-tests-20261010` passed 21 tests outside the sandbox, including duplicate invariance, synthetic unseen-model/unknown-input, stale revision, edit/replay, audit and hosted UI tests. `python -m bmw_pm.cli validate --expect-supplied-shape` passed reconciliation, all 2,518 exact citations, seven recurrence checks, engineering unknowns and audit-chain validation. `git diff --check` passed before this final note.
+- Findings and controlled learning design are in `docs/DECISION_LOGIC_REVIEW.md`. No prompt tuning, self-training or fine-tuning occurred; T04 human labels/PM judgments remain required before a measured improvement claim. Study/sales/web integration, sensitivity, rare-severe review queues, preservation-only cards and complete local read/export audit coverage remain open.
 
 Record task ID, changed files, command actually run, result, evidence artifact/run ID, unresolved limits and next step. A checkbox must not imply a model evaluation or PM approval that never occurred.
 

@@ -39,7 +39,10 @@ def safe_error(error):
 
 def yt_get(endpoint, params, api_key):
     for attempt in range(3):
-        response = requests.get(f'{API}/{endpoint}', params={**params,'key': api_key}, timeout=30)
+        try:
+            response = requests.get(f'{API}/{endpoint}', params={**params,'key': api_key}, timeout=30)
+        except requests.RequestException as error:
+            raise RuntimeError(safe_error(error).replace(api_key, '[REDACTED]')) from None
         daily_quota = response.status_code >= 400 and ('per day' in response.text.lower() or 'dailylimitexceeded' in response.text.lower())
         if not daily_quota and (response.status_code == 429 or response.status_code >= 500):
             if attempt < 2:
@@ -52,10 +55,13 @@ def yt_get(endpoint, params, api_key):
                 continue
         if response.status_code >= 400:
             try:
-                detail = response.json().get('error', {}).get('message', '')
+                error = response.json().get('error', {})
+                detail = error.get('message', '')
+                reasons = ', '.join(str(item.get('reason', 'unknown')) for item in error.get('errors', []))
             except (ValueError, AttributeError):
                 detail = ''
-            message = f'YouTube {endpoint}: HTTP {response.status_code}. {detail}'
+                reasons = 'unknown'
+            message = f'YouTube {endpoint}: HTTP {response.status_code}. {reasons}; {detail}'
             message = safe_error(message.replace(api_key, '[REDACTED]'))
             raise requests.HTTPError(message, response=response)
         return response.json()
@@ -109,12 +115,15 @@ def discover(api_key, args):
             if getattr(args, 'discovery_checkpoint', None):
                 args.discovery_checkpoint(args.discovery_videos)
             page_token = data.get('nextPageToken')
+            if getattr(args, 'probe_only', False) and select(list(all_videos.values()), args):
+                stop_search = True
+                break
             if not page_token:
                 break
         if stop_search:
             break
     ids = list(all_videos)
-    if stop_search:
+    if stop_search and args.discovery_warnings:
         return list(all_videos.values())
     for i in range(0,len(ids),50):
         for x in yt_get('videos', dict(part='snippet,contentDetails,status',id=','.join(ids[i:i+50])), api_key).get('items',[]):
@@ -298,7 +307,7 @@ def save(out, videos, evidence, args, errors):
 
 
 def main(argv=None):
-    load_dotenv()
+    load_dotenv(Path(__file__).resolve().parent / '.env')
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--vehicle',default='BMW 5 Series');p.add_argument('--generation',default='G60')
     p.add_argument('--market',default='Europe');p.add_argument('--region',default='DE',help='YouTube search region ISO 3166-1 alpha-2; not evidence of market')
@@ -315,6 +324,12 @@ def main(argv=None):
     out=Path(args.out);videos=[];evidence=[];errors=[]
     if not os.getenv('YOUTUBE_API_KEY'):
         save(out,videos,evidence,args,['YOUTUBE_API_KEY missing: live discovery not attempted']);print('Missing YOUTUBE_API_KEY. Empty diagnostic artifacts saved.',file=sys.stderr);return 2
+    if not os.getenv('OPENAI_API_KEY'):
+        save(out,videos,evidence,args,['OPENAI_API_KEY missing: extraction cannot run']);print('Missing OPENAI_API_KEY. Research not started.',file=sys.stderr);return 2
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+    except ImportError:
+        save(out,videos,evidence,args,['youtube-transcript-api missing: install requirements.txt']);print('Missing youtube-transcript-api. Install requirements.txt.',file=sys.stderr);return 2
     try:
         args.discovery_checkpoint = lambda found: save(out, found, evidence, args, errors)
         videos=discover(os.environ['YOUTUBE_API_KEY'],args)
@@ -367,7 +382,7 @@ def main(argv=None):
                     video['discarded_observations']=len(obs)-len(new)
                     evidence.extend(new)
                 except Exception as ex:
-                    video['extraction_status']='failed';video['extraction_error']=f'{type(ex).__name__}: {str(ex)[:500]}'
+                    video['extraction_status']='failed';video['extraction_error']=f'{type(ex).__name__}: {safe_error(ex)[:500]}'
             save(out,videos,evidence,args,errors)
             if args.probe_only:break
     except Exception as ex:
@@ -376,6 +391,13 @@ def main(argv=None):
         save(out,videos,evidence,args,errors);print(errors[-1],file=sys.stderr);return 1
     save(out,videos,evidence,args,errors)
     print(f'Saved {len(videos)} sources / {len(evidence)} validated observations to {out}')
-    return 4 if transcript_blocked else 0
+    if transcript_blocked:
+        return 4
+    if not any(v.get('extraction_status') == 'completed' for v in videos):
+        errors.append('No video completed transcript retrieval and extraction; research failed. See source statuses.')
+        save(out,videos,evidence,args,errors)
+        print(errors[-1],file=sys.stderr)
+        return 1
+    return 0
 
 if __name__=='__main__':sys.exit(main())

@@ -5,7 +5,8 @@ from uuid import uuid4
 
 import streamlit as st
 
-from bmw_pm.contracts import DecisionAction
+from bmw_pm.contracts import DecisionAction, PolicyVersion
+from bmw_pm.decision.readiness import assess_readiness
 from bmw_pm.hosting import hosted_mode
 from bmw_pm.decision import assess_ranking
 from bmw_pm.review import ReviewService
@@ -81,6 +82,14 @@ decision = selected["decision"]
 
 status = decision.action.value if decision else requirement.lifecycle_status
 st.subheader(requirement.customer_outcome)
+policy = PolicyVersion.model_validate_json(
+    Path("configs/exploratory_equal_v1.json").read_text(encoding="utf-8"))
+readiness = assess_readiness(requirement, score, policy)
+if not readiness.ready_for_commitment:
+    st.warning("Exploratory requirement: unresolved evidence or policy gaps need PM review.")
+    with st.expander("What prevents a defensible commitment?"):
+        for blocker in readiness.blockers:
+            st.write(blocker)
 st.write(
     {
         "status": status,

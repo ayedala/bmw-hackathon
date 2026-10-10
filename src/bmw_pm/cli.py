@@ -42,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--full", action="store_true", help="print complete candidate payloads")
 
     subparsers.add_parser("list", help="list latest requirement cards")
+    readiness = subparsers.add_parser("decision-readiness", help="check gaps before a PM commitment")
+    readiness.add_argument("--policy", default="configs/exploratory_equal_v1.json")
+    evaluation = subparsers.add_parser("freeze-evaluation", help="freeze private inputs for independent human labels")
+    evaluation.add_argument("--version", default="evaluation-v1")
 
     review = subparsers.add_parser("review", help="approve, reject, challenge, or defer")
     review.add_argument("requirement_id")
@@ -76,6 +80,24 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     database = Database(Path(args.db))
     database.initialize()
+    if args.command == "freeze-evaluation":
+        from .evaluation import freeze_evaluation
+        if not args.version or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in args.version):
+            raise ValueError("evaluation version must use letters, numbers, underscore or hyphen")
+        _json_print(freeze_evaluation(database, Path("runs") / args.version, seed=args.version))
+        return 0
+    if args.command == "decision-readiness":
+        from .decision import assess_ranking
+        from .decision.readiness import assess_readiness
+        policy = PolicyVersion.model_validate(load_json(args.policy))
+        summaries = database.requirement_summaries()
+        _json_print({
+            "cards": [assess_readiness(item["requirement"], item["score"], policy).model_dump()
+                      for item in summaries],
+            "ranking": assess_ranking([item["score"] for item in summaries if item["score"]]),
+            "learning_status": "No human-labelled evaluation or reviewed preference dataset is recorded by this check; no automatic training or policy promotion.",
+        })
+        return 0
     if args.command == "import-workspace":
         from .ingestion.legacy_database import import_workspace
         _json_print(import_workspace(database=database, source_root=args.source,

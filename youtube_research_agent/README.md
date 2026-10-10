@@ -17,6 +17,8 @@ Required: **YOUTUBE_API_KEY** (enable YouTube Data API v3 on a Google Cloud proj
 
 ## Local review interface
 
+Configuration is loaded from this folder's `.env` regardless of the launch directory; environment variables take precedence. Both API keys and the transcript package are checked before discovery. A run returns a failure exit code when no selected video completes retrieval and extraction. A completed extraction with zero relevant observations is valid and is not evidence that customer needs are absent.
+
 On Windows, run `.venv\Scripts\python.exe web.py` from this folder, then open http://127.0.0.1:8765.
 The interface loads saved runs under `output/`, filters findings, links to the
 original video at each quote's timestamp, and displays the retrieved transcript
@@ -44,6 +46,8 @@ python agent.py --vehicle 'BMW 5 Series' --generation G60 --market Europe --regi
 The program persists `sources.json`, `evidence.json`, `evidence.csv`, `summary.md` and retrieved transcript JSON files incrementally. A failed selected video is recorded; processing continues to the next selected candidate. `--probe-only` stops after the first *readable* transcript. `--max-videos 0` selects all metadata-matched videos discovered across search result pages; a positive value caps transcript processing.
 
 ## Verification and limitations
+
+Probe mode stops discovery after the first result page containing a metadata-matched candidate, reducing search quota use. It may still need multiple searches if earlier pages contain no match. Normal runs still paginate discovery; `--max-videos` limits processing, not search requests. HTTP failures report Google's reason/message without including API keys. If Google reports the daily Search Queries quota exhausted, wait for its reset or request an approved quota increase in Google Cloud; retrying immediately will not restore quota.
 
 ```bash
 pytest -q
