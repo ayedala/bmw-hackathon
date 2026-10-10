@@ -12,7 +12,8 @@ from .contracts import CriterionInput, PolicyVersion, RunManifest
 from .decision import assess_ranking, reach_input, score_requirement
 from .data_pipeline import CustomerStudyWorkbookAdapter, FeedbackWorkbookAdapter
 from .intelligence.provider import ExtractionProvider
-from .intelligence.requirements import build_requirement_candidates
+from .intelligence.fusion import FUSION_VERSION, import_youtube_run, read_fusion_inputs, fusion_manifest, fuse_candidates
+from .decision.requirements import build_requirement_candidates
 from .storage import Database
 from .utils import content_hash, utc_now
 
@@ -72,7 +73,7 @@ def ingest_supplied_data(
         "respondent_counts_available": False,
         "audit_result": event.result,
     }
-    from .ingestion.context import ingest_provided_context
+    from .data_pipeline.context import ingest_provided_context
     report["provided_context"] = ingest_provided_context(database, root)
     return report
 
@@ -106,7 +107,10 @@ def run_candidate_pipeline(
         powertrains=profile.get("powertrains"),
     )
     if youtube_runs is None:
-        youtube_runs = sorted(p.parent for p in Path("youtube_research_agent/output").glob("*/evidence.json"))
+        youtube_runs = sorted({p.parent for root in (
+            Path("src/bmw_pm/data_pipeline/youtube_research/output"),
+            Path("youtube_research_agent/output"),
+        ) for p in root.glob("*/evidence.json")})
     import_reports = [import_youtube_run(database, path) for path in youtube_runs]
     fusion_inputs = read_fusion_inputs(database)
     if not eligible and not any(f.generation == profile["model_family"] for f in fusion_inputs["youtube"]):

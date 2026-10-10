@@ -70,8 +70,10 @@ with st.sidebar.expander("Imported evidence context", expanded=False):
 with st.sidebar.expander("Combined engine", expanded=False):
     st.caption("Combine BMW feedback, studies, imported context and saved YouTube findings into versioned requirement cards.")
     if not hosted_mode():
-        outputs = Path("youtube_research_agent/output")
-        saved_runs = sorted(str(p.parent) for p in outputs.glob("*/evidence.json"))
+        saved_runs = sorted({str(p.parent) for root in (
+            Path("src/bmw_pm/data_pipeline/youtube_research/output"),
+            Path("youtube_research_agent/output"),
+        ) for p in root.glob("*/evidence.json")})
         selected_runs = st.multiselect("YouTube research runs", saved_runs, default=saved_runs)
         vehicle_profiles = {"BMW 5 Series (G60)": "configs/g60.json", "BMW 1 Series (F70)": "configs/f70.json", "BMW 7 Series (G70)": "configs/g70.json"}
         selected_profile = st.selectbox("Vehicle research scope", list(vehicle_profiles))
@@ -140,7 +142,7 @@ selected = next(
     item for item in summaries if item["requirement"].requirement_id == selected_id
 )
 requirement = selected["requirement"]
-from bmw_pm.ingestion.context import source_acquisition_urls
+from bmw_pm.data_pipeline.context import source_acquisition_urls
 original_source_urls = source_acquisition_urls(database)
 score = selected["score"]
 decision = selected["decision"]

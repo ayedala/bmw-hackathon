@@ -6,8 +6,8 @@ import pytest
 from openpyxl import Workbook
 
 from bmw_pm.contracts import PolicyVersion, SurveyObservation, SourceLocator
-from bmw_pm.ingestion import FeedbackWorkbookAdapter
-from bmw_pm.ingestion.feedback import EXPECTED_HEADERS
+from bmw_pm.data_pipeline import FeedbackWorkbookAdapter
+from bmw_pm.data_pipeline.feedback import EXPECTED_HEADERS
 from bmw_pm.intelligence import BaselineExtractionProvider
 from bmw_pm.intelligence.fusion import import_youtube_run, read_fusion_inputs, fuse_candidates, validate_cross_channel_links
 from bmw_pm.pipeline import load_json, run_candidate_pipeline
@@ -205,7 +205,7 @@ def sales_book(path, bad_formula=False):
 
 
 def test_supplied_sales_context_join_idempotency_and_provenance(tmp_path):
-    from bmw_pm.ingestion.context import ingest_provided_context, parse_sales
+    from bmw_pm.data_pipeline.context import ingest_provided_context, parse_sales
     from bmw_pm.validation import validate_database
     db = database(tmp_path)
     sales_book(tmp_path / "sales_volumes.xlsx")
@@ -227,8 +227,8 @@ def test_supplied_sales_context_join_idempotency_and_provenance(tmp_path):
 
 
 def test_sales_formulas_without_cached_values_are_not_evaluated(tmp_path):
-    from bmw_pm.ingestion.context import parse_sales
-    from bmw_pm.ingestion.feedback import IngestionError
+    from bmw_pm.data_pipeline.context import parse_sales
+    from bmw_pm.data_pipeline.feedback import IngestionError
     path = tmp_path / "sales.xlsx"
     sales_book(path, bad_formula=True)
     with pytest.raises(IngestionError, match="formulas are never evaluated"):
@@ -237,7 +237,7 @@ def test_sales_formulas_without_cached_values_are_not_evaluated(tmp_path):
 
 def test_equipment_blank_page_is_retained_as_unknown_not_no_feature(tmp_path):
     PdfWriter = pytest.importorskip("pypdf").PdfWriter
-    from bmw_pm.ingestion.context import parse_equipment
+    from bmw_pm.data_pipeline.context import parse_equipment
     path = tmp_path / "G60_OptionList.PDF"
     writer = PdfWriter()
     writer.add_blank_page(width=300, height=300)
