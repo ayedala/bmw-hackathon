@@ -98,8 +98,8 @@ def selected_planning(database, requirement, proposals, policy, decision):
     history = service.history(requirement.requirement_id)
     current = [p for p in history if p.requirement_revision == requirement.revision]
     latest = current[-1] if current else None
-    with st.expander("Successor proposal and editable priority", expanded=True):
-        actor = st.text_input("Planning reviewer ID", "local-demo-pm")
+    with st.expander("Successor proposal and editable priority", expanded=False):
+        actor = st.text_input("Planning reviewer ID", "", key="planning_reviewer")
         if proposal:
             st.subheader(proposal.title)
             if requirement.customer_outcome != proposal.outcome:
@@ -116,7 +116,7 @@ def selected_planning(database, requirement, proposals, policy, decision):
                 st.write(record.redacted_text)
                 st.caption(record.raw_text_ref + " · " + record.row_locators[0].source_hash)
             adopt_reason = st.text_input("Rationale for adopting the successor draft")
-            if st.button("Adopt draft as new requirement revision"):
+            if st.button("Adopt draft as new requirement revision", disabled=not actor.strip() or not adopt_reason.strip()):
                 try:
                     ReviewService(database).edit(requirement_id=requirement.requirement_id,
                         expected_revision=requirement.revision, changes={"title":proposal.title,
@@ -124,6 +124,7 @@ def selected_planning(database, requirement, proposals, policy, decision):
                         "assumptions":[*requirement.assumptions, "Authored successor hypothesis; broad-theme counts are not feature-specific prevalence.", proposal.future_assumption],
                         "acceptance_proposal":{"method":proposal.validation}, "target_status":"proposed_target"},
                         rationale=adopt_reason, actor_id=actor, request_id=f"adopt:{uuid4().hex}")
+                    st.session_state.pop("planning_export", None)
                     st.rerun()
                 except (ValueError, RevisionConflict, WorkflowError) as error:
                     st.error(str(error))
@@ -142,6 +143,7 @@ def selected_planning(database, requirement, proposals, policy, decision):
                 service.save(requirement_id=requirement.requirement_id, expected_revision=requirement.revision,
                     expected_sequence=latest.sequence if latest else 0, factors=inputs, policy=policy,
                     actor_id=actor, rationale=rationale, request_id=f"priority:{uuid4().hex}")
+                st.session_state.pop("planning_export", None)
                 st.rerun()
             except (ValueError, RevisionConflict, WorkflowError) as error:
                 st.error(str(error))

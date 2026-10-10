@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..contracts import Decision, DecisionAction, RequirementRevision
+from ..contracts import Decision, DecisionAction, EvidenceLinkJudgment, RequirementRevision
 from ..storage import Database
 from ..utils import stable_id, utc_now
 
@@ -17,6 +17,27 @@ class ReviewService:
     def __init__(self, database: Database) -> None:
         self.database = database
 
+    def judge_evidence_link(
+        self,
+        *,
+        requirement_id: str,
+        expected_revision: int,
+        signal_id: str,
+        verdict: str,
+        rationale: str,
+        actor_id: str,
+        request_id: str,
+    ) -> EvidenceLinkJudgment:
+        return self.database.record_evidence_judgment(
+            requirement_id=requirement_id,
+            expected_revision=expected_revision,
+            signal_id=signal_id,
+            verdict=verdict,
+            rationale=rationale,
+            actor_id=actor_id,
+            request_id=request_id,
+        )
+
     def decide(
         self,
         *,
@@ -27,6 +48,7 @@ class ReviewService:
         actor_id: str,
         request_id: str,
         role: str = "demo_pm",
+        uncertainty_acknowledged: bool = False,
     ) -> Decision:
         if action == DecisionAction.EDIT:
             raise ValueError("use edit() for requirement changes")
@@ -34,6 +56,8 @@ class ReviewService:
             raise ValueError("a reviewer ID is required")
         if not rationale.strip():
             raise ValueError("a review rationale is required")
+        if action == DecisionAction.APPROVE and not uncertainty_acknowledged:
+            raise ValueError("approval requires explicit acknowledgement of unresolved evidence and policy limits")
         decision, _ = self.database.atomic_review(
             requirement_id=requirement_id,
             expected_revision=expected_revision,
@@ -42,6 +66,7 @@ class ReviewService:
             actor_id=actor_id,
             role=role,
             request_id=request_id,
+            uncertainty_acknowledged=uncertainty_acknowledged,
         )
         return decision
 

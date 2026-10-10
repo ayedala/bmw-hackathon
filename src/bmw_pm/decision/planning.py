@@ -94,7 +94,11 @@ class PriorityService:
 
 
 def decision_brief(database, summaries, proposals, policy: PriorityPolicy) -> str:
-    lines = ["# BMW successor decision brief", "", "Planning scenario: US 5 Series, 2029–2031 (assumed horizon, not a BMW launch commitment).",
+    models = sorted({model for item in summaries for model in item["requirement"].scope.models})
+    countries = sorted({country for item in summaries for country in item["requirement"].scope.countries})
+    scope = f"Exported requirement scope: vehicles {', '.join(models) or 'unspecified'}; markets {', '.join(countries) or 'unspecified'}."
+    lines = ["# BMW successor decision brief", "", scope,
+        "Successor draft planning horizon: 2029–2031 (assumed horizon, not a BMW launch commitment).",
         "Drafts and PM judgements are separate from observed feedback. No measured model accuracy or representative prevalence is claimed.", "",
         "Priority = 25 × [impact × weight + evidence × weight + relevance × weight + (4 − uncertainty) × weight].",
         f"Comparison weights: {policy.model_dump()}. These are declared preferences, not an approved BMW policy.", ""]

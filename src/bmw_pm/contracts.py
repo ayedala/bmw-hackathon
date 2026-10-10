@@ -291,6 +291,21 @@ class YouTubeFinding(Contract):
     payload: dict[str, Any]
 
 
+class EvidenceLinkJudgment(Contract):
+    """A human assessment of one candidate signal-to-requirement link."""
+
+    schema_version: str = "1"
+    judgment_id: str
+    requirement_id: str
+    requirement_revision: int = Field(ge=1)
+    signal_id: str
+    verdict: Literal["supports", "does_not_support", "context_only"]
+    rationale: str = Field(min_length=1)
+    actor_id: str = Field(min_length=1)
+    recorded_at: datetime
+    request_id: str
+
+
 class RequirementRevision(Contract):
     schema_version: str = "1"
     requirement_id: str
@@ -458,6 +473,7 @@ class Decision(Contract):
     priority_assessment_id: str | None = None
     expected_revision: int
     request_id: str
+    uncertainty_acknowledged: bool = False
 
 
 class PriorityFactors(Contract):

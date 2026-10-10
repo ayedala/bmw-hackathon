@@ -43,7 +43,8 @@ def test_saved_priority_revision_binding_idempotency_and_conflict(tmp_path):
     with pytest.raises(RevisionConflict,match="another session"):
         save(service,req,request_id="concurrent")
     decision=ReviewService(db).decide(requirement_id=req.requirement_id, expected_revision=1,
-        action=DecisionAction.APPROVE,rationale="Synthetic conditional approval",actor_id="synthetic-pm",request_id="approve")
+        action=DecisionAction.APPROVE,rationale="Synthetic conditional approval",actor_id="synthetic-pm",
+        request_id="approve", uncertainty_acknowledged=True)
     assert decision.priority_assessment_id==first.assessment_id
     second=save(service,req,expected_sequence=1,request_id="priority-2",factors=first.factors.model_copy(update={"impact":1}))
     assert second.score<first.score
