@@ -32,22 +32,11 @@ A deliberate consequence: **supporting and contradicting evidence are both
 kept.** A page that praises ride comfort and a page that complains about wind
 noise both become records. Nothing here collapses them into a verdict.
 
-## 2. Isolation from the rest of the repository
+## 2. Module boundary
 
-Everything lives in this one folder. The pipeline:
+This optional collector lives under `src/bmw_pm/data_pipeline/web_research/` alongside the workbook and YouTube ingestion code. It keeps its own dependencies, local `.env`, cache and JSONL storage. Run scripts from this directory; imports remain local to the collector. The core package and Docker image exclude this standalone tool, so collector credentials and caches are not bundled.
 
-- writes only inside `external_research_pipeline/` (data, cache, logs);
-- has its **own** `requirements.txt`, `.env` and `.gitignore`;
-- imports nothing from `src/`, `ui/` or `tests/`, and is imported by nothing;
-- shares no configuration, database or dependency with the surrounding project.
-
-Deleting this folder removes the pipeline completely and leaves the repository
-exactly as it was. The repository's own `.gitignore` was not touched; the one in
-this folder covers this folder.
-
-Note that the repository root `AGENTS.md` keeps raw customer material out of
-Git. That rule applies here too: this pipeline collects **public web** evidence
-only, and `data/` is gitignored regardless.
+Collection does not establish an automatic integration with requirement cards. A canonical evidence importer and reviewed vehicle/market mappings are still needed. Raw customer material must remain out of Git; this collector acquires public web evidence only.
 
 ## 3. Architecture
 
@@ -131,7 +120,7 @@ Python 3.11 or newer.
 **macOS / Linux**
 
 ```bash
-cd external_research_pipeline
+cd src/bmw_pm/data_pipeline/web_research
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -140,7 +129,7 @@ pip install -r requirements.txt
 **Windows**
 
 ```bat
-cd external_research_pipeline
+cd src/bmw_pm/data_pipeline/web_research
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
@@ -170,11 +159,11 @@ Two notes on the dependency list:
 
 ## 5. Environment configuration
 
-**Create `.env` inside this folder** — `external_research_pipeline/.env`, right
+**Create `.env` inside this folder** — `src/bmw_pm/data_pipeline/web_research/.env`, right
 next to `main.py`. Not at the repository root.
 
 ```bash
-cd external_research_pipeline
+cd src/bmw_pm/data_pipeline/web_research
 cp .env.example .env
 ```
 
@@ -273,7 +262,7 @@ criticises the touchscreen yields both. That is correct behaviour, not a bug.
 
 ### Logging
 
-Logs go to `external_research_pipeline/pipeline.log` and to the console.
+Logs go to `src/bmw_pm/data_pipeline/web_research/pipeline.log` and to the console.
 Nothing is written outside this folder. The log records searches, URLs
 selected, filter rejections, cache hits, scrape attempts, extraction attempts,
 errors and the final counters.
@@ -876,7 +865,7 @@ equivalent internal loop where it is not.
 
 **`FIRECRAWL_API_KEY is not set`**
 `.env` is missing or in the wrong place. It belongs at
-`external_research_pipeline/.env`, beside `main.py` — not at the repo root.
+`src/bmw_pm/data_pipeline/web_research/.env`, beside `main.py` — not at the repo root.
 
 **`LLM_PROVIDER=openai but OPENAI_API_KEY is not set`**
 Either add that key or switch `LLM_PROVIDER` to the provider you do have.

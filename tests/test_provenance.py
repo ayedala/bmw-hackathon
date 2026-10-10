@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from bmw_pm.ingestion import FeedbackWorkbookAdapter, IngestionError
-from bmw_pm.ingestion.feedback import EXPECTED_HEADERS
+from bmw_pm.data_pipeline import FeedbackWorkbookAdapter, IngestionError
+from bmw_pm.data_pipeline.feedback import EXPECTED_HEADERS
 from bmw_pm.intelligence import BaselineExtractionProvider
 from bmw_pm.storage import Database
 from bmw_pm.utils import sha256_file

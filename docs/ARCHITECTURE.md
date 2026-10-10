@@ -1,6 +1,6 @@
 # MVP architecture
 
-Proposed for the user's 24-hour window. Use a modular Python application, SQLite, and a thin Streamlit interface. These are local prototype defaults, not a claim that the stack is optimal for production. Choose supported library versions at implementation time and record them in a lockfile.
+The prototype uses the following architecture; future capabilities are identified below. Use a modular Python application, SQLite, and a thin Streamlit interface. These are local prototype defaults, not a claim that the stack is optimal for production. Choose supported library versions at implementation time and record them in a lockfile.
 
 ## Flow
 
@@ -22,29 +22,11 @@ flowchart LR
   I --> K
 ```
 
-## Proposed layout
+## Implemented layout
 
-```text
-src/bmw_pm/
-  contracts.py       # Typed domain objects and schemas
-  ingestion/         # Feedback, study, sales, equipment, bounded web adapters
-  evidence/          # Lineage, span verification, deduplication, retrieval
-  intelligence/      # Provider adapter, extraction, grouping, drafting, critique
-  decision/          # Pure scoring, constraints, scenario comparison
-  review/            # State machine, revision control, decisions
-  storage/           # SQLite migrations and repositories
-  evaluation/        # Dataset splits, graders, metrics, reports
-  cli.py             # Reproducible pipeline entry points
-ui/                  # Streamlit pages calling application services
-configs/             # Versioned policies, model profiles, source allowlist
-prompts/             # Versioned stage templates, no secrets
-tests/               # Unit, integration, invariance and evaluation fixtures
-data/raw/            # Immutable local inputs, Git ignored
-data/processed/      # Derived local artifacts, Git ignored
-runs/                # Manifests, model responses, metrics, Git ignored
-```
+See the [repository map](../README.md#repository-map) and [module guide](../src/bmw_pm/README.md). Search, acquisition and cleaning live in `src/bmw_pm/data_pipeline/`; AI extraction lives in `intelligence/`; deterministic requirement consolidation and scoring live in `decision/`; PM actions live in `review/`; SQLite persistence and audit live in `storage/`. `pipeline.py` composes these responsibilities and the CLI/UI call the services.
 
-Only the guidance files and inspection scripts currently exist. Create the application modules during the sprint. Avoid empty abstraction layers or repositories that merely forward every call.
+The web and YouTube collectors are optional standalone tools with separate dependency environments. Their outputs are not yet imported into the core evidence/requirement graph. Do not interpret the flow above as a claim that automated web integration, critique or reviewed export is implemented. Dedicated evidence retrieval and evaluation packages should be added when there is tested functionality to put in them.
 
 ## Module responsibilities
 

@@ -1,3 +1,5 @@
+"""SQLite persistence, immutable revisions and an append-only chained application audit trail."""
+
 from __future__ import annotations
 
 import json

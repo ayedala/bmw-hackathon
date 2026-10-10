@@ -2,7 +2,15 @@
 
 Uses **YouTube Data API v3** to search without video URLs, selects generation-matching video metadata across channels, retrieves accessible caption segments with `youtube-transcript-api`, then passes actual retrieved transcript text to the existing saved agent using the **OpenAI Agents HTTP API**, called with `curl`. Unsupported quote/timestamp pairs are discarded. No comment scraping, DRM circumvention, or fabricated transcripts.
 
+This optional collector now lives under `src/bmw_pm/data_pipeline/youtube_research/`. It retains its own dependencies and local output. Its browser reviews collected evidence; PM requirement decisions belong to the primary Streamlit workbench. Its findings are not yet linked into core requirement cards.
+
 ## Setup
+
+Enter this directory from the repository root before running the following commands:
+
+```bash
+cd src/bmw_pm/data_pipeline/youtube_research
+```
 
 ```bash
 python -m venv .venv

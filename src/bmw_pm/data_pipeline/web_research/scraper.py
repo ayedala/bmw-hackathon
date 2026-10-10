@@ -112,7 +112,7 @@ class FirecrawlScraperClient:
             except ImportError as exc:  # pragma: no cover - environment dependent
                 raise ScrapeError(
                     "firecrawl-py is not installed. Run "
-                    "`pip install -r requirements.txt` inside external_research_pipeline/."
+                    "`pip install -r requirements.txt` inside src/bmw_pm/data_pipeline/web_research/."
                 ) from exc
             self._client = Firecrawl(api_key=self._api_key)
         return self._client

@@ -1,3 +1,5 @@
+"""Parse and clean workbook feedback while retaining raw hashes, row locators and transformations."""
+
 from __future__ import annotations
 
 import mimetypes

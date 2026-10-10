@@ -1,3 +1,5 @@
+"""Deterministically consolidate validated signals into source-linked customer requirements."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -49,6 +51,7 @@ def build_requirement_candidates(
             item for item in domain_signals
             if item.polarity in {Polarity.MIXED, Polarity.OBSERVATION}
         ]
+        # Count source records once even when extraction yields several signals per record.
         support_records = {item.feedback_record_id for item in support_signals}
         counter_records = {item.feedback_record_id for item in counter_signals} - support_records
         if not support_records:

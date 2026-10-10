@@ -1,3 +1,5 @@
+"""Parse aggregate customer studies separately from individual feedback recurrence counts."""
+
 from __future__ import annotations
 
 import mimetypes

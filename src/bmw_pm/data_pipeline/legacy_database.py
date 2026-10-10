@@ -1,3 +1,5 @@
+"""Import allowlisted foreign evidence as unreviewed context, preserving its original lineage."""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""PM decisions and immutable edits; persistence enforces concurrency and records audit events."""
+
 from __future__ import annotations
 
 from typing import Any

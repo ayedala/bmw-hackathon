@@ -1,6 +1,6 @@
 """Persistence: JSONL append, the local page cache and the visited-URL ledger.
 
-Every write lands under ``external_research_pipeline/data/``. JSON files are
+Every write lands under ``src/bmw_pm/data_pipeline/web_research/data/``. JSON files are
 replaced atomically (temp file + ``os.replace``) so an interrupted run cannot
 leave a half-written ledger behind.
 """
