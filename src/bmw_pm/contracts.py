@@ -421,3 +421,10 @@ class ImportedEvidenceRow(Contract):
     row_key: str
     payload: dict[str, Any]
     verification_status: Literal["imported_unreviewed"] = "imported_unreviewed"
+
+
+class HostedSettings(Contract):
+    database_path: str
+    app_password: str = Field(min_length=20, repr=False)
+    admin_password: str = Field(min_length=20, repr=False)
+    bootstrap_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

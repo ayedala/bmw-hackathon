@@ -6,6 +6,7 @@ from uuid import uuid4
 import streamlit as st
 
 from bmw_pm.contracts import DecisionAction
+from bmw_pm.hosting import hosted_mode
 from bmw_pm.decision import assess_ranking
 from bmw_pm.review import ReviewService
 from bmw_pm.storage import Database, RevisionConflict, WorkflowError
@@ -14,16 +15,31 @@ from bmw_pm.storage import Database, RevisionConflict, WorkflowError
 st.set_page_config(page_title="BMW Product Decision Lab", layout="wide")
 st.title("BMW Product Decision Lab")
 st.caption(
-    "Local evidence-to-requirement MVP. Reviewer identity/role selection is demonstrative, not authenticated."
+    "Evidence-to-requirement prototype. Reviewer IDs are declared and are not verified personal identities."
 )
 
-db_path = Path(st.sidebar.text_input("SQLite database", "data/processed/bmw_pm.db"))
+if hosted_mode():
+    from hosting_access import require_hosted_access
+    db_path = require_hosted_access()
+else:
+    db_path = Path(st.sidebar.text_input("SQLite database", "data/processed/bmw_pm.db"))
 database = Database(db_path)
 database.initialize()
+if hosted_mode():
+    with database.connect() as connection:
+        database._append_audit(connection, actor_id="shared-team-access", actor_type="pipeline",
+            action="read_hosted_workbench", object_type="database", object_id="canonical",
+            object_revision=None, before_hash=None, after_hash=None,
+            reason="Authenticated team session opened the decision/evidence review surface.",
+            request_id=f"hosted-view:{uuid4().hex}", result="success")
+        connection.commit()
 with st.expander("Imported evidence context", expanded=False):
     from bmw_pm.ingestion.legacy_database import evidence_context
-    context_table = st.selectbox("Evidence channel", ["sales_observation", "equipment_fact",
-        "external_claim", "web_research_seed", "benchmark_vehicle", "source_locator", "source_document"])
+    channels = ["sales_observation", "equipment_fact", "external_claim",
+        "web_research_seed", "benchmark_vehicle", "source_document"]
+    if not hosted_mode():
+        channels.append("source_locator")
+    context_table = st.selectbox("Evidence channel", channels)
     st.caption("Imported context retains original scope and locators. Claims await entailment review; context does not automatically change scores.")
     if st.button("Read evidence context"):
         st.json([row.model_dump(mode="json") for row in evidence_context(database, context_table)])
