@@ -31,9 +31,18 @@ uv run streamlit run ui/app.py
 
 The CLI and UI default to data/processed/bmw_pm.db. For an optional live model run, install with uv sync --extra ai, set OPENAI_API_KEY and BMW_PM_OPENAI_MODEL, review the redacted input, and use bmw-pm run --provider openai --limit 20. Keep raw customer material, keys, local databases, and model responses containing personal information out of Git.
 
-### Mock test a single statement
+### Guided AI decision website
 
-Run `uv run streamlit run ui/mocktest.py` for a separate local sandbox. Choose an example or enter synthetic feedback, then select the vehicle, market, and powertrain. The page uses the project's deterministic keyword extractor and requirement builder in memory; it does not open the database or call an LLM. It shows matched text and provisional update candidates, or abstains when no configured topic matches. Praise alone does not generate an update. One statement cannot establish customer prevalence or a cost/revenue ranking, so this page leaves those unscored. Use the main workbench for real evidence and review.
+The product-facing website has three journeys: **Assess my idea**, **Find the next improvement**, and **Compare several ideas**. It covers BMW 1 Series F70, 5 Series G60 and 7 Series G70, with a chosen market, powertrain and objective.
+
+```powershell
+uv sync --extra ai --extra data
+uv run streamlit run ui/agent.py
+```
+
+The earlier `uv run streamlit run ui/mocktest.py` command now opens this same website. The database must already be imported using the commands above. In **Agent settings**, choose the saved project research connection (when present), the server's `OPENAI_API_KEY`, or enter an API key. `BMW_PM_OPENAI_MODEL` overrides the default model; the chosen model must support Responses, web search and structured output. Keys remain server-side and are never included in reports.
+
+Each run reads scoped local evidence, builds a research plan, searches public sources, and produces a cited decision brief with alternatives, competitor findings, delivery risks and economic gaps. The page retains the result across interactions and lets you download its evidence/provenance as JSON. **Costs & revenue** also calculates conditional scenarios from explicit user assumptions using the existing financial engine. Missing costs or causal sales lift are not invented. API failures remain visible. See [the guided agent workflow](docs/ADVISOR.md) for scope, data handling and validation limits. The detailed PM review workbench remains at `ui/app.py`.
 
 The BMW Group Report 2025 is stored as five dated planning-context entries. Run `uv run bmw-pm sync-report-context` to load them into an existing database; new `bmw-pm run` calls sync them automatically. The UI's **BMW report context** tab shows the applicable entries, citations, considerations and limitations for each requirement. These entries do not change feedback counts or criterion scores. See [report context](docs/REPORT_CONTEXT.md).
 
