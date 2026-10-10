@@ -20,3 +20,6 @@ __pycache__/
 .worktrees/
 node_modules/
 .DS_Store
+# Legacy research runtime directories retained locally after the module move.
+/youtube_research_agent/
+/external_research_pipeline/
