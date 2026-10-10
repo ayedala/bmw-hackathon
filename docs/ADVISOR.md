@@ -1,6 +1,14 @@
 # Guided product research website
 
-Start with `uv run streamlit run ui/agent.py` (or the compatible `ui/mocktest.py` entry point). Install the `ai` extra and import the private dataset first. Use Agent settings to select the saved project research connection, server environment, or a manually entered API key. Saved connection discovery reads `.env` first, then `youtube_research_agent/.env`; it accepts only key/project fields and never executes dotenv contents. The selected connection is shown explicitly. The model is configurable through the UI or `BMW_PM_OPENAI_MODEL`.
+Start with `uv run streamlit run ui/agent.py` (or the compatible `ui/mocktest.py` entry point). Install the `ai` extra and import the private dataset first.
+
+## Configure the app
+
+Open **App settings**, enter the API key in the password field and optionally a project ID, then select **Save and test connection**. The check sends only a short public test message, with a 32-token output cap and no search or customer data. It verifies generation access and available quota at that moment; it does not verify the full research workflow or future quota. A response stopped at the probe's token limit counts as accepted access, as described in the official [OpenAI reasoning documentation](https://developers.openai.com/api/docs/guides/reasoning); incomplete research responses still fail.
+
+**Remember on this computer** saves a tested key in the unencrypted local `.env.advisor` file, excluded from Git. It does not modify existing `.env` files. Leave the box unchecked for browser-session use only; hosted mode supports session-only changes. A failed check or save leaves the previous connection active. The form clears entered credentials after submission and never prefills stored keys. The checked indicator applies only to the exact key, project and server-configured model used in that session.
+
+New sessions discover `.env.advisor`, then `.env`, then `youtube_research_agent/.env`, then the server's `OPENAI_API_KEY`. The settings screen also permits explicitly selecting the server connection. Dotenv discovery accepts only key/project fields and never executes file contents. Keys are never included in reports. The normal Decision Studio interface has no API-key or AI-model inputs; `BMW_PM_OPENAI_MODEL` is an app-owner server setting. Model identity remains in the downloaded run provenance for reproducibility, rather than in the decision interface. Return with **Back to Decision Studio**; submitted decision fields and completed reports survive this navigation.
 
 ## User journeys
 

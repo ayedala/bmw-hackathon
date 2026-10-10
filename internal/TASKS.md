@@ -1,5 +1,13 @@
 # Task board
 
+### 11 October 2026: in-app connection setup
+
+- Acceptance: configure and test the API key on a separate App settings screen; optionally remember it locally outside Git; use the saved connection for all three decision journeys. Keep AI model selection out of the decision interface while retaining run provenance. Failed setup must preserve the previous connection and failed research must stop the progress indicator.
+- Implemented: separate App settings page, masked and cleared credential inputs, bounded public-only generation check, optional atomic persistence in Git-ignored `.env.advisor`, session-only settings in hosted mode, and preservation of the previous connection on failure. AI model configuration is server-owned; identity is retained in downloadable provenance. Submitted decision fields survive setup navigation and failed research shows a stopped error status.
+- Verification: `.venv\Scripts\python.exe -m pytest -p no:cacheprovider --basetemp .tmp/pytest-connection-complete -ra` passed 78 tests, with one existing missing-`pypdf` skip. Covers all decision journeys, saved connection use, rejected replacement preservation, hidden model details, empty credential fields after submit, capped connection checks, citation validation, duplicate invariance, unknown/unseen inputs and revision/replay. Compilation, `git diff --check`, and Git-ignore checks for the credential file passed. Actual `bmw-pm validate --expect-supplied-shape` passed 10,128-ID reconciliation, 6,462 exact-span signals, 20 requirement checks, 210 cross-channel links and audit verification. The running app and health endpoint returned HTTP 200.
+- Limits: connection tests used synthetic responses; existing rejected/exhausted live credentials were not retried. Enter a usable key through App settings for a real run. The tiny generation check does not verify full web research or guarantee future quota. Local remembered credentials are unencrypted; hosted mode does not persist browser-entered credentials globally. No recommendation-quality claim is made.
+- Final focused rerun of the settings flow and hosted entry gate passed 2 tests after the local-only persistence guard was finalized (`--basetemp .tmp/pytest-connection-final`).
+
 Update this board with actual outcomes and evidence. Preparation and the first local decision-engine slice were completed on 10 October 2026. Partial tasks remain open until their acceptance evidence exists.
 
 ## Completed preparation

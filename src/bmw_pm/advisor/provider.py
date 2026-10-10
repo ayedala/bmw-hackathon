@@ -47,7 +47,7 @@ class AdvisorProvider:
             self.client = client
             return
         if not (api_key or os.getenv("OPENAI_API_KEY")):
-            raise ProviderError("Add an OpenAI API key in Settings or set OPENAI_API_KEY before starting the app.")
+            raise ProviderError("Add an OpenAI API key in App settings.")
         try:
             from openai import OpenAI
         except ImportError as exc:
@@ -55,30 +55,38 @@ class AdvisorProvider:
         self.client = OpenAI(api_key=api_key or os.environ["OPENAI_API_KEY"], project=project_id,
                              timeout=180, max_retries=1)
 
-    def _call(self, stage: str, *, structured: bool = False, **kwargs: Any) -> Any:
+    def _call(self, stage: str, *, structured: bool = False, accept_token_limit: bool = False, **kwargs: Any) -> Any:
         try:
             operation = self.client.responses.parse if structured else self.client.responses.create
             response = operation(model=self.model_id, store=False, **kwargs)
         except Exception as exc:
             kind = type(exc).__name__
             help_text = {
-                "AuthenticationError": "The API key was rejected. Check Settings.",
+                "AuthenticationError": "The API key was rejected. Replace it in App settings.",
                 "PermissionDeniedError": "This API project cannot access the requested model or tool.",
-                "NotFoundError": "The selected model is unavailable to this API project. Change it in Settings.",
+                "NotFoundError": "The app's configured AI model is unavailable to this API project. Ask the app owner to check the server configuration.",
                 "RateLimitError": "The API rate limit or quota was reached. Check your API project usage.",
                 "APITimeoutError": "The request timed out. Try again or use a smaller research scope.",
                 "APIConnectionError": "The API could not be reached. Check network access.",
                 "BadRequestError": "The selected model or endpoint rejected this request. Use a Responses model with web search and structured outputs.",
             }.get(kind, "The provider did not return a usable result. No simulated recommendation was substituted.")
             if kind == "RateLimitError" and getattr(exc, "code", None) in {"credit_balance_exhausted", "insufficient_quota"}:
-                help_text = "The API project has no available credits/quota. Add API credit or select another valid connection in Agent settings."
+                help_text = "The API project has no available credits/quota. Add API credit or save another valid connection in App settings."
             raise ProviderError(f"{stage}: {help_text}") from exc
-        if getattr(response, "status", None) != "completed":
+        token_limited = (getattr(response, "status", None) == "incomplete" and
+                         getattr(getattr(response, "incomplete_details", None), "reason", None) == "max_output_tokens")
+        if getattr(response, "status", None) != "completed" and not (accept_token_limit and token_limited):
             raise ProviderError(f"{stage}: the provider response was incomplete; retry with a narrower question.")
         usage = getattr(response, "usage", None)
         self.usage.append({"stage": stage, "response_id": response.id, "model": response.model,
                            **({k: getattr(usage, k, None) for k in ("input_tokens", "output_tokens", "total_tokens")} if usage else {})})
         return response
+
+    def check_connection(self) -> None:
+        # Confirm generation access/quota, not merely model-list access. A capped
+        # reasoning response also confirms access; real research must complete.
+        self._call("Connection check", input="Reply with OK.", max_output_tokens=32,
+                   timeout=20, accept_token_limit=True)
 
     def plan(self, request: AdvisorRequest, domains: list[str]) -> ResearchPlan:
         payload = {"journey": request.journey, "model": request.model_code, "market": request.market,

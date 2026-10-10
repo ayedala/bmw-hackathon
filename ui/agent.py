@@ -14,7 +14,8 @@ from bmw_pm.advisor.evidence import ROOT
 from bmw_pm.advisor.finance import ScenarioInput, scenario_results
 from bmw_pm.advisor.provider import AdvisorProvider, DEFAULT_MODEL, safe_url
 from bmw_pm.advisor.service import run_advisor
-from bmw_pm.advisor.settings import project_credentials
+from bmw_pm.advisor.settings import (ProjectCredentials, environment_credentials,
+                                     project_credentials, save_project_credentials)
 from bmw_pm.hosting import hosted_mode
 from bmw_pm.intelligence.provider import ProviderError
 
@@ -26,6 +27,64 @@ JOURNEYS = {"Assess my idea": "idea", "Find the next improvement": "improve", "C
 def _plain_markdown(value: str) -> str:
     # Do not render model/evidence instructions, links or tracking images as markup.
     return re.sub(r"([\\`*_{}\[\]()<>#+.!|~-])", r"\\\1", value)
+
+
+def _capture_connection_input() -> None:
+    st.session_state["advisor_pending_input"] = (
+        st.session_state.get("advisor_key_input", ""), st.session_state.get("advisor_project_input", ""))
+    st.session_state["advisor_key_input"] = ""
+    st.session_state["advisor_project_input"] = ""
+
+
+def render_settings(credentials: ProjectCredentials | None, model_id: str) -> None:
+    st.title("App settings")
+    st.write("Configure the research connection here, then return to Decision Studio.")
+    if st.button("Back to Decision Studio"):
+        st.session_state["advisor_page"] = "studio"
+        st.rerun()
+    sources = {"Enter a new API key": None}
+    if credentials:
+        sources["Use current connection"] = credentials
+    if server := environment_credentials():
+        sources["Use server connection"] = server
+    source = st.selectbox("API connection", list(sources))
+    with st.form("advisor_connection", clear_on_submit=True):
+        st.text_input("OpenAI API key", type="password", disabled=source != "Enter a new API key", key="advisor_key_input")
+        st.text_input("Project ID (optional)", disabled=source != "Enter a new API key", key="advisor_project_input",
+                                help="Leave blank to use the project associated with the key.")
+        remember = st.checkbox("Remember on this computer", value=not hosted_mode(), disabled=hosted_mode())
+        st.caption("Remembering stores the key in a local, unencrypted .env.advisor file excluded from Git. Otherwise it lasts only for this browser session.")
+        st.caption("The check sends a short test message with no customer data and may incur a small API charge. Full research also needs web search and structured outputs.")
+        save = st.form_submit_button("Save and test connection", type="primary", on_click=_capture_connection_input)
+    if save:
+        key, project = st.session_state.pop("advisor_pending_input", ("", ""))
+        try:
+            candidate = sources[source]
+            if candidate is None:
+                if not key.strip():
+                    raise ValueError("Enter an API key before saving.")
+                candidate = ProjectCredentials(key.strip(), project.strip() or None, "App settings")
+            with st.spinner("Checking the connection…"):
+                AdvisorProvider(model_id=model_id, api_key=candidate.api_key,
+                                project_id=candidate.project_id).check_connection()
+            if remember and not hosted_mode():
+                save_project_credentials(candidate)
+            st.session_state["advisor_credentials"] = candidate
+            st.session_state["advisor_connection_checked"] = candidate.fingerprint(model_id)
+            st.session_state.pop("advisor_error", None)
+            st.success("Connection checked and saved. Return to Decision Studio to start your research.")
+        except (ValueError, ProviderError) as exc:
+            st.error(str(exc))
+        except OSError:
+            st.error("The app could not save the key locally. Uncheck Remember on this computer and try again.")
+        except Exception:
+            st.error("The connection could not be checked. Your previous configuration is still active.")
+    elif previous_error := st.session_state.get("advisor_error"):
+        st.error(previous_error)
+    current = st.session_state.get("advisor_credentials") or credentials
+    if current:
+        checked = st.session_state.get("advisor_connection_checked") == current.fingerprint(model_id)
+        st.caption("Current connection: checked this session" if checked else "Current connection: configured, not checked this session")
 
 
 def render_claim(claim: Claim, evidence: dict[str, EvidenceItem]) -> None:
@@ -180,8 +239,10 @@ def render_result(result: AdvisorResult) -> None:
         for limitation in result.packet.limitations:
             st.markdown(f"- {_plain_markdown(limitation)}")
         with st.expander("Search activity and run provenance"):
-            st.json({"run_id": result.run_id, "model": result.model_id, "prompt_version": result.prompt_version,
-                     "input_hash": result.packet.fingerprint, "usage": result.usage, "search_actions": result.research.search_actions})
+            st.json({"run_id": result.run_id, "prompt_version": result.prompt_version,
+                     "input_hash": result.packet.fingerprint,
+                     "usage": [{k: v for k, v in call.items() if k != "model"} for call in result.usage],
+                     "search_actions": result.research.search_actions})
     st.download_button("Download decision brief (JSON)", result.model_dump_json(indent=2),
                        file_name=f"bmw-{request.model_code}-decision.json", mime="application/json")
 
@@ -201,36 +262,40 @@ def main() -> None:
     if hosted_mode():
         from hosting_access import require_hosted_access
         database = Path(require_hosted_access())
+    # Keep submitted decision fields when setup temporarily replaces their widgets.
+    for key in list(st.session_state):
+        if key.startswith(("decision_", "market_", "powertrain_")):
+            st.session_state[key] = st.session_state[key]
+    model_id = os.getenv("BMW_PM_OPENAI_MODEL") or DEFAULT_MODEL
+    credentials = st.session_state.get("advisor_credentials") or project_credentials() or environment_credentials()
     with st.sidebar:
         st.subheader("Decision Studio")
         st.caption("Evidence → market research → product decision")
-        with st.expander("Agent settings"):
-            saved_credentials = project_credentials()
-            connections = (["Saved project research connection"] if saved_credentials else []) + ["Server environment", "Enter an API key"]
-            connection = st.selectbox("API connection", connections)
-            model_id = st.text_input("LLM model", value=os.getenv("BMW_PM_OPENAI_MODEL") or DEFAULT_MODEL)
-            api_key = st.text_input("OpenAI API key", type="password") if connection == "Enter an API key" else None
-            project_id = None
-            if connection == "Saved project research connection" and saved_credentials:
-                api_key, project_id = saved_credentials.api_key, saved_credentials.project_id
-                st.caption(f"Using the connection stored in {saved_credentials.origin}. The key stays on the server.")
-            st.caption("Live research uses your API project and incurs provider usage charges.")
         st.caption("Dataset available" if database.is_file() else "Dataset missing — import the supplied files")
         if st.button("Start a new decision", use_container_width=True):
             st.session_state.pop("advisor_result", None)
             st.session_state.pop("advisor_error", None)
+            st.session_state["advisor_page"] = "studio"
+            st.session_state.pop("advisor_input_error", None)
             st.rerun()
+        if st.button("App settings", use_container_width=True):
+            st.session_state["advisor_page"] = "settings"
+            st.rerun()
+    if st.session_state.get("advisor_page") == "settings":
+        render_settings(credentials, model_id)
+        return
     st.caption("BMW PRODUCT INTELLIGENCE")
     st.title("What should we build next?")
     st.write("Explore an idea, uncover an opportunity, or compare your options—with customer evidence and current market research.")
     with st.chat_message("assistant"):
         st.write("First, tell me what you want to decide. I’ll check customer needs, research competitors, and build a reviewable recommendation.")
     journey_label = st.radio("What would you like to do?", list(JOURNEYS), horizontal=True,
+                            key="decision_journey",
                             captions=["Test feasibility, demand and economics", "Discover an opportunity for a model", "Evaluate 2–5 ideas on the same basis"])
     journey = JOURNEYS[journey_label]
     c1, c2, c3 = st.columns(3)
     with c1:
-        vehicle = st.selectbox("Which BMW?", list(VEHICLES), index=1)
+        vehicle = st.selectbox("Which BMW?", list(VEHICLES), index=1, key="decision_vehicle")
     code = VEHICLES[vehicle]
     with c2:
         market = st.selectbox("Target market", list(MARKETS), index=1 if code == "F70" else 0, key=f"market_{code}")
@@ -240,46 +305,54 @@ def main() -> None:
         ideas: list[str] = []
         question = ""
         if journey == "idea":
-            question = st.text_area("Describe your idea", placeholder="For example: add tactile shortcuts for climate control while retaining the touchscreen.", height=110, max_chars=4000)
+            question = st.text_area("Describe your idea", placeholder="For example: add tactile shortcuts for climate control while retaining the touchscreen.", height=110, max_chars=4000, key="decision_idea")
         elif journey == "compare":
-            raw = st.text_area("Enter one idea per line (2–5 ideas)", height=140,
+            raw = st.text_area("Enter one idea per line (2–5 ideas)", height=140, key="decision_comparison",
                                placeholder="Add tactile shortcuts for climate controls\nImprove voice control for common driving tasks\nAdd a configurable steering-wheel shortcut", max_chars=5000)
             ideas = [line.strip() for line in raw.splitlines() if line.strip()]
         else:
-            question = st.text_area("Any area to focus on? (optional)", placeholder="Leave this open to compare customer needs across the vehicle, or focus on software, comfort, charging…", max_chars=2000)
-        objective = st.selectbox("What matters most?", ["Balanced customer value and business potential", "Customer satisfaction and retention", "Revenue and profitable growth", "Competitive differentiation"])
-        constraints = st.text_input("Constraints or answers to the agent's follow-up questions (optional)", max_chars=800)
+            question = st.text_area("Any area to focus on? (optional)", placeholder="Leave this open to compare customer needs across the vehicle, or focus on software, comfort, charging…", max_chars=2000, key="decision_focus")
+        objective = st.selectbox("What matters most?", ["Balanced customer value and business potential", "Customer satisfaction and retention", "Revenue and profitable growth", "Competitive differentiation"], key="decision_objective")
+        constraints = st.text_input("Constraints or answers to the agent's follow-up questions (optional)", max_chars=800, key="decision_constraints")
         a, b, c = st.columns(3)
         with a:
-            model_year = st.number_input("Model year to research", min_value=2020, max_value=2040, value=2026)
+            model_year = st.number_input("Model year to research", min_value=2020, max_value=2040, value=2026, key="decision_year")
         with b:
-            years = st.number_input("Planning horizon (years)", min_value=1, max_value=10, value=3)
+            years = st.number_input("Planning horizon (years)", min_value=1, max_value=10, value=3, key="decision_horizon")
         with c:
-            currency = st.selectbox("Business-case currency", ["EUR", "USD", "GBP"])
-        budget = st.number_input("Development budget cap (optional)", min_value=0.0, value=None, step=100000.0)
+            currency = st.selectbox("Business-case currency", ["EUR", "USD", "GBP"], key="decision_currency")
+        budget = st.number_input("Development budget cap (optional)", min_value=0.0, value=None, step=100000.0, key="decision_budget")
         st.caption("Research sends selected redacted database excerpts to OpenAI for analysis. Web search receives your idea and public research questions. The report shows source selection and assumptions.")
         run = st.form_submit_button("Research and assess", type="primary", use_container_width=True)
     if run:
         st.session_state.pop("advisor_result", None)
         st.session_state.pop("advisor_error", None)
+        st.session_state.pop("advisor_input_error", None)
+        status = None
         try:
             request = AdvisorRequest(journey=journey, model_code=code, market=MARKETS[market], powertrain=powertrain,
                                      model_year=model_year, question=question, ideas=ideas,
                                      objective=objective + (f". Constraints: {constraints}" if constraints else ""),
                                      planning_years=years, currency=currency, budget=budget or None)
-            if connection == "Enter an API key" and not api_key:
-                raise ValueError("Enter an API key in Agent settings.")
-            provider = AdvisorProvider(model_id=model_id.strip(), api_key=api_key or None, project_id=project_id)
+            if not credentials:
+                raise ProviderError("The app needs a research connection. Open App settings to configure it.")
+            provider = AdvisorProvider(model_id=model_id, api_key=credentials.api_key, project_id=credentials.project_id)
             with st.status("Building your decision brief…", expanded=True) as status:
                 result = run_advisor(request, database, provider, progress=st.write)
                 st.session_state["advisor_result"] = result.model_dump(mode="json")
                 status.update(label="Decision brief ready", state="complete", expanded=False)
-        except (ValueError, ProviderError) as exc:
+        except ValueError as exc:
+            st.session_state["advisor_input_error"] = str(exc)
+        except ProviderError as exc:
             st.session_state["advisor_error"] = str(exc)
         except Exception:
             st.session_state["advisor_error"] = "The research run could not finish. Check the local database and provider configuration; no completed recommendation was generated."
-    if error := st.session_state.get("advisor_error"):
-        st.error(error)
+        if (st.session_state.get("advisor_error") or st.session_state.get("advisor_input_error")) and status is not None:
+            status.update(label="Research could not finish", state="error", expanded=False)
+    if input_error := st.session_state.get("advisor_input_error"):
+        st.error(input_error)
+    if st.session_state.get("advisor_error"):
+        st.error("Research could not finish. Open App settings to review the issue and check the connection.")
     if saved := st.session_state.get("advisor_result"):
         render_result(AdvisorResult.model_validate(saved))
     else:

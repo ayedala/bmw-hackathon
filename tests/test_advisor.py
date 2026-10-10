@@ -14,7 +14,7 @@ from bmw_pm.advisor.contracts import (AdvisorRequest, AdvisorResult, Claim, Deci
 from bmw_pm.advisor.evidence import build_packet, model_payload
 from bmw_pm.advisor.finance import scenario_results
 from bmw_pm.advisor.provider import AdvisorProvider, parse_research, validate_report
-from bmw_pm.advisor.settings import project_credentials
+from bmw_pm.advisor.settings import ProjectCredentials, project_credentials, save_project_credentials
 from bmw_pm.advisor.service import run_advisor
 from bmw_pm.contracts import FeedbackRecord, SourceLocator
 from bmw_pm.intelligence.provider import ProviderError
@@ -144,6 +144,46 @@ def test_settings_do_not_execute_or_print_secrets(tmp_path):
     assert secret not in repr(credentials)
 
 
+def test_saved_app_key_survives_restart_and_does_not_overwrite_other_settings(tmp_path):
+    existing = 'OPENAI_API_KEY=old-key\nUNRELATED=keep\n'
+    (tmp_path / ".env").write_text(existing, encoding="utf-8")
+    candidate = ProjectCredentials("new-synthetic-key", "proj-synthetic")
+    save_project_credentials(candidate, tmp_path)
+    loaded = project_credentials(tmp_path)
+    assert (loaded.api_key, loaded.project_id, loaded.origin) == (candidate.api_key, candidate.project_id, ".env.advisor")
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == existing
+    assert loaded.fingerprint("model-a") != loaded.fingerprint("model-b")
+    assert loaded.fingerprint("model-a") != ProjectCredentials("other-key").fingerprint("model-a")
+    with pytest.raises(ValueError):
+        save_project_credentials(ProjectCredentials("bad\nUNRELATED=replace"), tmp_path)
+    assert project_credentials(tmp_path).api_key == candidate.api_key
+    assert not list(tmp_path.glob(".env.advisor-*"))
+
+
+@pytest.mark.parametrize("status,reason,accepted", [
+    ("completed", None, True), ("incomplete", "max_output_tokens", True),
+    ("incomplete", "content_filter", False), ("failed", None, False),
+])
+def test_connection_probe_is_bounded_and_only_checks_generation_access(status, reason, accepted):
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(status=status, incomplete_details=SimpleNamespace(reason=reason),
+                               id="synthetic", model="fixture", usage=None)
+
+    provider = AdvisorProvider(model_id="fixture", client=SimpleNamespace(responses=SimpleNamespace(create=create)))
+    if accepted:
+        provider.check_connection()
+    else:
+        with pytest.raises(ProviderError):
+            provider.check_connection()
+    assert calls == [dict(model="fixture", store=False, input="Reply with OK.", max_output_tokens=32, timeout=20)]
+    if status != "completed":
+        with pytest.raises(ProviderError):
+            provider._call("Real research", input="A public question")
+
+
 def test_provider_errors_do_not_expose_credentials_or_silently_substitute():
     def fail(**kwargs):
         raise RuntimeError("synthetic-secret-value")
@@ -197,6 +237,8 @@ def test_economics_requires_inputs_and_computes_cash_flow():
 def test_ui_journeys_render_and_results_survive_reruns(monkeypatch, label, mode):
     import bmw_pm.advisor.provider as provider_module
     import bmw_pm.advisor.service as service_module
+    import bmw_pm.advisor.settings as settings_module
+    monkeypatch.setattr(settings_module, "project_credentials", lambda: ProjectCredentials("synthetic-key"))
     calls = []
 
     def fake_run(req, database, provider, progress):
@@ -222,6 +264,63 @@ def test_ui_journeys_render_and_results_survive_reruns(monkeypatch, label, mode)
     assert len(app.tabs) == 5
     app.run()
     assert not app.exception and len(app.tabs) == 5 and len(calls) == 1
+
+
+def test_ui_configures_connection_inside_app_without_exposing_ai_model(monkeypatch, tmp_path):
+    import bmw_pm.advisor.provider as provider_module
+    import bmw_pm.advisor.service as service_module
+    import bmw_pm.advisor.settings as settings_module
+    monkeypatch.setenv("BMW_PM_OPENAI_MODEL", "private-configured-model")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(settings_module, "project_credentials", lambda: project_credentials(tmp_path))
+    monkeypatch.setattr(settings_module, "save_project_credentials", lambda credentials: save_project_credentials(credentials, tmp_path))
+    calls = []
+    research = []
+
+    def provider(**kwargs):
+        calls.append(kwargs)
+        def check():
+            if kwargs["api_key"] == "rejected-synthetic-key":
+                raise ProviderError("Connection check: The API key was rejected.")
+        return SimpleNamespace(check_connection=check)
+
+    def fail_research(req, database, provider, progress):
+        research.append(req)
+        raise ProviderError("Synthetic quota error")
+
+    monkeypatch.setattr(provider_module, "AdvisorProvider", provider)
+    monkeypatch.setattr(service_module, "run_advisor", fail_research)
+    app = AppTest.from_file(Path("ui/mocktest.py").resolve(), default_timeout=45).run()
+    assert not app.exception
+    assert not any(item.label in {"OpenAI API key", "LLM model"} for item in app.text_input)
+    next(button for button in app.button if button.label == "App settings").click().run()
+    assert not app.radio
+    next(item for item in app.text_input if item.label == "OpenAI API key").set_value("new-synthetic-key")
+    next(item for item in app.text_input if item.label == "Project ID (optional)").set_value("proj-synthetic")
+    next(button for button in app.button if button.label == "Save and test connection").click().run()
+    assert not app.exception and app.success
+    assert project_credentials(tmp_path).api_key == "new-synthetic-key"
+    assert calls[-1] == dict(model_id="private-configured-model", api_key="new-synthetic-key", project_id="proj-synthetic")
+    assert not next(item for item in app.text_input if item.label == "OpenAI API key").value
+    next(item for item in app.text_input if item.label == "OpenAI API key").set_value("rejected-synthetic-key")
+    next(button for button in app.button if button.label == "Save and test connection").click().run()
+    assert app.error and not app.exception
+    assert project_credentials(tmp_path).api_key == "new-synthetic-key"
+    assert app.session_state["advisor_credentials"].api_key == "new-synthetic-key"
+    next(button for button in app.button if button.label == "Back to Decision Studio").click().run()
+    assert not any(item.label in {"OpenAI API key", "LLM model"} for item in app.text_input)
+    app.radio[0].set_value("Find the next improvement").run()
+    next(button for button in app.button if button.label == "Research and assess").click().run()
+    assert not app.exception and len(research) == 1
+    assert calls[-1]["api_key"] == "new-synthetic-key"
+    assert app.status[0].label == "Research could not finish" and app.status[0].state == "error"
+    next(button for button in app.button if button.label == "App settings").click().run()
+    assert any(item.value == "Synthetic quota error" for item in app.error)
+    next(button for button in app.button if button.label == "Back to Decision Studio").click().run()
+    assert app.radio[0].value == "Find the next improvement"
+    visible = [item.value for group in (app.caption, app.markdown, app.error, app.success) for item in group]
+    assert "private-configured-model" not in str(visible)
+    assert "new-synthetic-key" not in str(visible)
 
 
 def test_advisor_hosted_entry_requires_sign_in(monkeypatch, tmp_path):
