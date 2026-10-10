@@ -67,6 +67,39 @@ with st.sidebar.expander("Imported evidence context", expanded=False):
     if st.button("Read evidence context"):
         st.json([row.model_dump(mode="json") for row in evidence_context(database, context_table)])
 
+with st.sidebar.expander("Combined engine", expanded=False):
+    st.caption("Combine BMW feedback, studies, imported context and saved YouTube findings into versioned requirement cards.")
+    if not hosted_mode():
+        outputs = Path("youtube_research_agent/output")
+        saved_runs = sorted(str(p.parent) for p in outputs.glob("*/evidence.json"))
+        selected_runs = st.multiselect("YouTube research runs", saved_runs, default=saved_runs)
+        vehicle_profiles = {"BMW 5 Series (G60)": "configs/g60.json", "BMW 1 Series (F70)": "configs/f70.json", "BMW 7 Series (G70)": "configs/g70.json"}
+        selected_profile = st.selectbox("Vehicle research scope", list(vehicle_profiles))
+        if st.button("Build combined results"):
+            from bmw_pm.contracts import PolicyVersion
+            from bmw_pm.intelligence.provider import select_provider
+            from bmw_pm.pipeline import load_json, run_candidate_pipeline
+            try:
+                with st.spinner("Validating evidence and building combined results..."):
+                    combined = run_candidate_pipeline(database=database,
+                        profile=load_json(vehicle_profiles[selected_profile]),
+                        policy=PolicyVersion.model_validate(load_json("configs/exploratory_equal_v1.json")),
+                        provider=select_provider("baseline", baseline_config="configs/baseline_taxonomy_v1.json"),
+                        youtube_runs=selected_runs)
+                st.success(f"Built {len(combined['requirements'])} combined cards. BMW extraction: deterministic baseline; saved YouTube extraction retains its original provenance.")
+                if combined["unlinked_youtube_findings"]:
+                    st.warning(f"{len(combined['unlinked_youtube_findings'])} YouTube findings need manual theme/scope alignment.")
+                    st.json(combined["unlinked_youtube_findings"])
+                for report in combined["youtube_imports"]:
+                    if report["rejected"]:
+                        st.warning(f"{len(report['rejected'])} invalid findings excluded.")
+                    if not report["accepted"]:
+                        st.warning("This YouTube run contains no validated findings. Discovery alone cannot support requirements.")
+            except (ValueError, OSError) as error:
+                st.error(str(error))
+    else:
+        st.caption("Combined cards are prepared locally and included in the private database upload.")
+
 summaries = database.requirement_summaries()
 
 if not summaries:
@@ -89,7 +122,7 @@ st.caption(
 
 labels = {
     item["requirement"].requirement_id: (
-        f"{item['requirement'].title} · r{item['requirement'].revision}"
+        f"{'/'.join(item['requirement'].scope.models)} · {item['requirement'].title} · r{item['requirement'].revision}"
     )
     for item in summaries
 }
@@ -102,6 +135,8 @@ selected = next(
     item for item in summaries if item["requirement"].requirement_id == selected_id
 )
 requirement = selected["requirement"]
+from bmw_pm.ingestion.context import source_acquisition_urls
+original_source_urls = source_acquisition_urls(database)
 score = selected["score"]
 decision = selected["decision"]
 
@@ -186,13 +221,38 @@ with overview_tab:
         st.caption("No run manifest is linked to this revision's score snapshot.")
     st.caption("Reviewer IDs are declared, not verified personal identities.")
 with evidence_tab:
+    st.subheader("Combined evidence assessment")
+    for statement in requirement.evidence_synthesis:
+        st.write(statement)
+    if requirement.cross_channel_evidence:
+        channels = sorted({link.channel for link in requirement.cross_channel_evidence})
+        channel = st.selectbox("Cross-channel evidence", channels)
+        external = [link for link in requirement.cross_channel_evidence if link.channel == channel]
+        page = st.number_input("Cross-channel page", min_value=1,
+            max_value=max(1, (len(external) + 9) // 10), value=1)
+        for link in external[(page - 1) * 10:page * 10]:
+            with st.expander(f"{link.role.title()} · {link.claim[:110]}"):
+                st.write(link.claim)
+                if link.channel == "youtube":
+                    st.link_button("Open video at cited timestamp", link.locator["url"])
+                    st.write(link.locator["exact_quote"])
+                else:
+                    source_id = link.payload.get("source_id")
+                    if source_id in original_source_urls:
+                        st.link_button("Open original BMW source in Drive", original_source_urls[source_id])
+                    if link.channel == "bmw_equipment":
+                        st.write(link.locator.get("exact_quote", ""))
+                st.caption(f"Applicability: {link.applicability}; semantic entailment: {link.semantic_entailment}")
+                for limitation in link.limitations:
+                    st.caption(limitation)
+                st.json({"locator": link.locator, "original_evidence": link.payload})
     st.subheader("Trace the evidence")
     st.caption(
         "A checked text span locates source wording; semantic support is still unreviewed. "
         "Study observations are separate from feedback recurrence."
     )
     st.write(
-        f"G60 study observations in database: {database.survey_count(model='G60')}; "
+        f"Study observations for selected models in database: {sum(database.survey_count(model=m) for m in requirement.scope.models)}; "
         "respondent counts unavailable."
     )
     roles = {
@@ -224,6 +284,8 @@ with evidence_tab:
         selected_signal_id = st.selectbox("Inspect exact source span", page_ids)
         signal = database.signal(selected_signal_id)
         span = signal.evidence_spans[0]
+        if span.locator.source_id in original_source_urls:
+            st.link_button("Open original feedback workbook in Drive", original_source_urls[span.locator.source_id])
         st.markdown("**Redacted source wording**")
         st.write(span.text)
         st.caption(

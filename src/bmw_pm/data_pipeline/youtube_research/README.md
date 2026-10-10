@@ -51,6 +51,10 @@ python agent.py --vehicle 'BMW 5 Series' --generation G60 --market Europe --regi
 
 The program persists `sources.json`, `evidence.json`, `evidence.csv`, `summary.md` and retrieved transcript JSON files incrementally. A failed selected video is recorded; processing continues to the next selected candidate. `--probe-only` stops after the first *readable* transcript. `--max-videos 0` selects all metadata-matched videos discovered across search result pages; a positive value caps transcript processing.
 
+## Combine findings with BMW evidence
+
+From the repository root, run `bmw-pm run --provider baseline --full` after research finishes. The shared engine discovers saved YouTube output directories, revalidates quotes against saved transcripts, and combines findings with BMW feedback, studies and imported context. Alternatively select runs in the Streamlit workbench under **Combined engine**. `--youtube-run <output-directory>` selects an explicit saved run and can be repeated. Missing or blocked transcripts cannot contribute evidence. See the root README for provenance, scope and scoring limitations.
+
 ## Verification and limitations
 
 ```bash
