@@ -1,6 +1,6 @@
 # Core implementation rules
 
-Follow the root AGENTS.md. Read `docs/DATA_CONTRACTS.md` for all shared objects.
+Follow the internal/AGENTS.md. Read `docs/DATA_CONTRACTS.md` for all shared objects.
 
 - Keep parsing, extraction, scoring and approval as distinct responsibilities.
 - The scoring module must be pure and independently tested. Never call an LLM to obtain a final numeric rank.

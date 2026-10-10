@@ -18,10 +18,10 @@ Sources below were searched and opened on **10 October 2026**. The tagged Deep R
 | M02 | [NIST AI RMF](https://www.nist.gov/itl/ai-risk-management-framework) | Risk-management framework and generative-AI profile reference | General governance context; following this plan is not a certification |
 | M03 | [W3C PROV overview](https://www.w3.org/TR/prov-overview/) | Provenance concepts linking entities, activities and responsible agents | Inspiration for lineage; full RDF/PROV implementation is unnecessary for the MVP |
 | M04 | [RFC 9309](https://www.rfc-editor.org/info/rfc9309/) | Robots exclusion protocol | Technical crawler convention; robots permission alone does not establish content reuse rights |
-| O01 | [OpenAI: AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md) | Repository instructions and scoped agent guidance | Exact behavior depends on the coding tool; other tools should read the root contract explicitly |
+| O01 | [OpenAI: AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md) | Repository instructions and scoped agent guidance | Exact behavior depends on the coding tool; coding tools may differ in how they load repository guidance |
 | O02 | [OpenAI: Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs) | Schema-constrained model responses and edge cases | Structure alone does not guarantee factual correctness |
 | O03 | [OpenAI: evaluation best practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices) | Task-specific evaluations, representative cases and repeated measurement | Does not validate the proposed metrics or thresholds before actual testing |
-| O04 | [OpenAI: revisiting skills and prompts](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) | Avoid unnecessary instruction bloat | Basis for a concise root AGENTS.md and task-specific reference documents |
+| O04 | [OpenAI: revisiting skills and prompts](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra) | Avoid unnecessary instruction bloat | Basis for concise agent instructions and task-specific reference documents |
 
 ## Small evidence seed supplied with this pack
 

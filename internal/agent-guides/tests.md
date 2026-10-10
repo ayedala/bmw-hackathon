@@ -1,6 +1,6 @@
 # Test and evaluation instructions
 
-Follow root instructions and `docs/EVALUATION.md`.
+Follow internal/AGENTS.md and `docs/EVALUATION.md`.
 
 - Keep software correctness tests separate from model-quality evaluations.
 - Test meaningful domain invariants: deduplication, evidence validity, missingness, scope, score arithmetic, revision and replay.

@@ -4,9 +4,9 @@
 
 Build an evidence-grounded BMW product-management decision-support prototype within 24 hours. Optimize for defensible customer requirements, reproducible ranking, human control, and measured quality. The user values model accuracy and performance above frontend sophistication.
 
-Read `docs/REPORT.md`, `docs/DATA_AUDIT.md`, and `TASKS.md` before the first implementation task. Then load only the documents relevant to the stage being changed. The recommended stack is Python + SQLite + Streamlit; it is a proposal, not a user-mandated dependency. Keep the core independent of the UI and model provider.
+Read `docs/REPORT.md`, `docs/DATA_AUDIT.md`, and `internal/TASKS.md` before the first implementation task. Then load only the documents relevant to the stage being changed. The recommended stack is Python + SQLite + Streamlit; it is a proposal, not a user-mandated dependency. Keep the core independent of the UI and model provider.
 
-**Current next task:** freeze the grouped evaluation manifest and human labels before changing extraction prompts or claiming model quality. `TASKS.md` is the live status board. Keep structural/software validation separate from human-labelled extraction, requirement and ranking metrics; never promote a proposed target into a measured result.
+**Current next task:** freeze the grouped evaluation manifest and human labels before changing extraction prompts or claiming model quality. `internal/TASKS.md` is the live status board. Keep structural/software validation separate from human-labelled extraction, requirement and ranking metrics; never promote a proposed target into a measured result.
 
 ## Non-negotiable domain invariants
 
@@ -26,7 +26,7 @@ Read `docs/REPORT.md`, `docs/DATA_AUDIT.md`, and `TASKS.md` before the first imp
 
 ## Working method
 
-1. Identify the smallest end-to-end improvement and its acceptance criteria in `TASKS.md`.
+1. Identify the smallest end-to-end improvement and its acceptance criteria in `internal/TASKS.md`.
 2. Define or update typed contracts before crossing module boundaries. Prefer Pydantic models as the single schema source.
 3. Build the deterministic path with fixtures before calling an LLM. Do not embed demo-specific final rankings in production code.
 4. Run focused meaningful checks. For extraction, aggregation, ranking, transitions or audit changes, run the relevant acceptance tests from `docs/EVALUATION.md`.
@@ -44,4 +44,4 @@ The application audit covers in-app reads, exports, changes, decisions and jobs.
 
 Before presenting: run the dataset reconciliation, citation validation, duplicate-invariance, unseen-model, unknown-input, revision, and replay checks. Report measured performance with sample sizes and known gaps. If a check was not run, say so.
 
-For current provider APIs or Codex behavior, consult official documentation. `AGENTS.md` is the canonical instruction file; other agents should read it explicitly if their tool does not load it automatically.
+For current provider APIs or Codex behavior, consult official documentation. `internal/AGENTS.md` is the canonical instruction file; other agents should read it explicitly if their tool does not load it automatically.

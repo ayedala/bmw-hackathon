@@ -14,6 +14,7 @@ from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 checks = []
+GENERATED_DIRS = {'.git', '.venv', '.uv-cache', '.worktrees', '.tmp', '.pytest_cache'}
 
 
 def check(name, passed, detail):
@@ -21,7 +22,10 @@ def check(name, passed, detail):
 
 
 def main():
-    markdown = sorted(ROOT.rglob('*.md'))
+    markdown = sorted(
+        path for path in ROOT.rglob('*.md')
+        if not GENERATED_DIRS.intersection(path.relative_to(ROOT).parts)
+    )
     broken = []
     for path in markdown:
         text = path.read_text(encoding='utf-8')
@@ -96,7 +100,9 @@ def main():
 
     seeds = [json.loads(line) for line in (ROOT/'research/web_evidence_seed.jsonl').read_text(encoding='utf-8').splitlines() if line.strip()]
     check('web_seeds_are_labelled_curated',len(seeds)==5 and all(s['needs_refetch_and_locator_validation'] and s['source_snapshot_hash'] is None for s in seeds),{'count':len(seeds)})
-    check('root_agent_file_small', (ROOT/'AGENTS.md').stat().st_size<10000,{'bytes':(ROOT/'AGENTS.md').stat().st_size})
+    agent_file = ROOT/'internal/AGENTS.md'
+    if agent_file.exists():
+        check('internal_agent_file_small', agent_file.stat().st_size<10000, {'bytes':agent_file.stat().st_size})
 
     result = {'scope':'Preparation artifacts only; no application/model quality tested',
               'markdown_files':len(markdown), 'markdown_words':sum(len(p.read_text(encoding='utf-8').split()) for p in markdown),

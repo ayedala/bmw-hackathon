@@ -105,4 +105,4 @@ Defer fine-tuning, full-web crawling, elaborate multi-agent orchestration, detai
 | Treat future forecasts as facts | Brittle long-term decisions | Scenarios with assumptions, dates and review triggers |
 | Build the UI first | Attractive prototype with no defensible model | Vertical slice and evaluation before polish |
 
-Unanswered questions are recorded in [DECISIONS.md](../DECISIONS.md); none blocks deterministic ingestion or the first evaluation fixture.
+Unanswered questions about source identity, survey denominators, and engineering inputs do not block deterministic ingestion or the first evaluation fixture.
