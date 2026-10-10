@@ -121,6 +121,21 @@ CREATE TABLE IF NOT EXISTS run_manifests (
     payload_json TEXT NOT NULL,
     payload_hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS report_context (
+    context_id TEXT PRIMARY KEY,
+    report_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS public_evidence (
+    record_id TEXT PRIMARY KEY,
+    logical_key TEXT NOT NULL,
+    snapshot_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_public_evidence_latest
+  ON public_evidence(logical_key, snapshot_at DESC);
 CREATE TABLE IF NOT EXISTS audit_events (
     monotonic_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id TEXT NOT NULL UNIQUE,
@@ -164,6 +179,125 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+
+    def sync_report_context(self, document: dict[str, Any]) -> int:
+        """Store a curated report snapshot without modifying customer evidence or scores."""
+        from ..report_context import validate_report_context
+
+        items = validate_report_context(document)
+        self.initialize()
+        inserted = 0
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for item in items:
+                context_id = f"{document['report_id']}:{item['id']}"
+                payload = {
+                    **item,
+                    "context_id": context_id,
+                    "report_id": document["report_id"],
+                    "published_on": document["published_on"],
+                    "source_url": document["source_url"],
+                    "status": document["status"],
+                }
+                payload_hash = content_hash(payload)
+                was_inserted = self._insert_immutable(
+                    connection, "report_context", "context_id", context_id,
+                    {"context_id": context_id, "report_id": document["report_id"],
+                     "payload_json": canonical_json(payload), "payload_hash": payload_hash},
+                )
+                if was_inserted:
+                    inserted += 1
+                    self._append_audit(
+                        connection, actor_id="report-context-import", actor_type="pipeline",
+                        action="sync_report_context", object_type="report_context",
+                        object_id=context_id, object_revision=None, before_hash=None,
+                        after_hash=payload_hash, reason="Curated, dated planning context; no score input.",
+                        request_id=f"report-context:{context_id}:{payload_hash}", result="success",
+                    )
+            connection.commit()
+        return inserted
+
+    def report_context_for_requirement(self, requirement: RequirementRevision) -> list[dict[str, Any]]:
+        from ..report_context import applies_to_requirement
+
+        self.initialize()
+        domain = self._source_domain_for_requirement(requirement)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT payload_json FROM report_context ORDER BY context_id"
+            ).fetchall()
+        return [item for row in rows
+                if applies_to_requirement(item := json.loads(row["payload_json"]), requirement,
+                                          domain=domain)]
+
+    def _source_domain_for_requirement(self, requirement: RequirementRevision) -> str | None:
+        """Resolve the immutable linked-signal topic, independent of a PM display title."""
+        domains: set[str] = set()
+        ids = getattr(requirement, "supporting_signal_ids", [])
+        if not ids:
+            return None
+        with self.connect() as connection:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = connection.execute(
+                    f"SELECT DISTINCT need_domain FROM signals WHERE signal_id IN ({placeholders})",
+                    chunk,
+                ).fetchall()
+                domains.update(row["need_domain"] for row in rows)
+        if len(domains) > 1:
+            raise WorkflowError("requirement links inconsistent signal domains")
+        return next(iter(domains), None)
+
+    def persist_public_evidence(self, records: Sequence[dict[str, Any]]) -> int:
+        """Append sourced public snapshots; existing scores and customer records stay immutable."""
+        from ..public_datasets import validate_public_record
+
+        self.initialize()
+        inserted = 0
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for record in records:
+                validate_public_record(record)
+                payload_hash = content_hash(record)
+                was_inserted = self._insert_immutable(
+                    connection, "public_evidence", "record_id", record["record_id"],
+                    {"record_id": record["record_id"], "logical_key": record["logical_key"],
+                     "snapshot_at": record["snapshot_at"],
+                     "payload_json": canonical_json(record), "payload_hash": payload_hash},
+                )
+                if was_inserted:
+                    inserted += 1
+                    self._append_audit(
+                        connection, actor_id="public-dataset-import", actor_type="pipeline",
+                        action="sync_public_evidence", object_type="public_evidence",
+                        object_id=record["record_id"], object_revision=None,
+                        before_hash=None, after_hash=payload_hash,
+                        reason="Sourced external context; no automatic score adjustment.",
+                        request_id=f"public-evidence:{record['record_id']}:{payload_hash}",
+                        result="success",
+                    )
+            connection.commit()
+        return inserted
+
+    def public_evidence_for_requirement(
+        self, requirement: RequirementRevision, *, state: str | None = None
+    ) -> list[dict[str, Any]]:
+        from ..public_datasets import public_record_applies
+
+        self.initialize()
+        domain = self._source_domain_for_requirement(requirement)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT payload_json FROM public_evidence ORDER BY snapshot_at DESC, record_id DESC"
+            ).fetchall()
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            record = json.loads(row["payload_json"])
+            if record["logical_key"] not in latest:
+                latest[record["logical_key"]] = record
+        return [record for record in latest.values()
+                if public_record_applies(record, requirement, state=state, domain=domain)]
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:

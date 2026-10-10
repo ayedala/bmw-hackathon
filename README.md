@@ -31,6 +31,10 @@ uv run streamlit run ui/app.py
 
 The CLI and UI default to data/processed/bmw_pm.db. For an optional live model run, install with uv sync --extra ai, set OPENAI_API_KEY and BMW_PM_OPENAI_MODEL, review the redacted input, and use bmw-pm run --provider openai --limit 20. Keep raw customer material, keys, local databases, and model responses containing personal information out of Git.
 
+The BMW Group Report 2025 is stored as five dated planning-context entries. Run `uv run bmw-pm sync-report-context` to load them into an existing database; new `bmw-pm run` calls sync them automatically. The UI's **BMW report context** tab shows the applicable entries, citations, considerations and limitations for each requirement. These entries do not change feedback counts or criterion scores. See [report context](docs/REPORT_CONTEXT.md).
+
+Run `uv run bmw-pm sync-public-datasets` to add official NHTSA complaint/recall summaries, U.S. Department of Energy public charging counts, and a small set of sourced technology/competitor notes. These appear in the **Public datasets** card tab and remain review context rather than automatic score multipliers. See [public datasets](docs/PUBLIC_DATASETS.md) for scope, gaps and other proposed sources.
+
 The implementation is under src/bmw_pm/; configs/ holds vehicle and scoring policies, ui/ the review interface, tests/ the software checks, and prompts/ the stage specifications. The supplied source files are required to reproduce data-specific runs and are not part of this repository.
 
 ## Import another local evidence workspace

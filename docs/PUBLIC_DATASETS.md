@@ -1,0 +1,21 @@
+# Public datasets for requirement review
+
+The workbench stores external evidence separately from supplied customer feedback. Use `bmw-pm sync-public-datasets` to load the current bounded import. It collects [NHTSA complaints and recalls](https://www.nhtsa.gov/nhtsa-datasets-and-apis) for listed U.S. BMW 5 Series/i5 and 7 Series/i7 model-year names (2024–2026), [AFDC public charging counts](https://afdc.energy.gov/stations/states?count=public) for each U.S. state and the national total, plus four curated [J.D. Power](https://www.jdpower.com/business/press-releases/2025-us-tech-experience-index-txi-study) and [Audi USA](https://www.audiusa.com/en/models/a6/a6-sedan/2026/overview/) observations. The raw AFDC HTML snapshot is kept under ignored `data/raw/external/afdc/`; NHTSA response hashes are recorded, while VINs and complaint narratives are excluded from the database. Rows and source hashes are auditable and immutable. A later fetch creates a new dated snapshot.
+
+On each requirement card, the **Public datasets** tab shows only applicable sources. NHTSA model-year summaries show counts of unique ODI complaint IDs and recall campaign IDs; broad component categories are a *review cue*, never a defect rate, verified cause or automatic “Critical” multiplier. NHTSA's model-list and exact-recall endpoints occasionally disagree: HTTP 400 is stored as an endpoint gap, not a zero recall count. AFDC shows public station locations and charging ports; the current feedback has no U.S. state field, so state counts cannot be assigned to individual comments or used as charger density or route coverage. Study summaries are industry context, not BMW feature usage or feature-level ROI. Audi's 2026 A6 page says adaptive cruise assist is **available**; the exact trim and package comparison is pending.
+
+The imports do not alter signal recurrence, scoring criteria, feasibility or PM decisions. New score snapshots record applicable source IDs as assumptions for traceability. A reviewer can cite a specific NHTSA ODI number, inspect an exact competitor trim or add a matched geography before accepting any risk or market-gap judgement.
+
+## Other suggestions in the pasted list
+
+| Source | Current use | Next requirement for ingestion |
+|---|---|---|
+| [EAFO](https://alternative-fuels-observatory.ec.europa.eu/general-information/frequently-asked-questions) | European charging reference | Select country/time series and harmonize public charger definitions with AFDC before comparing. |
+| [Open Charge Map](https://www.openchargemap.org/develop/api) | Potential location-level charging data | Obtain API key, check its terms and deduplicate stations against official sources. |
+| Mercedes/Audi manufacturer configurators | Official packaging candidates | Freeze model year, country, trim, package, price and page snapshot; do not infer standard equipment from an overview page. |
+| Edmunds / Auto-Data / CarComplaints / RepairPal | Secondary comparison leads | Verify licensing, collection rights, origin and methodology; avoid duplicating NHTSA reports. |
+| Full J.D. Power TXI tables | Not present | Obtain licensed study data or use only specifically cited public release facts. |
+| [Google Play Developer reviews API](https://developers.google.com/android-publisher/api-ref/rest/v3/reviews/list) and [Apple App Store Connect reviews API](https://developer.apple.com/documentation/appstoreconnectapi/customer-reviews) | Not connected | Owner-authorized app access or an approved export is needed; public scraping libraries do not grant this access. |
+| YouTube, Reddit and Bimmerpost posts | Qualitative discovery only | Obtain permitted API/export access, preserve dates and original URLs, redact personal data, deduplicate reposts and keep a separate self-selected sample denominator. |
+
+For the current G60 U.S. scope, NHTSA adds a specific review signal and AFDC adds charging context. The data still lacks population exposure, field failure rates, verified feature usage, exact competitor package parity and feature economics. These must be reviewed before changing priority. The 2026 model year is still in progress at the 10 October 2026 snapshot date; low counts are not evidence of low lifetime risk.

@@ -49,6 +49,13 @@ Sequence: T04 before prompt tuning or AI quality claims; then T05 and scoped T03
 
 ## Per-task completion note
 
+### 10 October 2026: updated database and decision-context review
+
+- Inspected the updated SQLite database read-only: 67 public-evidence rows (11 NHTSA model-year summaries, 52 AFDC state/total charging counts, three industry summaries, one competitor packaging candidate) and five BMW Group report-context rows. Existing customer counts remain 10,128 IDs/13,771 annotations; seven score snapshots still have only the reach criterion populated, no new source references, and no PM decisions. The frozen evaluation still has 120 unlabelled records.
+- The new sources can guide review of software/assistance complaints, charging context, UX alternatives, competitor package parity and strategic questions. They do not supply a verified defect-rate denominator, state-matched feedback, feature-level cost or sales lift. Six of 11 NHTSA recall endpoints have an HTTP 400 status rather than a valid zero; four curated rows have URLs/dates but no local source snapshot hash. No score or business-case input was inferred from these rows.
+- Found that public/report context matching used the editable requirement title as its topic key. A title edit removed all domain-specific matches in a read-only seven-card probe. Changed database lookup to derive the domain from linked signal IDs, keeping historical requirement payloads/hashes unchanged. The real-card probe now preserves every match count across a simulated title change and leaves audit-event count unchanged.
+- `.venv\Scripts\python.exe -m pytest -q tests -p no:cacheprovider --basetemp .tmp/pytest-data-review-3` passed 37 tests. `python -m bmw_pm.cli validate --expect-supplied-shape` passed reconciliation, 2,518 exact span checks, recurrence, unknown engineering inputs and audit-chain verification. Future quantitative score changes still need reviewed claim relevance, market/derivative/year comparability, PM policy ratings and feature economics; no model training or measured accuracy resulted from this database import.
+
 ### 10 October 2026: reviewed-label and extraction evaluation workflow (T04/T05 partial)
 
 - Acceptance: validate immutable packet hashes and human exact spans; require independent review/adjudication for flagged records; resume per-record extractor jobs with failures and metadata; report no accuracy when labels are absent.

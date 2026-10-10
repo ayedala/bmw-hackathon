@@ -1,0 +1,53 @@
+{
+  "schema_version": "1",
+  "items": [
+    {
+      "id": "jdpower_2025_smart_climate",
+      "kind": "industry_study_summary",
+      "source_url": "https://www.jdpower.com/business/press-releases/2025-us-tech-experience-index-txi-study",
+      "source_date": "2025-08-21",
+      "market": "US",
+      "models": ["*"],
+      "domains": ["controls_usability", "software_reliability"],
+      "fact": "The public 2025 TXI release reports a 6.3 problems-per-100-vehicles improvement for smart climate controls, citing the 2025 Initial Quality Study.",
+      "consideration": "Check whether an automation or simpler interaction solves the customer task before prescribing more controls.",
+      "limitation": "Industry-level public release, not a BMW G60 measurement, feature usage rate, or complete licensed TXI dataset."
+    },
+    {
+      "id": "jdpower_2025_blind_spot_camera",
+      "kind": "industry_study_summary",
+      "source_url": "https://www.jdpower.com/business/press-releases/2025-us-tech-experience-index-txi-study",
+      "source_date": "2025-08-21",
+      "market": "US",
+      "models": ["*"],
+      "domains": ["driver_assistance"],
+      "fact": "The public 2025 TXI release says 93% of surveyed owners with a blind spot camera use it most of the time and 74% desire it in a future vehicle.",
+      "consideration": "Compare use and desirability for the exact proposed assistance function, then check BMW availability and scope.",
+      "limitation": "The released percentages refer to blind spot cameras, not adaptive cruise, BMW G60 owners, or every assistance feature."
+    },
+    {
+      "id": "jdpower_2024_gesture_controls",
+      "kind": "industry_study_summary",
+      "source_url": "https://www.jdpower.com/business/press-releases/2024-us-tech-experience-index-txi-study",
+      "source_date": "2024-08-22",
+      "market": "US",
+      "models": ["*"],
+      "domains": ["controls_usability"],
+      "fact": "The public 2024 TXI release reports weak owner reception for interior gesture controls.",
+      "consideration": "Validate a concrete customer task and observed usage before expanding gesture controls.",
+      "limitation": "Qualitative industry summary; it gives no BMW G60 usage rate or feature-level ROI."
+    },
+    {
+      "id": "audi_a6_2026_adaptive_cruise",
+      "kind": "competitor_packaging_candidate",
+      "source_url": "https://www.audiusa.com/en/models/a6/a6-sedan/2026/overview/",
+      "source_date": "2026-10-10",
+      "market": "US",
+      "models": ["G60"],
+      "domains": ["driver_assistance"],
+      "fact": "Audi USA describes adaptive cruise assist plus on the 2026 A6 Sedan as available.",
+      "consideration": "Verify exact trim, package, price and matched BMW specification before calling this a competitive gap.",
+      "limitation": "The overview does not establish standard equipment or a trim-level package comparison."
+    }
+  ]
+}
