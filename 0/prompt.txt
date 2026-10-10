@@ -1,1 +1,39 @@
-<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>
+rate the decision engine and explain it
+
+---
+
+explain the decision engine logic
+
+---
+
+let's check our progress and define what should be done now
+
+---
+
+edit tasks and the md files accordingly
+
+---
+
+PLEASE IMPLEMENT THIS PLAN:
+# Update the BMW project task board and coding guidance
+
+## Summary
+
+Make the Markdown files reflect the verified working prototype and the agreed next sprint. Separate completed software checks from unmeasured model accuracy, and make the next task unambiguous for a coding agent.
+
+## Document changes
+
+- **`TASKS.md`:** Keep T01–T02 complete. Mark T05–T09 as partial where code exists, with the remaining work under each task. Put frozen evaluation splits and human labels first, followed by resumable live AI evaluation, sales/equipment/web evidence, PM scoring review, transfer tests, and demo export. Record the verified 12 passing tests and database validation separately from quality metrics.
+- **`README.md` and `docs/IMPLEMENTATION_PLAN.md`:** Update the current status and command list. Identify commands that work now and those still to build, especially `evaluate` and `export`. Replace the elapsed-hour schedule as the operative instruction with the ordered remaining-work sequence.
+- **`docs/EVALUATION.md`:** State that deterministic checks have run but human-labelled model evaluation has not. Specify the frozen 120-record split, team annotation procedure, BMW PM card and pairwise review, AI-versus-keyword comparison, transfer slices, and the metrics report format.
+- **`docs/DECISION_ENGINE.md` and `docs/DEMO.md`:** Remove stale language saying the scoring core does not exist. State that only reach has a data-derived score today; impact and business criteria remain unknown. Define the demo around one sourced requirement, a PM challenge, a new revision, sensitivity, and historical replay.
+- **`DECISIONS.md`:** Record the newly confirmed working assumptions: more than 12 hours remain, no separate teammate code path is active, locally redacted excerpts may be used for bounded OpenAI API runs, and a BMW PM is available to review policy and requirement judgments. Keep actual PM weights and approvals pending until received.
+- **`AGENTS.md`:** Add a short current-priority instruction to freeze evaluation examples before prompt tuning and to report measured quality separately from structural validation. Leave the established evidence, privacy, and unknown-value rules intact.
+
+## Verification
+
+Check links and task IDs across the edited files, ensure every “complete” claim points to an actual command or artifact, and confirm no document claims measured accuracy, BMW approval, or imported web/equipment facts before those exist. Review the final diff for conflicting status statements.
+
+## Assumption
+
+These are documentation changes only. Coding the next sprint begins with the frozen evaluation manifest after the files are updated.
