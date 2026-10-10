@@ -1,5 +1,11 @@
 # Task board
 
+### 11 October 2026: direct local environment setup
+
+- Acceptance: provide a root `.env` with a blank API-key field, preserve existing credentials, confirm Git exclusion, and restart the running local studio to clear its stale imported settings module.
+- The settings module on disk already defines the missing function; the long-running process retained an older import. No decision-logic change is required.
+- Completed: created the local `.env` with blank `OPENAI_API_KEY` and optional project field; `git check-ignore .env` confirmed exclusion. Restarted only the verified port-8510 studio process. Fresh Streamlit AppTest rendered with zero exceptions and the server health endpoint returned `ok`. No API calls were made; the domain regression suite was not rerun for this file/process-only change (78 tests passed in the preceding software change).
+
 ### 11 October 2026: in-app connection setup
 
 - Acceptance: configure and test the API key on a separate App settings screen; optionally remember it locally outside Git; use the saved connection for all three decision journeys. Keep AI model selection out of the decision interface while retaining run provenance. Failed setup must preserve the previous connection and failed research must stop the progress indicator.
