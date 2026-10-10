@@ -12,7 +12,7 @@ from ..contracts import (
     ProviderDescriptor,
     Signal,
 )
-from ..utils import stable_id
+from ..utils import content_hash, stable_id
 from .provider import ExtractionProvider
 
 
@@ -41,6 +41,10 @@ class BaselineExtractionProvider(ExtractionProvider):
             prompt_version=str(self.config["version"]),
             label=str(self.config["label"]),
         )
+
+    @property
+    def configuration_hash(self) -> str:
+        return content_hash(self.config)
 
     @staticmethod
     def _sentence_span(text: str, start: int, end: int) -> tuple[int, int]:

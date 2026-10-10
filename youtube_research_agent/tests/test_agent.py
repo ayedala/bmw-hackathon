@@ -106,6 +106,40 @@ def test_queries():
     q=queries('BMW 5 Series','G60',['en','de'])
     assert len(q)==8 and any('Langzeittest' in t for _,t in q)
 
+
+def test_api_error_is_actionable_and_redacted(monkeypatch):
+    import agent
+    import requests
+    key = 'synthetic-private-key'
+    monkeypatch.setenv('YOUTUBE_API_KEY', key)
+    response = requests.Response()
+    response.status_code = 429
+    response._content = b'{"error":{"message":"Daily search quota exhausted","errors":[{"reason":"rateLimitExceeded"}]}}'
+    monkeypatch.setattr(agent.requests, 'get', lambda *a, **k: response)
+    with pytest.raises(requests.HTTPError) as error:
+        agent.yt_get('search', {}, key)
+    assert 'rateLimitExceeded' in str(error.value)
+    assert 'Daily search quota' in str(error.value)
+    assert key not in agent.safe_error(f'https://example.test/?key={key}')
+
+
+def test_probe_stops_discovery_after_matched_page(monkeypatch):
+    import agent
+    calls = []
+    def get(endpoint, params, key):
+        calls.append(endpoint)
+        if endpoint == 'videos':
+            return {'items': []}
+        return {'nextPageToken': 'more', 'items': [dict(id={'videoId': 'abc'},
+                snippet=dict(title='BMW 5 Series G60 review', channelTitle='ch',
+                             channelId='ch', publishedAt='2025', description=''))]}
+    monkeypatch.setattr(agent, 'yt_get', get)
+    args = SimpleNamespace(vehicle='BMW 5 Series', generation='G60', languages=['en','de'],
+                           region='DE', from_date='2023-01-01', to_date='2026-10-10',
+                           max_videos=1, probe_only=True)
+    assert len(agent.discover('synthetic', args)) == 1
+    assert calls == ['search', 'videos']
+
 def test_selection_dedup():
     v=[{'title':'BMW 5 Series G60 owner review','description':'','video_id':'x','channel_id':'a','published_at':'2025-01-01','discovery_queries':['x'],'selected':False}]
     a=SimpleNamespace(vehicle='BMW 5 Series',generation='G60',max_videos=10)
@@ -155,3 +189,31 @@ def test_invalid_dates(dates, tmp_path):
         main(dates + ['--out', str(tmp_path / 'output')])
     assert error.value.code == 2
     assert not (tmp_path / 'output').exists()
+
+
+@pytest.mark.parametrize('outcome,expected', [('no_candidates', 1), ('captions_failed', 1),
+                                             ('extraction_failed', 1), ('completed_empty', 0)])
+def test_run_reports_pipeline_outcome(outcome, expected, tmp_path, monkeypatch):
+    import agent
+    monkeypatch.setattr(agent, 'load_dotenv', lambda *a: None)
+    monkeypatch.setenv('YOUTUBE_API_KEY', 'synthetic')
+    monkeypatch.setenv('OPENAI_API_KEY', 'synthetic')
+    video = dict(video_id='abc', url='url', title='BMW 5 Series G60', channel='ch',
+                 channel_id='ch', published_at='2025', description='',
+                 discovery_queries=['test'], retrieval_status='not_attempted')
+    def discover(key, args):
+        args.discovery_warnings = []
+        return [] if outcome == 'no_candidates' else [video]
+    monkeypatch.setattr(agent, 'discover', discover)
+    def transcript(*args):
+        if outcome == 'captions_failed':
+            raise RuntimeError('Captions unavailable')
+        return [dict(start=0, duration=1, text='Neutral description')]
+    monkeypatch.setattr(agent, 'read_transcript', transcript)
+    def extract(*args):
+        if outcome == 'extraction_failed':
+            raise RuntimeError('Extraction unavailable')
+        return [], 'synthetic-session'
+    monkeypatch.setattr(agent, 'agent_extract', extract)
+    assert agent.main(['--out', str(tmp_path)]) == expected
+    assert (tmp_path / 'summary.md').exists()

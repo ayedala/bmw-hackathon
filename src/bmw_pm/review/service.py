@@ -84,7 +84,7 @@ class ReviewService:
         )
         assert new_revision is not None
         previous_score = self.database.latest_score(requirement_id, expected_revision)
-        if previous_score:
+        if previous_score and set(changes) <= {"title"}:
             copied_score = previous_score.model_copy(
                 update={
                     "score_snapshot_id": stable_id(
@@ -93,7 +93,7 @@ class ReviewService:
                     "requirement_revision": new_revision.revision,
                     "assumptions": [
                         *previous_score.assumptions,
-                        "This PM edit did not change scope or evidence links, so recorded criterion inputs were carried forward.",
+                        "Only the display title changed; recorded criterion inputs were carried forward.",
                     ],
                 }
             )
