@@ -1,5 +1,10 @@
 # Task board
 
+### 11 October 2026: feature cost estimator integration
+
+- The workbench and advisor cost tab now accept explicit program and per-vehicle line items, quantities, volume and fitment, then calculate low/base/high conditional cost subtotals. The advisor retrieves only market- and topic-matched dated cost references from the public catalog. Missing cost categories remain visible; the calculator does not infer BMW supplier prices, feasibility or revenue.
+- Verification for this integration: `python -m pytest tests/test_feature_cost.py tests/test_advisor.py -p no:cacheprovider --basetemp .tmp/pytest-feature-push -q` passed 31 focused tests. Credential and local database files remain Git-ignored. The catalog's source structure was tested; no company cost estimates or return on investment were established.
+
 ### 11 October 2026: shared Supabase database
 
 - Acceptance: select a shared PostgreSQL database from the ignored root `.env`; preserve the existing advisor, evidence scope, financial calculations, immutable revisions and chained audit. Keep local SQLite compatible. Provide a non-destructive, verified migration and separate collaborator credentials. Database credentials must never appear in browser responses or logs. Preserve concurrent feature-cost work.

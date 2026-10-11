@@ -138,3 +138,7 @@ with `PYTHONPATH=src` to create the blank private worksheet.
 ## Hosted app
 
 A protected Docker/Render deployment is prepared in `Dockerfile` and `render.yaml`. Read [hosting setup](docs/HOSTING.md) for account connection, generated access secrets, persistent storage, private database upload and actual verification limits. The database is uploaded separately through authenticated setup, not included in Git or the image. The app is not live until a hosting service is provisioned.
+
+## Feature implementation costs
+
+The decision workbench and the advisor's Costs & revenue tab now provide a source-labelled feature cost scenario form. It separates parts and assembly per equipped vehicle from engineering, tooling and validation paid once, then shows low/base/high totals at the entered volume. Public DOE/BLS figures are displayed as benchmarks, not BMW quotes. See [the estimator guide](docs/FEATURE_COST_ESTIMATOR.md).

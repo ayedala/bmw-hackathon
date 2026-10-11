@@ -1,0 +1,36 @@
+# Feature implementation cost scenarios
+
+The review workbench now has an **Estimate feature implementation cost** form on each requirement card. It calculates low, base and high cost scenarios from explicit quantities, cost ranges and program volume. The estimate separates one-time program cost from cost per equipped vehicle and allocates the program cost over the expected equipped volume. It saves no figure to the priority or PM decision. Download the JSON assumptions and result if a reviewer wants to retain a scenario.
+
+The public cost dataset now contains **19 sourced reference points across vehicle components, labor and external charging infrastructure**. Each record carries its unit, currency, price year when stated, market, category, source locator, intended use and limitation. It is checked as of 11 October 2026. The UI displays all records; the advisor receives only dated, market-matched in-vehicle or labor references with matching feature terms.
+
+| Reference | Figure | Applicable use |
+|---|---:|---|
+| [DOE 2025 clean-vehicle cost analysis](https://www.energy.gov/sites/default/files/2025-01/2025.01.13_DOE_Incremental_Cost_Report_for_publication.pdf), executive summary p. 1 | $128–133 per kWh, 2024 USD | Modeled US light-duty high-voltage battery pack cost; only a rough reference for defined battery-capacity changes. |
+| [DOE Electric Drive Technical Team Roadmap](https://www.energy.gov/sites/default/files/2024-06/EDTT_Roadmap_2023_JOG_Consensus_compliant.pdf), current technical status | $1,140 for a 100 kW motor and inverter, 2022 estimate | Historical scale reference; excludes integration, wiring, cooling and validation. |
+| [BLS May 2025 national wages](https://www.bls.gov/news.release/ocwage.t01.htm), Table 1 | $54.62/h mechanical engineer; $60.15/h electrical engineer; $71.20/h software developer | US wage reference for reviewing labor inputs; excludes benefits, overhead, supplier margin and BMW-specific location/rate. |
+| [NHTSA SAFE III draft technical support document](https://www.nhtsa.gov/sites/nhtsa.gov/files/2025-12/CAFE-SAFE-MY-2022-2031-NPRM-TSD-tag.pdf), Table 3-60 | $22.51/kW motor and inverter; $106.32/kW on-board charger; $114.74/kW DC/DC converter; $562.89 high-voltage cables for a fixed 360 V system, in 2024 USD | Draft regulatory **direct manufacturing** models adjusted from older teardown inputs. Use only with the stated component rating and architecture. The motor figure overlaps the DOE drive reference, so never sum them. |
+| [NHTSA 2022 CAFE final-rule preamble](https://www.nhtsa.gov/sites/nhtsa.gov/files/2022-04/Final-Rule-Preamble_CAFE-MY-2024-2026.pdf), Table III-33 | MY 2025 modeled EPS $117.28; improved accessories $146.67; low-drag brakes $78.35; secondary axle disconnect $80.34, all in **2018 USD** | Historical **absolute technology** model costs. They are displayed for scale checks, excluded from advisor retrieval, and must not be used as a current incremental feature price. |
+| [Destatis 2025 European labor-cost table](https://www.destatis.de/Europa/EN/Topic/Population-Labour-Social-Issues/Labour-market/EU_LabourCostPerHourWorked.html) | €49.50 per hour worked in German manufacturing | Sector-wide employer labor cost; not a BMW assembly or engineering rate. |
+| [BLS May 2025 national wages](https://www.bls.gov/news.release/ocwage.t01.htm), Table 1 | $27.13/h automotive service technician mean wage | US wage check for service scenarios; not the dealer billable labor rate or warranty reimbursement. |
+| [DOE Alternative Fuels Data Center infrastructure guide](https://afdc.energy.gov/fuels/electricity-infrastructure-development), Cost Considerations | Public Level 2: about $3,500 equipment and $2,500 installation per connector; DC fast: $38,000–90,000 equipment and $20,000–60,000 installation per connector | **External US charging sites only.** Equipment and installation are distinct. Source page does not state a common price year, and these four records are excluded from advisor vehicle-feature retrieval. |
+
+The guided advisor receives eligible references only when the request market and feature terms match. It receives source URL, price year, category, evidence type and limitation. German manufacturing labor is available for German assembly/production requests. These figures can inform its cost discussion; the deterministic estimator still requires explicit feature inputs.
+
+Two companion datasets document broader coverage without turning unrelated metrics into part prices. `configs/feature_cost_price_indices_v1.json` records three BLS US motor-vehicle-parts producer-price-index observations (Dec 2022=100; Dec 2024=102.1; Dec 2025=104.4), useful only to examine sector price drift. `configs/feature_cost_source_registry_v1.json` maps 12 public source families, their loaded status, and private inputs still missing. It includes USGS mineral summaries and NHTSA public reliability reporting as research sources, without pretending commodity prices or complaint counts directly price a BMW feature. Its NHTSA AEB entry includes the **$354.06 million annual US fleet** incremental compliance estimate (2020 USD), explicitly marked as aggregate context rather than a per-vehicle software or radar price.
+
+No generic public price can reliably specify the installed cost of a new BMW mechanical, electrical or software feature. A costed proposal needs a bill of materials or supplier quotation, engineering hours and a **loaded** labor rate, tooling, prototype and validation expense, homologation where relevant, assembly time, expected warranty/service cost, software/cloud/licence expense where relevant, model/market/powertrain scope and expected production/fitment volume. Battery work also needs pack, BMS, thermal and safety integration. Mark an unavailable input as missing instead of entering a plausible-looking zero. Public references retain their price year and must not be mixed with another year or currency without an explicit conversion.
+
+The calculator computes:
+
+```text
+equipped vehicles = planned vehicles × fitment rate
+upfront program cost = sum(program-line quantity × unit cost)
+cost per equipped vehicle = sum(vehicle-line quantity × unit cost)
+total program cost = upfront program cost + equipped vehicles × cost per equipped vehicle
+fully loaded cost per equipped vehicle = total program cost / equipped vehicles
+```
+
+Each line supplies low, base and high unit costs and a source/note. The same formula runs for each scenario. The system type lists likely missing categories; a number with gaps is labelled a **partial cost subtotal**. The result is a **conditional cost estimate**, not a supplier bid, BMW target cost, engineering feasibility decision or return on investment. Feed reviewed `upfront_program_cost` and `cost_per_equipped_vehicle` into the existing business-case worksheet when planning periods and other financial inputs are available. Do not add the amortized value to upfront cost again.
+
+CLI: with `PYTHONPATH=src`, run `python scripts/estimate_feature_cost.py path/to/private-feature-plan.json`. The input follows `FeatureCostPlan` in `src/bmw_pm/decision/feature_cost.py`. Keep private supplier quotes and downloaded scenarios outside Git.

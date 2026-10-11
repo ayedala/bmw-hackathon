@@ -20,6 +20,7 @@ from bmw_pm.hosting import hosted_mode
 from bmw_pm.intelligence.provider import ProviderError
 from bmw_pm.storage import Database
 from bmw_pm.storage.config import database_target, database_label
+from feature_cost_view import render_feature_cost_for_idea
 
 VEHICLES = {"BMW 1 Series · F70": "F70", "BMW 5 Series · G60": "G60", "BMW 7 Series · G70": "G70"}
 MARKETS = {"United States": "US", "United Kingdom": "GB", "Germany": "DE", "China": "CN", "Japan": "JP", "South Korea": "KR"}
@@ -127,6 +128,9 @@ def render_finance(result: AdvisorResult) -> None:
     options = {option.option_id: option.title for option in result.report.options}
     selected = st.selectbox("Idea to model", list(options), format_func=options.get, key=f"finance_option_{result.run_id}")
     prefix = f"finance_{result.run_id}_{selected}"
+    selected_option = next(option for option in result.report.options if option.option_id == selected)
+    render_feature_cost_for_idea(selected_option.title, request.model_code, request.market,
+                                 request.powertrain, ROOT, prefix)
     numeric = [field for field in ScenarioInput.model_fields if field != "scenario"]
     frame = pd.DataFrame([{ "scenario": name, **{field: None for field in numeric}}
                           for name in ("Downside", "Base", "Upside")])

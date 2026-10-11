@@ -109,6 +109,7 @@ def build_packet(request: AdvisorRequest, database: str | Path, *, search_terms:
 
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         _add_context(connection, tables, request, terms, evidence)
+        _add_feature_cost_references(request, terms, evidence)
 
     limitations = [
         "The LLM receives selected excerpts and aggregate counts, not every feedback record.",
@@ -244,6 +245,27 @@ def _add_context(connection: sqlite3.Connection, tables: set[str], request: Advi
                 limitations=["Stored transcript content is source evidence, not a verified fact or engineering approval.",
                              "Video excerpts and saved findings from the same video are not independent customers; scope and claim meaning require review."],
             ))
+
+
+def _add_feature_cost_references(request: AdvisorRequest, terms: set[str], evidence: list[EvidenceItem]) -> None:
+    """Select only relevant, dated cost benchmarks for the advisor research packet."""
+    catalog = json.loads((ROOT / "configs/feature_cost_references_v1.json").read_text(encoding="utf-8"))
+    for item in catalog["references"]:
+        if not item.get("advisor_eligible", True) or request.market not in item.get("markets", ["US"]):
+            continue
+        if not (terms & set(item["keywords"])):
+            continue
+        value = (f"{item['value_low']}-{item['value_high']}" if "value_low" in item
+                 else str(item["value"]))
+        evidence.append(EvidenceItem(
+            evidence_id=f"cost-reference:{item['id']}", channel="cost_benchmark",
+            title=item["label"], text=f"{value} {item['unit']} in {item['price_year']} prices. {item['use']}",
+            selection_reason="Relevant query terms match this scoped public cost reference; it is not an automatic feature estimate.",
+            scope={"market": request.market, "price_year": item["price_year"],
+                   "category": item["category"], "evidence_type": item["evidence_type"]},
+            locator={"url": item["source_url"], "section": item["locator"]},
+            limitations=[item["limit"], "A feature estimate needs a scoped bill of materials, engineering, tooling, validation and volume inputs."],
+        ))
 
 
 def model_payload(packet: EvidencePacket) -> dict:

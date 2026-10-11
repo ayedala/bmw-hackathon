@@ -19,6 +19,7 @@ from workbench_theme import apply_theme, brand, page_intro, badge, workflow, sou
 from workbench_views import render_evidence, render_priority, render_review, render_history_records
 from planning_view import audit
 from youtube_research_view import render as render_youtube_research
+from feature_cost_view import render_feature_cost
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIGS = ROOT / "configs"
@@ -243,6 +244,7 @@ if destination == "Decision desk":
             else:
                 st.info("This revision has no priority rating. Save an assessment below.")
             priority_sequence = render_priority(database, requirement, score, decision, ranking_assessment, successor_proposals, priority_policy)
+            render_feature_cost(requirement, ROOT)
             st.divider()
             render_review(database, requirement, run, mode_label, reviewed_link_count, linked_signal_ids,
                 expected_priority_sequence=priority_sequence, needs_adoption=bool(selected["draft"] and not requirement.successor_draft_id))
