@@ -2,6 +2,8 @@
 
 **Status: deterministic checks run; human-labelled evaluation not run.** The 12 software tests pass. The local `validate --expect-supplied-shape` run reconciles 10,128 feedback IDs/13,771 annotation rows and 185 study means/206 US distributions, checks 2,518 exact signal spans, seven unique-ID recurrence counts and the audit chain. These checks establish structural correctness only. No extraction accuracy, citation entailment rate, requirement-quality score, PM preference agreement, transfer quality, runtime distribution or cost result has been measured.
 
+The private `evaluation-v1` split is frozen and verified against the shared database. The local website's `/evaluation` page supports first review, blind second review, adjudication and a coverage dashboard. Baseline predictions exist for all four splits. All 120 human labels remain unfilled, so the dashboard correctly shows quality as unmeasured.
+
 ## Questions the evaluation must answer
 
 Can the system extract the correct need and context? Do citations support claims? Are requirements useful and realistic? Are rankings explainable and responsive to evidence? Can the same logic handle another vehicle or schema? Does uncertainty produce appropriate abstention? Can a PM change and replay a decision? What does a run cost and how long does it take?

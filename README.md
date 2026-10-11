@@ -46,6 +46,8 @@ The collectors remain independently runnable. The workbench now includes a **You
 
 The [strategy report](docs/REPORT.md), [data audit](docs/DATA_AUDIT.md), [decision contract](docs/DECISION_ENGINE.md), and [architecture](docs/ARCHITECTURE.md) explain the evidence limits and design choices.
 
+The local website's **Evaluation** page lets independent reviewers label the frozen 120-case set for the 1, 5 and 7 Series, resolve double reviews and inspect baseline coverage. Quality metrics remain hidden until the relevant split has completed gold labels. See [evaluation labeling](docs/EVALUATION_LABELING.md). Customer packets and labels remain under ignored `runs/`.
+
 ## Current prototype
 
 The supplied Figma-style frontend is now the primary workbench: **Decision desk** for the searchable proposal queue, **Data & AI findings** for source inspection and evidence-link assessment, **YouTube research** for transcript-backed discovery and evidence fusion, and **Audit trail** for traceable human actions. Use the header Vehicle/Market selectors. The local default is the original combined BMW database; set `BMW_PM_DATABASE` to review a separate demonstration copy. Every screen calls the real evidence and review services.

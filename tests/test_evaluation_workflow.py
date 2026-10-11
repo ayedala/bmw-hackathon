@@ -5,6 +5,7 @@ import pytest
 from bmw_pm.contracts import FeedbackRecord, SourceLocator
 from bmw_pm.evaluation import build_manifest, freeze_evaluation
 from bmw_pm.evaluation_workflow import load_frozen, load_labels, run_extraction, score_extraction
+from bmw_pm.evaluation_review import ReviewInputError, review_snapshot, save_review
 from bmw_pm.intelligence.baseline import BaselineExtractionProvider
 from bmw_pm.storage import Database
 
@@ -112,3 +113,55 @@ def test_resumable_baseline_and_scoring_without_gold(frozen, tmp_path):
     assert result["metrics"]["true_positive"] == 1
     assert result["gold_ready_in_split"] == result["scored_records"] == 1
     assert result["citation_entailment"] == "unmeasured_human_review_required"
+
+
+def test_review_screen_preserves_blind_second_review_and_requires_adjudication(frozen, tmp_path, monkeypatch):
+    import bmw_pm.evaluation_review as review
+    monkeypatch.setattr(review, "_root", lambda _: frozen)
+    initial = review_snapshot(tmp_path)
+    case = initial["case"]
+    assert initial["counts"]["gold_ready"] == 0
+    quote = "touchscreen is a problem"
+    signal = {"need_domain": "controls_usability", "atomic_claim": "The touchscreen is a problem",
+              "customer_outcome": "Controls are usable", "polarity": "complaint", "evidence_text": quote}
+    primary = save_review(tmp_path, {"role": "primary", "record_id": case["record_id"],
+        "file_version": initial["file_version"], "reviewer_id": "reviewer-a", "signals": [signal]})
+    assert primary["counts"]["provisional"] == 1
+    assert primary["case"]["review"]["reviewed_at"]
+    with pytest.raises(ReviewInputError, match="Reload"):
+        save_review(tmp_path, {"role": "primary", "record_id": case["record_id"],
+            "file_version": initial["file_version"], "reviewer_id": "reviewer-a", "signals": [signal]})
+    blind = review_snapshot(tmp_path, record_id=case["record_id"], role="secondary")
+    assert "primary" not in blind["case"] and blind["case"]["review"] is None
+    with pytest.raises(ReviewInputError, match="different"):
+        save_review(tmp_path, {"role": "secondary", "record_id": case["record_id"],
+            "file_version": blind["file_version"], "reviewer_id": "reviewer-a", "signals": [signal]})
+    second = save_review(tmp_path, {"role": "secondary", "record_id": case["record_id"],
+        "file_version": blind["file_version"], "reviewer_id": "reviewer-b", "signals": [signal]})
+    assert second["counts"]["gold_ready"] == 0
+    adjudicator = review_snapshot(tmp_path, record_id=case["record_id"], role="adjudicator")
+    resolved = save_review(tmp_path, {"role": "adjudicator", "record_id": case["record_id"],
+        "file_version": adjudicator["file_version"], "reviewer_id": "reviewer-c",
+        "reason": "Both reviewers identified the same supported need.", "signals": [signal]})
+    assert resolved["counts"]["gold_ready"] == 1
+    assert resolved["case"]["primary"]["adjudication"]["reviewer_id"] == "reviewer-c"
+    assert resolved["case"]["primary"]["adjudication"]["reviewed_at"]
+    assert case["text"] == review_snapshot(tmp_path, record_id=case["record_id"])["case"]["text"]
+
+
+def test_review_rejects_unsupported_quote_and_allows_explained_abstention(frozen, tmp_path, monkeypatch):
+    import bmw_pm.evaluation_review as review
+    monkeypatch.setattr(review, "_root", lambda _: frozen)
+    initial = review_snapshot(tmp_path)
+    case = initial["case"]
+    with pytest.raises(ReviewInputError, match="exactly once"):
+        save_review(tmp_path, {"role": "primary", "record_id": case["record_id"],
+            "file_version": initial["file_version"], "reviewer_id": "reviewer-a",
+            "signals": [{"need_domain": "controls_usability", "atomic_claim": "False claim",
+                         "customer_outcome": "False outcome", "polarity": "complaint",
+                         "evidence_text": "not present in the frozen packet"}]})
+    saved = save_review(tmp_path, {"role": "primary", "record_id": case["record_id"],
+        "file_version": initial["file_version"], "reviewer_id": "reviewer-a", "signals": [],
+        "abstention_reason": "Cannot support an atomic need from this text."})
+    assert saved["case"]["review"]["signals"] == []
+    assert saved["case"]["review"]["abstention_reason"]

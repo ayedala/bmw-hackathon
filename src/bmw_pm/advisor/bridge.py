@@ -14,6 +14,7 @@ from pydantic import Field, ValidationError
 
 from ..contracts import Contract
 from ..data_pipeline.video_memory import TranscriptInput, save_transcript, video_id
+from ..evaluation_review import ReviewInputError, evaluation_action
 from ..intelligence.fusion import import_youtube_run
 from ..intelligence.provider import ProviderError
 from ..storage import Database
@@ -163,6 +164,8 @@ def execute(action: str, payload: dict, database: str | Path, emit: Callable[[di
     elif action == "memory":
         emit({"type": "memory", "memory": save_transcript(database, TranscriptInput.model_validate(payload)),
               "catalog": source_catalog(database, root).model_dump(mode="json")})
+    elif action == "evaluation":
+        emit({"type": "evaluation", "evaluation": evaluation_action(root, payload)})
     elif action == "analyze":
         request = AdvisorRequest.model_validate(payload)
         credentials = project_credentials(root) or environment_credentials()
@@ -198,6 +201,8 @@ def main() -> int:
     except ProviderError as exc:
         emit({"type": "error", "message": str(exc)})
     except StorageError as exc:
+        emit({"type": "error", "message": str(exc)})
+    except ReviewInputError as exc:
         emit({"type": "error", "message": str(exc)})
     except (ValueError, OSError, sqlite3.Error):
         emit({"type": "error", "message": "The local request or evidence could not be loaded. Check the database and saved research configuration."})
