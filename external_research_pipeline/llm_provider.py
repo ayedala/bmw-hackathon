@@ -83,6 +83,18 @@ class OpenAIProvider(BaseLLMProvider):
 
     name = "openai"
 
+    def __init__(
+        self,
+        *,
+        model: str,
+        api_key: str,
+        timeout_seconds: float = config.DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        max_retries: int = config.DEFAULT_OPENAI_MAX_RETRIES,
+    ) -> None:
+        super().__init__(model=model, api_key=api_key)
+        self._timeout_seconds = timeout_seconds
+        self._max_retries = max_retries
+
     #: Model name prefixes that use the reasoning-model parameter set.
     _REASONING_PREFIXES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
 
@@ -97,7 +109,13 @@ class OpenAIProvider(BaseLLMProvider):
                     "The 'openai' package is not installed. Run "
                     "`pip install -r requirements.txt` inside external_research_pipeline/."
                 ) from exc
-            self._client = OpenAI(api_key=self._api_key)
+
+            self._client = OpenAI(
+                api_key=self._api_key,
+                timeout=self._timeout_seconds,
+                max_retries=self._max_retries,
+            )
+
         return self._client
 
     def _is_reasoning_model(self) -> bool:
@@ -121,9 +139,14 @@ class OpenAIProvider(BaseLLMProvider):
             ],
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {"name": schema_name, "schema": schema, "strict": True},
+                "json_schema": {
+                    "name": schema_name,
+                    "schema": schema,
+                    "strict": True,
+                },
             },
         }
+
         if self._is_reasoning_model():
             params["max_completion_tokens"] = max_output_tokens
         else:
@@ -131,14 +154,22 @@ class OpenAIProvider(BaseLLMProvider):
             params["temperature"] = 0
 
         content, finish_reason = self._invoke(params)
+
         if finish_reason == "length":
             raise LLMTruncatedError(
                 f"OpenAI hit the {max_output_tokens}-token output cap "
-                "(finish_reason=length); the chunk needs splitting"
+                f"(finish_reason=length, {len(content)} chars returned); "
+                "the chunk needs splitting"
             )
+
         return content
 
-    @with_retries(attempts=3, initial_wait=2.0, max_wait=20.0, exceptions=(LLMError,))
+    @with_retries(
+        attempts=3,
+        initial_wait=2.0,
+        max_wait=20.0,
+        exceptions=(LLMError,),
+    )
     def _invoke(self, params: dict[str, Any]) -> tuple[str, str]:
         """Call the API, returning ``(content, finish_reason)``.
 
@@ -147,35 +178,75 @@ class OpenAIProvider(BaseLLMProvider):
         truncate again.
         """
         self.call_count += 1
+
         try:
             response = self.client.chat.completions.create(**params)
+
         except Exception as exc:  # noqa: BLE001 - SDK raises several error types
             downgraded = self._downgrade(params, exc)
+
             if downgraded is None:
-                raise LLMError(f"OpenAI request failed: {redact_sensitive_text(exc)}") from exc
-            self._log.warning("retrying OpenAI request without unsupported parameter: %s", redact_sensitive_text(exc))
+                raise LLMError(
+                    f"OpenAI request failed: {redact_sensitive_text(exc)}"
+                ) from exc
+
+            self._log.warning(
+                "retrying OpenAI request without unsupported parameter: %s",
+                redact_sensitive_text(exc),
+            )
+
             try:
                 response = self.client.chat.completions.create(**downgraded)
+
             except Exception as retry_exc:  # noqa: BLE001
-                raise LLMError(f"OpenAI request failed: {redact_sensitive_text(retry_exc)}") from retry_exc
+                raise LLMError(
+                    f"OpenAI request failed: "
+                    f"{redact_sensitive_text(retry_exc)}"
+                ) from retry_exc
+
             params.clear()
             params.update(downgraded)
 
         choices = getattr(response, "choices", None) or []
+
         if not choices:
             raise LLMError("OpenAI returned no choices")
+
         message = choices[0].message
+
         if getattr(message, "refusal", None):
-            raise LLMError(f"OpenAI refused the request: {message.refusal}")
-        finish_reason = str(getattr(choices[0], "finish_reason", "") or "")
-        content = (getattr(message, "content", None) or "").strip()
-        if not content:
-            raise LLMError(f"OpenAI returned empty content (finish_reason={finish_reason or 'unknown'})")
+            raise LLMError(
+                f"OpenAI refused the request: {message.refusal}"
+            )
+
+        finish_reason = str(
+            getattr(choices[0], "finish_reason", "") or ""
+        )
+
+        content = (
+            getattr(message, "content", None) or ""
+        ).strip()
+
+        if not content and finish_reason != "length":
+            raise LLMError(
+                "OpenAI returned empty content "
+                f"(finish_reason={finish_reason or 'unknown'})"
+            )
+
+        # An empty body with finish_reason=length is still truncation, and the
+        # most common shape of it on a reasoning model: the whole token budget
+        # went on reasoning and nothing was left to emit. Returning it lets
+        # complete_json raise LLMTruncatedError, which splits the chunk -
+        # whereas raising LLMError here sent it down the retry path, where the
+        # identical request truncated again three more times.
         return content, finish_reason
 
     @staticmethod
-    def _downgrade(params: dict[str, Any], exc: Exception) -> dict[str, Any] | None:
-        """Return *params* minus a parameter the API complained about, or ``None``.
+    def _downgrade(
+        params: dict[str, Any],
+        exc: Exception,
+    ) -> dict[str, Any] | None:
+        """Return params minus a rejected parameter, or ``None``.
 
         Covers the two common mismatches: a reasoning model rejecting
         ``temperature`` or ``max_tokens``, and an older model or gateway that
@@ -187,13 +258,21 @@ class OpenAIProvider(BaseLLMProvider):
         if "temperature" in message and "temperature" in candidate:
             candidate.pop("temperature")
             return candidate
+
         if "max_tokens" in message and "max_tokens" in candidate:
             candidate["max_completion_tokens"] = candidate.pop("max_tokens")
             candidate.pop("temperature", None)
             return candidate
-        if ("response_format" in message or "json_schema" in message) and "response_format" in candidate:
-            candidate["response_format"] = {"type": "json_object"}
+
+        if (
+            "response_format" in message
+            or "json_schema" in message
+        ) and "response_format" in candidate:
+            candidate["response_format"] = {
+                "type": "json_object"
+            }
             return candidate
+
         return None
 
 
@@ -227,7 +306,11 @@ class AnthropicProvider(BaseLLMProvider):
                     "The 'anthropic' package is not installed. Run "
                     "`pip install -r requirements.txt` inside external_research_pipeline/."
                 ) from exc
-            self._client = anthropic.Anthropic(api_key=self._api_key)
+
+            self._client = anthropic.Anthropic(
+                api_key=self._api_key
+            )
+
         return self._client
 
     def complete_json(
@@ -243,18 +326,36 @@ class AnthropicProvider(BaseLLMProvider):
             "model": self.model,
             "max_tokens": max_output_tokens,
             "system": system,
-            "messages": [{"role": "user", "content": user}],
-            "output_config": {"format": {"type": "json_schema", "schema": schema}},
+            "messages": [
+                {
+                    "role": "user",
+                    "content": user,
+                }
+            ],
+            "output_config": {
+                "format": {
+                    "type": "json_schema",
+                    "schema": schema,
+                }
+            },
         }
+
         content, stop_reason = self._invoke(params)
+
         if stop_reason == "max_tokens":
             raise LLMTruncatedError(
                 f"Anthropic hit the {max_output_tokens}-token output cap "
                 "(stop_reason=max_tokens); the chunk needs splitting"
             )
+
         return content
 
-    @with_retries(attempts=3, initial_wait=2.0, max_wait=20.0, exceptions=(LLMError,))
+    @with_retries(
+        attempts=3,
+        initial_wait=2.0,
+        max_wait=20.0,
+        exceptions=(LLMError,),
+    )
     def _invoke(self, params: dict[str, Any]) -> tuple[str, str]:
         """Call the Messages API, returning ``(content, stop_reason)``.
 
@@ -262,42 +363,91 @@ class AnthropicProvider(BaseLLMProvider):
         raised by the caller, not here, so it is not retried verbatim.
         """
         self.call_count += 1
+
         try:
             response = self.client.messages.create(**params)
+
         except Exception as exc:  # noqa: BLE001 - SDK raises several error types
-            if "output_config" in str(exc).lower() and "output_config" in params:
+            if (
+                "output_config" in str(exc).lower()
+                and "output_config" in params
+            ):
                 self._log.warning(
                     "installed anthropic SDK rejected output_config (%s); "
                     "falling back to prompt-instructed JSON",
                     redact_sensitive_text(exc),
                 )
+
                 params.pop("output_config")
+
                 try:
                     response = self.client.messages.create(**params)
-                except Exception as retry_exc:  # noqa: BLE001
-                    raise LLMError(f"Anthropic request failed: {redact_sensitive_text(retry_exc)}") from retry_exc
-            else:
-                raise LLMError(f"Anthropic request failed: {redact_sensitive_text(exc)}") from exc
 
-        stop_reason = getattr(response, "stop_reason", None)
+                except Exception as retry_exc:  # noqa: BLE001
+                    raise LLMError(
+                        f"Anthropic request failed: "
+                        f"{redact_sensitive_text(retry_exc)}"
+                    ) from retry_exc
+
+            else:
+                raise LLMError(
+                    f"Anthropic request failed: "
+                    f"{redact_sensitive_text(exc)}"
+                ) from exc
+
+        stop_reason = getattr(
+            response,
+            "stop_reason",
+            None,
+        )
+
         if stop_reason == "refusal":
-            details = getattr(response, "stop_details", None)
-            category = getattr(details, "category", None) if details else None
-            raise LLMError(f"Anthropic declined this page (refusal category={category})")
+            details = getattr(
+                response,
+                "stop_details",
+                None,
+            )
+
+            category = (
+                getattr(details, "category", None)
+                if details
+                else None
+            )
+
+            raise LLMError(
+                "Anthropic declined this page "
+                f"(refusal category={category})"
+            )
 
         text = self._first_text_block(response)
-        if not text:
-            raise LLMError(f"Anthropic returned no text content (stop_reason={stop_reason})")
+
+        if not text and stop_reason != "max_tokens":
+            raise LLMError(
+                "Anthropic returned no text content "
+                f"(stop_reason={stop_reason})"
+            )
+
+        # As with OpenAI: an empty body at the output ceiling is truncation,
+        # not an empty answer, and must reach the chunk-splitting path.
         return text, str(stop_reason or "")
 
     @staticmethod
     def _first_text_block(response: Any) -> str:
         """Concatenate the text blocks of a Messages response."""
-        blocks = getattr(response, "content", None) or []
+        blocks = getattr(
+            response,
+            "content",
+            None,
+        ) or []
+
         parts: list[str] = []
+
         for block in blocks:
             if getattr(block, "type", None) == "text":
-                parts.append(getattr(block, "text", "") or "")
+                parts.append(
+                    getattr(block, "text", "") or ""
+                )
+
         return "".join(parts).strip()
 
 
@@ -317,10 +467,33 @@ def get_provider(settings: Settings) -> BaseLLMProvider:
     Raises:
         ConfigError: if ``LLM_PROVIDER`` is unknown or its API key is missing.
     """
-    provider_name, model, api_key = settings.require_llm_credentials()
+    provider_name, model, api_key = (
+        settings.require_llm_credentials()
+    )
+
     provider_cls = PROVIDERS.get(provider_name)
+
     if provider_cls is None:  # pragma: no cover - guarded by require_llm_credentials
-        raise ConfigError(f"unsupported LLM_PROVIDER {provider_name!r}")
-    provider = provider_cls(model=model, api_key=api_key)
-    get_logger().info("LLM provider: %s", provider.describe())
+        raise ConfigError(
+            f"unsupported LLM_PROVIDER {provider_name!r}"
+        )
+
+    if provider_name == "openai":
+        provider = OpenAIProvider(
+            model=model,
+            api_key=api_key,
+            timeout_seconds=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+        )
+    else:
+        provider = provider_cls(
+            model=model,
+            api_key=api_key,
+        )
+
+    get_logger().info(
+        "LLM provider: %s",
+        provider.describe(),
+    )
+
     return provider

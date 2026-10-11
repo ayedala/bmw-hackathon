@@ -192,6 +192,25 @@ def append_research_run(run: ResearchRun) -> None:
     append_models(config.RESEARCH_RUNS_PATH, [run])
 
 
+def write_run_checkpoint(run: ResearchRun, *, pages_done: int, pages_total: int) -> None:
+    """Rewrite the in-progress checkpoint atomically.
+
+    Called after every page so an interrupted run leaves a truthful record of
+    how far it got. A single JSON file rewritten in place, rather than a row
+    per page, keeps ``research_runs.jsonl`` free of partial records.
+    """
+    payload = run.model_dump(mode="json")
+    payload["checkpoint_written_at"] = utc_now_iso()
+    payload["pages_done"] = pages_done
+    payload["pages_total"] = pages_total
+    save_json_atomic(config.RUN_CHECKPOINT_PATH, payload)
+
+
+def clear_run_checkpoint() -> None:
+    """Remove the checkpoint once the final run record is durable."""
+    config.RUN_CHECKPOINT_PATH.unlink(missing_ok=True)
+
+
 # --------------------------------------------------------------------------- #
 # Local page cache
 # --------------------------------------------------------------------------- #
@@ -265,6 +284,27 @@ class VisitedUrlStore:
         """Return the ledger entry for *url*, if any."""
         return self._entries.get(canonicalize_url(url))
 
+    #: Outcomes that will not change on a later run, so the URL should stop
+    #: competing for a page-budget slot. Deliberately short: an extraction
+    #: failure, a zero-evidence page or a temporary provider error may all
+    #: succeed next time and are never terminal. An off-topic verdict is not
+    #: terminal either, because the relevance vocabulary keeps evolving.
+    TERMINAL_STATUSES: frozenset[str] = frozenset({"thin", "unsupported"})
+
+    def is_terminal(self, url: str) -> bool:
+        """Whether *url* was deterministically judged not worth fetching again.
+
+        Keyed on a sticky ``terminal`` flag rather than the current ``status``:
+        a later cache hit rewrites ``status`` to ``cached``, and that must not
+        erase the record that the page was already judged unusable.
+        """
+        entry = self.get(url)
+        if not entry:
+            return False
+        if entry.get("terminal"):
+            return True
+        return entry.get("status") in self.TERMINAL_STATUSES
+
     def was_scraped(self, url: str) -> bool:
         """Whether *url* has ever been scraped successfully.
 
@@ -286,11 +326,18 @@ class VisitedUrlStore:
         topic: str = "",
         query: str = "",
         detail: str = "",
+        terminal: bool | None = None,
     ) -> None:
         """Record an outcome for *url*.
 
-        *status* is one of ``scraped``, ``cached``, ``failed`` or ``filtered``.
-        First-seen time is preserved across updates.
+        *status* is one of ``scraped``, ``cached``, ``failed``, ``filtered``,
+        ``thin`` or ``unsupported``. First-seen time is preserved across
+        updates.
+
+        *terminal* marks the URL as not worth fetching again. The flag is
+        sticky: once set it survives every later update, so a cache hit that
+        rewrites ``status`` cannot clear it. Pass it only for deterministic
+        verdicts - never for a transient failure.
         """
         key = canonicalize_url(url)
         existing = self._entries.get(key, {})
@@ -306,6 +353,9 @@ class VisitedUrlStore:
             chosen = value or existing.get(field) or ""
             if chosen:
                 entry[field] = chosen
+        was_terminal = bool(existing.get("terminal")) or existing.get("status") in self.TERMINAL_STATUSES
+        if terminal or was_terminal or status in self.TERMINAL_STATUSES:
+            entry["terminal"] = True
         if status == "scraped":
             entry["last_scraped_at"] = now
             entry["cache_file"] = cache_filename(url)

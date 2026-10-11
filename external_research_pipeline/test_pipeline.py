@@ -21,10 +21,11 @@ import unittest
 
 import config
 import normalization
+import scraper
 import relevance
 from extractor import EvidenceExtractor, ExtractionOutcome
 from llm_provider import BaseLLMProvider, LLMError, LLMTruncatedError
-from models import RawPage, SearchHit
+from models import RawPage, ResearchRun, SearchHit
 from scraper import ScrapeCoordinator, ScrapeOutcome
 from storage import PageCache, VisitedUrlStore
 from utils import HAVE_RAPIDFUZZ, canonicalize_url, chunk_text, trim_markdown
@@ -1539,6 +1540,590 @@ class TestQuotedProperNames(unittest.TestCase):
         self.assertEqual(
             page_text[record.source_start_char:record.source_end_char], quote,
             "offsets must still address the quote",
+        )
+
+
+# --------------------------------------------------------------------------- #
+# 14. Acquisition efficiency: fail fast, and stop re-spending on dead URLs
+# --------------------------------------------------------------------------- #
+
+
+class TestPermanentErrorsFailFast(unittest.TestCase):
+    """A permanent provider error must cost exactly one Firecrawl attempt.
+
+    The first live charging run spent three attempts being told by Firecrawl
+    that Reddit is "Website Not Supported".
+    """
+
+    class _Err(Exception):
+        def __init__(self, message="", **attrs):
+            super().__init__(message)
+            self.__dict__.update(attrs)
+
+    def _attempts_for(self, exc, *, attempts=4):
+        """How many times the retry executor calls through for *exc*."""
+        from utils import call_with_rate_limit_retry
+        calls = []
+
+        def fail():
+            calls.append(1)
+            raise exc
+
+        slept = []
+        try:
+            call_with_rate_limit_retry(
+                fail, attempts=attempts, base_delay=2.0, max_sleep=60.0,
+                label="firecrawl.scrape(https://www.reddit.com/r/BMW/)",
+                sleeper=slept.append,
+            )
+        except Exception:
+            pass
+        return len(calls), len(slept)
+
+    def test_website_not_supported_makes_exactly_one_attempt(self):
+        calls, sleeps = self._attempts_for(self._Err("Website Not Supported"))
+        self.assertEqual(calls, 1, "a permanent error must not be retried")
+        self.assertEqual(sleeps, 0, "and must not sleep")
+
+    def test_other_permanent_errors_make_exactly_one_attempt(self):
+        for exc in (self._Err("Bad Request: invalid URL"),
+                    self._Err("unsupported domain"),
+                    self._Err("unsupported site"),
+                    self._Err("Unauthorized", status_code=401),
+                    self._Err("Forbidden", status_code=403),
+                    self._Err("Not Found", status_code=404),
+                    self._Err("Payment Required", status_code=402),
+                    self._Err("Unprocessable Entity", status_code=422),
+                    self._Err("invalid api key")):
+            calls, _ = self._attempts_for(exc)
+            self.assertEqual(calls, 1, f"{exc} should not be retried")
+
+    def test_retryable_errors_still_use_the_whole_budget(self):
+        for exc in (self._Err("429 rate limit exceeded"),
+                    self._Err("Too Many Requests", status_code=429),
+                    self._Err("Internal Server Error", status_code=500),
+                    self._Err("Bad Gateway", status_code=502),
+                    self._Err("Request Timeout", status_code=408),
+                    self._Err("Connection reset by peer"),
+                    self._Err("Read timed out")):
+            calls, _ = self._attempts_for(exc)
+            self.assertEqual(calls, 4, f"{exc} should still be retried")
+
+    def test_rate_limit_is_never_classified_permanent(self):
+        """429 is the one 4xx that succeeds later."""
+        from utils import is_permanent_error
+        for exc in (self._Err("429 rate limit"),
+                    self._Err("Too Many Requests", status_code=429)):
+            self.assertFalse(is_permanent_error(exc))
+
+    def test_retry_after_is_still_honoured(self):
+        """Existing rate-limit handling must be untouched."""
+        from utils import call_with_rate_limit_retry
+
+        class Resp:
+            status_code = 429
+            headers = {"Retry-After": "9"}
+
+        attempts = []
+
+        def flaky():
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise self._Err("rate limit", response=Resp())
+            return "ok"
+
+        slept = []
+        result = call_with_rate_limit_retry(
+            flaky, attempts=4, base_delay=2.0, max_sleep=60.0, label="s",
+            sleeper=slept.append,
+        )
+        self.assertEqual(result, "ok")
+        self.assertEqual(slept, [9.0, 9.0])
+
+    def test_a_permanent_scrape_error_costs_one_sdk_call(self):
+        """End to end through the coordinator."""
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        calls = []
+
+        class UnsupportedSDK:
+            def scrape(self, url, **kwargs):
+                calls.append(url)
+                raise TestPermanentErrorsFailFast._Err("Website Not Supported")
+
+        client = scraper.FirecrawlScraperClient("fc-test", delay_seconds=0, max_retries=4,
+                                                sleeper=lambda _d: None)
+        type(client).client = property(lambda self: UnsupportedSDK())
+        try:
+            visited = VisitedUrlStore(tmp / "v.json")
+            coordinator = ScrapeCoordinator(
+                client=client, cache=PageCache(tmp / "c"), visited=visited,
+            )
+            url = "https://www.reddit.com/r/BMW/comments/abc/i5_charging/"
+            hit = SearchHit(url=url, canonical_url=canonicalize_url(url),
+                            topic="charging", query="q")
+            result = coordinator.resolve(hit)
+            self.assertIs(result.outcome, ScrapeOutcome.FAILED)
+            self.assertEqual(len(calls), 1, f"expected 1 Firecrawl call, got {len(calls)}")
+            self.assertTrue(visited.is_terminal(url), "an unsupported site is terminal")
+        finally:
+            del type(client).client
+
+
+class TestTerminalOutcomes(unittest.TestCase):
+    """A deterministically dead URL must stop consuming page-budget slots."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.visited = VisitedUrlStore(self.tmp / "v.json")
+        self.cache = PageCache(self.tmp / "c")
+
+    def _hit(self, url, *, topic="charging", position=1):
+        return SearchHit(url=url, canonical_url=canonicalize_url(url), title="BMW i5 laden",
+                         description="ladezeit", topic=topic, query="q", position=position)
+
+    def _coordinator(self, client=None, **kwargs):
+        return ScrapeCoordinator(client=client, cache=self.cache, visited=self.visited, **kwargs)
+
+    def test_thin_and_unsupported_are_terminal(self):
+        for status in ("thin", "unsupported"):
+            url = f"https://example.invalid/{status}"
+            self.visited.mark(url, status=status, terminal=True)
+            self.assertTrue(self.visited.is_terminal(url), status)
+
+    def test_recoverable_outcomes_are_not_terminal(self):
+        """These may succeed on a later run and must stay eligible."""
+        for status in ("failed", "scraped", "cached", "filtered"):
+            url = f"https://example.invalid/{status}"
+            self.visited.mark(url, status=status)
+            self.assertFalse(self.visited.is_terminal(url), status)
+
+    def test_the_terminal_flag_survives_a_later_cache_hit(self):
+        url = "https://example.invalid/thin"
+        self.visited.mark(url, status="thin", terminal=True)
+        self.visited.mark(url, status="cached")
+        self.assertTrue(self.visited.is_terminal(url),
+                        "a status rewrite must not clear the flag")
+
+    def test_the_terminal_flag_persists_across_processes(self):
+        url = "https://example.invalid/thin"
+        self.visited.mark(url, status="thin", terminal=True)
+        self.visited.save()
+        self.assertTrue(VisitedUrlStore(self.tmp / "v.json").is_terminal(url))
+
+    def test_a_terminal_url_is_dropped_before_the_page_budget_is_spent(self):
+        """The whole point: a dead URL must not take a slot from a live one."""
+        import main
+        dead = "https://example.invalid/dead-thin-page"
+        self.visited.mark(dead, status="thin", terminal=True)
+        hits = [self._hit(dead, position=1)] + [
+            self._hit(f"https://site{i}.de/bmw-i5-laden-test", position=i + 2) for i in range(3)
+        ]
+        run = ResearchRun(run_id="r", started_at="t", topic="charging")
+        plan = main.plan_run(hits, self._coordinator(), max_pages=3, run=run)
+        selected = [hit.canonical_url for hit in plan.candidates]
+        self.assertEqual(len(selected), 3)
+        self.assertNotIn(canonicalize_url(dead), selected)
+        self.assertEqual(run.urls_skipped_filtered, 1)
+
+    def test_force_still_reconsiders_a_terminal_url(self):
+        import main
+        dead = "https://example.invalid/dead-thin-page"
+        self.visited.mark(dead, status="thin", terminal=True)
+        run = ResearchRun(run_id="r", started_at="t", topic="charging")
+        plan = main.plan_run([self._hit(dead)], self._coordinator(force=True),
+                             max_pages=3, run=run, force=True)
+        self.assertEqual(len(plan.candidates), 1)
+
+    def test_resolve_skips_a_terminal_url_without_touching_the_provider(self):
+        dead = "https://example.invalid/dead-thin-page"
+        self.visited.mark(dead, status="thin", terminal=True)
+        self.cache.put(canonicalize_url(dead), {"markdown": "x" * 50, "title": "t"})
+        coordinator = self._coordinator(client=ExplodingScrapeClient())
+        self.assertIs(coordinator.plan(self._hit(dead)), ScrapeOutcome.SKIPPED)
+        result = coordinator.resolve(self._hit(dead))
+        self.assertIs(result.outcome, ScrapeOutcome.SKIPPED)
+        self.assertEqual(coordinator.scrape_call_count, 0)
+
+    def test_a_thin_page_is_recorded_terminal_by_the_run_loop(self):
+        """collect_evidence must persist the extractor's thin verdict."""
+        coordinator = self._coordinator()
+        url = "https://example.invalid/js-shell"
+        coordinator.mark_terminal(url, status="thin", detail="only 428 usable chars")
+        self.assertTrue(self.visited.is_terminal(url))
+
+    def test_off_topic_pages_are_not_suppressed(self):
+        """The relevance vocabulary keeps changing, so off-topic is not final."""
+        url = "https://example.invalid/off-topic"
+        self.visited.mark(url, status="filtered")
+        self.assertFalse(self.visited.is_terminal(url))
+
+
+# --------------------------------------------------------------------------- #
+# 15. Truncation with an empty body (observed in the live infotainment run)
+# --------------------------------------------------------------------------- #
+
+
+class TestEmptyTruncation(unittest.TestCase):
+    """An empty body at the output ceiling is truncation, not an empty answer.
+
+    gpt-5-mini is a reasoning model, so ``max_completion_tokens`` covers
+    reasoning *and* output. The first live infotainment run saw it spend the
+    whole budget reasoning and return nothing with ``finish_reason=length``.
+    The empty-content guard fired first, so the chunk went down the retry path
+    and truncated three more times instead of being split.
+    """
+
+    @staticmethod
+    def _client(content, finish_reason, counter=None):
+        class Msg:
+            def __init__(self):
+                self.content = content
+                self.refusal = None
+
+        class Choice:
+            def __init__(self):
+                self.message = Msg()
+                self.finish_reason = finish_reason
+
+        class Resp:
+            def __init__(self):
+                self.choices = [Choice()]
+
+        class Completions:
+            def create(self, **kwargs):
+                if counter is not None:
+                    counter.append(1)
+                return Resp()
+
+        class Chat:
+            def __init__(self):
+                self.completions = Completions()
+
+        class Client:
+            def __init__(self):
+                self.chat = Chat()
+
+        return Client()
+
+    def _call(self, content, finish_reason, counter=None):
+        from llm_provider import OpenAIProvider
+        provider = OpenAIProvider(model="gpt-5-mini", api_key="not-a-real-key")
+        client = self._client(content, finish_reason, counter)
+        type(provider).client = property(lambda self: client)
+        try:
+            return provider.complete_json(system="s", user="u", schema={"type": "object"})
+        finally:
+            del type(provider).client
+
+    def test_empty_body_at_the_ceiling_is_truncation(self):
+        from llm_provider import LLMTruncatedError
+        with self.assertRaises(LLMTruncatedError):
+            self._call("", "length")
+
+    def test_partial_body_at_the_ceiling_is_truncation(self):
+        from llm_provider import LLMTruncatedError
+        with self.assertRaises(LLMTruncatedError):
+            self._call('{"evidence": [{"claim": "cut off mid', "length")
+
+    def test_a_genuinely_empty_answer_is_still_a_plain_error(self):
+        from llm_provider import LLMError, LLMTruncatedError
+        with self.assertRaises(LLMError) as caught:
+            self._call("", "stop")
+        self.assertNotIsInstance(caught.exception, LLMTruncatedError)
+
+    def test_a_normal_completion_is_unaffected(self):
+        self.assertEqual(self._call('{"evidence": []}', "stop"), '{"evidence": []}')
+
+    def test_truncation_does_not_burn_the_retry_budget(self):
+        from llm_provider import LLMTruncatedError
+        calls = []
+        with self.assertRaises(LLMTruncatedError):
+            self._call("", "length", counter=calls)
+        self.assertEqual(len(calls), 1, "a truncated request must not be retried verbatim")
+
+    def test_anthropic_empty_at_max_tokens_is_truncation(self):
+        from llm_provider import AnthropicProvider, LLMTruncatedError
+        provider = AnthropicProvider(model="claude-opus-5", api_key="not-a-real-key")
+        provider._invoke = lambda params: ("", "max_tokens")
+        with self.assertRaises(LLMTruncatedError):
+            provider.complete_json(system="s", user="u", schema={"type": "object"})
+
+    def test_a_truncated_chunk_is_still_recovered_by_splitting(self):
+        """End to end: the page keeps its evidence instead of losing a chunk."""
+        from llm_provider import LLMTruncatedError
+        provider = FakeProvider([
+            LLMTruncatedError("finish_reason=length, 0 chars returned"),
+            payload(claim("First half: peak is 205 kW.", value=205.0, unit="kW")),
+            payload(claim("Second half: 10-80 in 30 minutes.", value=30.0, unit="min",
+                          evidence=SENTENCES["curve"])),
+        ])
+        extractor = EvidenceExtractor(provider, settings(extraction_chunk_chars=20_000))
+        result = extractor.extract_from_page(page(relevant_text(9_000)))
+        self.assertEqual(len(result.records), 2)
+        self.assertEqual(extractor.stats.sub_chunk_recoveries, 1)
+
+    def test_output_ceiling_leaves_room_for_reasoning(self):
+        self.assertGreaterEqual(config.LLM_MAX_OUTPUT_TOKENS, 16_000)
+
+
+# --------------------------------------------------------------------------- #
+# 16. Crash-safe incremental persistence
+# --------------------------------------------------------------------------- #
+
+
+class TestIncrementalPersistence(unittest.TestCase):
+    """A run killed mid-flight must keep everything it already finished.
+
+    The first live infotainment run was SIGTERMed after 136 minutes on page 9
+    of 10, with 7 pages extracted - and lost every record, because evidence,
+    the ledger and the run record were only written at the end.
+    """
+
+    def setUp(self):
+        import main
+        self.main = main
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self._saved = {
+            name: getattr(config, name)
+            for name in ("DATA_DIR", "RAW_DIR", "PROCESSED_DIR", "METADATA_DIR", "CACHE_DIR",
+                         "RAW_PAGES_PATH", "PROCESSED_EVIDENCE_PATH", "VISITED_URLS_PATH",
+                         "RESEARCH_RUNS_PATH", "RUN_CHECKPOINT_PATH", "LOG_PATH", "ENV_PATH")
+        }
+        config.DATA_DIR = self.tmp / "data"
+        config.RAW_DIR = config.DATA_DIR / "raw"
+        config.PROCESSED_DIR = config.DATA_DIR / "processed"
+        config.METADATA_DIR = config.DATA_DIR / "metadata"
+        config.CACHE_DIR = config.DATA_DIR / "cache"
+        config.RAW_PAGES_PATH = config.RAW_DIR / "raw_pages.jsonl"
+        config.PROCESSED_EVIDENCE_PATH = config.PROCESSED_DIR / "external_evidence.jsonl"
+        config.VISITED_URLS_PATH = config.METADATA_DIR / "visited_urls.json"
+        config.RESEARCH_RUNS_PATH = config.METADATA_DIR / "research_runs.jsonl"
+        config.RUN_CHECKPOINT_PATH = config.METADATA_DIR / "run_checkpoint.json"
+        config.LOG_PATH = self.tmp / "pipeline.log"
+        config.ENV_PATH = self.tmp / ".env"
+        config.ensure_directories()
+
+    def tearDown(self):
+        for name, value in self._saved.items():
+            setattr(config, name, value)
+
+    # -- fixtures --------------------------------------------------------- #
+
+    def _page_markdown(self, n):
+        return relevant_text(1500) + f" Variante {n} der Messung. "
+
+    def _hits(self, count):
+        out = []
+        for i in range(count):
+            url = f"https://site{i}.de/bmw-i5-laden-test-{i}"
+            out.append(SearchHit(url=url, canonical_url=canonicalize_url(url),
+                                 title="BMW i5 Ladetest", description="ladezeit",
+                                 topic="charging", query="q", position=i + 1,
+                                 source_family="professional_review", priority=75))
+        return out
+
+    def _coordinator(self, hits, *, fail_after=None):
+        """A coordinator serving synthetic pages, optionally dying after N."""
+        tmp = self.tmp
+        markdown = {h.canonical_url: self._page_markdown(i) for i, h in enumerate(hits)}
+
+        class Client:
+            call_count = 0
+
+            def fetch(self, url):
+                Client.call_count += 1
+                canonical = canonicalize_url(url)
+                return {"markdown": markdown[canonical], "title": "T",
+                        "source_name": "site", "source_url": url, "published_at": None}
+
+        coordinator = ScrapeCoordinator(
+            client=Client(), cache=PageCache(tmp / "cache"),
+            visited=VisitedUrlStore(config.VISITED_URLS_PATH),
+        )
+        if fail_after is not None:
+            original = coordinator.resolve
+            calls = []
+
+            def resolve(hit):
+                calls.append(1)
+                if len(calls) > fail_after:
+                    raise KeyboardInterrupt("simulated SIGTERM")
+                return original(hit)
+
+            coordinator.resolve = resolve
+        return coordinator
+
+    def _extractor(self, per_page=3):
+        rows = [payload(*[
+            claim(f"Claim {i} about charging time here.", value=float(10 + i), unit="min")
+            for i in range(per_page)
+        ])] * 60
+        return EvidenceExtractor(FakeProvider(rows), settings(extraction_chunk_chars=40_000))
+
+    def _plan(self, hits):
+        from main import RunPlan
+        return RunPlan(candidates=list(hits), to_scrape=list(hits), cached=[], skipped=[], deferred=[])
+
+    def _run_record(self):
+        return ResearchRun(run_id="run-test", started_at="2026-10-11T00:00:00Z", topic="charging")
+
+    def _stored(self):
+        path = config.PROCESSED_EVIDENCE_PATH
+        if not path.is_file():
+            return []
+        return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+    # -- tests ------------------------------------------------------------ #
+
+    def test_evidence_is_persisted_after_each_page(self):
+        hits = self._hits(4)
+        run = self._run_record()
+        self.main.collect_evidence(self._plan(hits), self._coordinator(hits),
+                                   self._extractor(), run=run)
+        self.assertEqual(run.pages_with_evidence, 4)
+        self.assertGreaterEqual(len(self._stored()), 4)
+
+    def test_interruption_after_two_pages_keeps_those_two_pages(self):
+        """The whole point: work already done survives the signal."""
+        hits = self._hits(5)
+        run = self._run_record()
+        coordinator = self._coordinator(hits, fail_after=2)
+        with self.assertRaises(KeyboardInterrupt):
+            self.main.collect_evidence(self._plan(hits), coordinator, self._extractor(), run=run)
+
+        stored = self._stored()
+        self.assertTrue(stored, "evidence from the first two pages must be on disk")
+        urls = {row["source_url"] for row in stored}
+        self.assertEqual(len(urls), 2, f"expected 2 pages' evidence, got {urls}")
+
+        ledger = json.loads(config.VISITED_URLS_PATH.read_text())
+        self.assertEqual(len(ledger), 2, "the ledger must record both fetched pages")
+
+        raw = config.RAW_PAGES_PATH.read_text().splitlines()
+        self.assertEqual(len([l for l in raw if l.strip()]), 2)
+
+        checkpoint = json.loads(config.RUN_CHECKPOINT_PATH.read_text())
+        self.assertEqual(checkpoint["pages_done"], 2)
+        self.assertEqual(checkpoint["pages_total"], 5)
+        self.assertEqual(checkpoint["pages_with_evidence"], 2)
+        self.assertTrue(checkpoint["checkpoint_written_at"])
+
+    def test_resume_after_interruption_does_not_duplicate_evidence(self):
+        """Re-running the same pages must not grow the store."""
+        hits = self._hits(4)
+        interrupted = self._run_record()
+        with self.assertRaises(KeyboardInterrupt):
+            self.main.collect_evidence(self._plan(hits), self._coordinator(hits, fail_after=2),
+                                       self._extractor(), run=interrupted)
+        after_crash = len(self._stored())
+        self.assertGreater(after_crash, 0)
+
+        # Resume: same pages, same deterministic claims, no --force.
+        resumed = self._run_record()
+        self.main.collect_evidence(self._plan(hits), self._coordinator(hits),
+                                   self._extractor(), run=resumed)
+        after_resume = self._stored()
+        ids = [row["evidence_id"] for row in after_resume]
+        self.assertEqual(len(ids), len(set(ids)), "resume must not duplicate evidence_id")
+        self.assertEqual(len({row["source_url"] for row in after_resume}), 4)
+
+    def test_resume_serves_already_fetched_pages_from_cache(self):
+        """A resume must not re-spend Firecrawl credits on cached pages."""
+        hits = self._hits(3)
+        with self.assertRaises(KeyboardInterrupt):
+            self.main.collect_evidence(self._plan(hits), self._coordinator(hits, fail_after=2),
+                                       self._extractor(), run=self._run_record())
+        resumed_run = self._run_record()
+        coordinator = self._coordinator(hits)
+        self.main.collect_evidence(self._plan(hits), coordinator, self._extractor(),
+                                   run=resumed_run)
+        self.assertEqual(resumed_run.pages_loaded_from_cache, 2,
+                         "the two pages fetched before the crash must come from cache")
+        self.assertEqual(resumed_run.pages_scraped, 1, "only the unfetched page is scraped")
+
+    def test_a_terminal_verdict_is_persisted_immediately(self):
+        """A thin page must be flagged on disk before the next page starts."""
+        hits = self._hits(2)
+        markdown = {hits[0].canonical_url: "Loading. Sorry to interrupt.",
+                    hits[1].canonical_url: self._page_markdown(1)}
+
+        class Client:
+            call_count = 0
+
+            def fetch(self, url):
+                Client.call_count += 1
+                return {"markdown": markdown[canonicalize_url(url)], "title": "T",
+                        "source_name": "site", "source_url": url, "published_at": None}
+
+        coordinator = ScrapeCoordinator(
+            client=Client(), cache=PageCache(self.tmp / "cache"),
+            visited=VisitedUrlStore(config.VISITED_URLS_PATH),
+        )
+        run = self._run_record()
+        self.main.collect_evidence(self._plan(hits), coordinator, self._extractor(), run=run)
+        ledger = json.loads(config.VISITED_URLS_PATH.read_text())
+        thin = [k for k, v in ledger.items() if v.get("terminal")]
+        self.assertEqual(len(thin), 1, f"the thin page must be terminal on disk: {ledger}")
+        self.assertEqual(run.pages_skipped_thin, 1)
+
+    def test_checkpoint_writes_are_atomic(self):
+        """Every checkpoint on disk is complete, parsable JSON."""
+        hits = self._hits(3)
+        run = self._run_record()
+        self.main.collect_evidence(self._plan(hits), self._coordinator(hits),
+                                   self._extractor(), run=run)
+        payload = json.loads(config.RUN_CHECKPOINT_PATH.read_text())
+        self.assertEqual(payload["pages_done"], 3)
+        self.assertIn("run_id", payload)
+
+    def test_checkpoint_is_cleared_once_the_run_record_is_durable(self):
+        from storage import clear_run_checkpoint, write_run_checkpoint
+        write_run_checkpoint(self._run_record(), pages_done=1, pages_total=2)
+        self.assertTrue(config.RUN_CHECKPOINT_PATH.is_file())
+        clear_run_checkpoint()
+        self.assertFalse(config.RUN_CHECKPOINT_PATH.is_file())
+
+    def test_collect_evidence_returns_already_finalized_records(self):
+        """Regression: the caller must not finalize these a second time.
+
+        collect_evidence stores each page's evidence as it goes and returns
+        ProcessedEvidence. execute() used to call finalize_evidence on the
+        result again; from_raw then received evidence_id both explicitly and via
+        **model_dump(), raising TypeError *after* the pages summary and before
+        the run record was written. A completed 10-page run lost its
+        finalization that way.
+        """
+        from models import ProcessedEvidence
+        hits = self._hits(2)
+        run = self._run_record()
+        returned = self.main.collect_evidence(self._plan(hits), self._coordinator(hits),
+                                              self._extractor(), run=run)
+        self.assertTrue(returned)
+        for record in returned:
+            self.assertIsInstance(record, ProcessedEvidence)
+
+        # And re-finalizing them is exactly the error that aborted the run.
+        with self.assertRaises(TypeError):
+            self.main.finalize_evidence(returned, run=self._run_record())
+
+    def test_execute_path_does_not_refinalize(self):
+        """The source no longer contains the double-finalize call."""
+        source = pathlib.Path(__file__).resolve().parent.joinpath("main.py").read_text()
+        self.assertNotIn("finalize_evidence(raw_records, run=run)", source)
+        self.assertIn("stored = collect_evidence(", source)
+
+    def test_counters_accumulate_across_pages(self):
+        """finalize_evidence runs per page, so counters must add up."""
+        hits = self._hits(3)
+        run = self._run_record()
+        self.main.collect_evidence(self._plan(hits), self._coordinator(hits),
+                                   self._extractor(per_page=2), run=run)
+        self.assertEqual(run.pages_with_evidence, 3)
+        self.assertGreaterEqual(run.evidence_records_created, 3,
+                                "created count must cover every page, not just the last")
+        self.assertAlmostEqual(
+            run.evidence_per_extracted_page,
+            round(run.evidence_records_created / run.pages_with_evidence, 2),
         )
 
 

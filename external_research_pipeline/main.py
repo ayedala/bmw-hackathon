@@ -194,8 +194,13 @@ def plan_run(
     *,
     max_pages: int,
     run: ResearchRun,
+    force: bool = False,
 ) -> RunPlan:
-    """Filter, rank and cap *hits*, then predict each URL's resolution."""
+    """Filter, rank and cap *hits*, then predict each URL's resolution.
+
+    URLs carrying a terminal outcome are removed before the page budget is
+    spent, unless *force* is set.
+    """
     log = get_logger()
     result_filter = SearchResultFilter()
     outcome = result_filter.apply(hits)
@@ -206,6 +211,23 @@ def plan_run(
         log.debug("skip %s (%s)", url, reason)
 
     ranked = rank_hits(classify_hits(outcome.kept))
+
+    # Drop URLs already judged deterministically unusable *before* selection,
+    # so a thin or unsupported page cannot take a slot from a fresh candidate.
+    # Only terminal verdicts qualify: an extraction failure, a zero-evidence
+    # page or a temporary provider error may all succeed later.
+    if not force:
+        live = [hit for hit in ranked if not coordinator.is_terminal(hit.canonical_url)]
+        terminal_count = len(ranked) - len(live)
+        if terminal_count:
+            run.urls_skipped_filtered += terminal_count
+            log.info(
+                "%d candidate(s) skipped: terminal outcome recorded earlier "
+                "(thin or unsupported); their budget slots go to other URLs",
+                terminal_count,
+            )
+        ranked = live
+
     candidates, deferred = select_diverse(ranked, max_pages)
     if deferred:
         log.info(
@@ -303,15 +325,28 @@ def collect_evidence(
     extractor: EvidenceExtractor,
     *,
     run: ResearchRun,
-) -> list[RawEvidence]:
+) -> list[ProcessedEvidence]:
     """Scrape each planned page and extract evidence from it.
 
     A failure on one page is recorded and the loop continues: one bad page must
     not end the research run.
+
+    Everything a page produces is persisted **before the next page starts**:
+    its raw markdown, its evidence, its visited-ledger entry, any terminal
+    verdict, and a checkpoint of the run counters. At roughly 17 minutes per
+    page, writing only at the end means one signal costs hours of extraction -
+    which is what happened to the first infotainment run.
+
+    Re-running is safe because every write is idempotent: ``evidence_id`` is a
+    hash of canonical URL plus normalized claim, so the store skips rows it
+    already holds, and the ledger is keyed by canonical URL.
+
+    Returns the **already-finalized** records. The caller must not finalize
+    them again.
     """
     log = get_logger()
-    pages: list[RawPage] = []
     collected: list[RawEvidence] = []
+    total = len(plan.candidates)
 
     for index, hit in enumerate(plan.candidates, start=1):
         log.info("[%d/%d] %s", index, len(plan.candidates), hit.canonical_url)
@@ -323,27 +358,42 @@ def collect_evidence(
             run.pages_loaded_from_cache += 1
         elif result.outcome is ScrapeOutcome.FAILED:
             run.pages_failed += 1
+            # The coordinator already recorded the outcome, including any
+            # terminal "unsupported" verdict, so flush it before moving on.
+            coordinator.save_ledger()
+            storage.write_run_checkpoint(run, pages_done=index, pages_total=total)
             continue
         else:
+            storage.write_run_checkpoint(run, pages_done=index, pages_total=total)
             continue
 
         if result.page is None:
             continue
         if result.outcome is ScrapeOutcome.SCRAPED:
-            pages.append(result.page)
+            # Persist the markdown before extraction begins: the scrape is the
+            # part that cost a Firecrawl credit.
+            storage.append_raw_pages([result.page])
 
         try:
             extraction = extractor.extract_from_page(result.page)
         except Exception as exc:  # noqa: BLE001 - never let one page end the run
             run.pages_extraction_failed += 1
             log.exception("extraction crashed on %s: %s", hit.canonical_url, exc)
+            storage.write_run_checkpoint(run, pages_done=index, pages_total=total)
             continue
 
-        collected.extend(extraction.records)
         run.chunks_processed += extraction.chunks
         run.chunks_failed += extraction.chunks_failed
         if extraction.outcome is ExtractionOutcome.SKIPPED_THIN:
             run.pages_skipped_thin += 1
+            # A page with almost no text will have almost no text next time:
+            # record it so it stops competing for a page-budget slot. Off-topic,
+            # extraction-failed and zero-evidence pages are *not* marked, since
+            # any of those can change.
+            coordinator.mark_terminal(
+                hit.canonical_url, status="thin", detail=extraction.reason[:300],
+                topic=hit.topic,
+            )
         elif extraction.outcome is ExtractionOutcome.SKIPPED_IRRELEVANT:
             run.pages_skipped_irrelevant += 1
         elif extraction.outcome is ExtractionOutcome.EXTRACTION_FAILED:
@@ -353,9 +403,16 @@ def collect_evidence(
         else:
             run.pages_with_evidence += 1
 
-    if pages:
-        storage.append_raw_pages(pages)
-        log.info("appended %d page(s) to %s", len(pages), config.RAW_PAGES_PATH.name)
+        # Evidence first, then the ledger, then the checkpoint. A crash between
+        # these writes can only lose *bookkeeping* for work already stored - it
+        # can never lose the evidence itself.
+        run.llm_calls = extractor.stats.llm_calls
+        run.records_filtered_out_of_scope = extractor.stats.filtered_out_of_scope
+        run.firecrawl_scrape_calls = coordinator.scrape_call_count
+        if extraction.records:
+            collected.extend(finalize_evidence(extraction.records, run=run))
+        coordinator.save_ledger()
+        storage.write_run_checkpoint(run, pages_done=index, pages_total=total)
 
     run.firecrawl_scrape_calls = coordinator.scrape_call_count
     run.llm_calls = extractor.stats.llm_calls
@@ -424,10 +481,14 @@ def finalize_evidence(
         ]
     report = mark_duplicates(previously_stored + processed, threshold=config.DUPLICATE_SIMILARITY_THRESHOLD)
 
-    run.evidence_records_created = len(processed)
-    run.evidence_duplicates_found = sum(1 for record in processed if record.duplicate_of)
+    # Accumulate: this is called once per page in the live flow, so assigning
+    # would leave only the last page's figures.
+    run.evidence_records_created += len(processed)
+    run.evidence_duplicates_found += sum(1 for record in processed if record.duplicate_of)
     if run.pages_with_evidence:
-        run.evidence_per_extracted_page = round(len(processed) / run.pages_with_evidence, 2)
+        run.evidence_per_extracted_page = round(
+            run.evidence_records_created / run.pages_with_evidence, 2
+        )
 
     if rebuild_source_urls is not None:
         _, written = storage.rebuild_processed_evidence(
@@ -731,7 +792,9 @@ def execute(args: argparse.Namespace, settings: Settings) -> int:
             limiter=search_client.limiter if search_client is not None else None,
         )
     coordinator = ScrapeCoordinator(client=scrape_client, cache=cache, visited=visited, force=args.force)
-    plan = plan_run(hits, coordinator, max_pages=settings.max_pages_per_run, run=run)
+    plan = plan_run(
+        hits, coordinator, max_pages=settings.max_pages_per_run, run=run, force=args.force
+    )
 
     if args.dry_run:
         print_plan(plan, searched=searched, force=args.force)
@@ -748,17 +811,24 @@ def execute(args: argparse.Namespace, settings: Settings) -> int:
 
     # -- scrape and extract -------------------------------------------------- #
     extractor = EvidenceExtractor(get_provider(settings), settings)
-    raw_records = collect_evidence(plan, coordinator, extractor, run=run)
-
-    # -- normalize, score, group, deduplicate, store ------------------------- #
-    if raw_records:
-        finalize_evidence(raw_records, run=run)
+    # collect_evidence finalizes and stores each page's evidence as it goes, so
+    # the records coming back are already ProcessedEvidence. Finalizing again
+    # would re-wrap them and raise - which is exactly what aborted the first
+    # completed infotainment run before it could write its run record.
+    stored = collect_evidence(plan, coordinator, extractor, run=run)
+    if stored:
+        log.info(
+            "stored %d evidence record(s) from %d independent source(s)",
+            len(stored), dedup.count_independent_sources(stored),
+        )
     else:
         log.warning("no evidence extracted this run")
 
     visited.save()
     run.finished_at = utc_now_iso()
     storage.append_research_run(run)
+    # The run record is durable now, so the in-progress checkpoint is obsolete.
+    storage.clear_run_checkpoint()
 
     log.info("run finished")
     for line in run.summary_lines():
