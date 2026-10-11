@@ -165,7 +165,6 @@ export interface Dataset {
   profile: VehicleProfile;
   planning_context: PlanningContextSource[];
   evidence: EvidenceItem[];
-  signals: Signal[];
   hypotheses: Hypothesis[];
   findings: Finding[];
   requirements: RequirementBundle[];

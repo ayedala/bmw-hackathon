@@ -302,7 +302,6 @@ export async function loadDataset(): Promise<Dataset> {
     profile,
     planning_context: context,
     evidence,
-    signals,
     hypotheses: graph.hypotheses,
     findings: graph.findings,
     requirements,
