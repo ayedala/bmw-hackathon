@@ -20,7 +20,7 @@ function useStudioState() {
     try {
       await callAdvisor("catalog", {}, (event) => { if (event.type === "catalog") setCatalog(event.catalog); });
       setCatalogError("");
-    } catch (e) { setCatalogError(e instanceof Error ? e.message : "Evidence status could not be loaded."); }
+    } catch (e) { setCatalog(null); setCatalogError(e instanceof Error ? e.message : "Evidence status could not be loaded."); }
   }, []);
   useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
   async function run() {
@@ -39,8 +39,9 @@ function useStudioState() {
       setError(abort.signal.aborted ? "Research stopped. No completed recommendation was generated." : e instanceof Error ? e.message : "Research could not finish.");
     } finally { controller.current = null; setRunning(false); void refreshCatalog(); }
   }
+  function reset() { setResult(null); setSteps([]); setError(""); }
   return {request, setRequest, constraints, setConstraints, ideaText, setIdeaText, catalog, setCatalog, catalogError,
-    refreshCatalog, result, setResult, running, steps, error, run, stop: () => controller.current?.abort()};
+    refreshCatalog, result, setResult, running, steps, error, run, reset, stop: () => controller.current?.abort()};
 }
 const StudioContext = createContext<ReturnType<typeof useStudioState> | null>(null);
 export function StudioProvider({children}: {children: ReactNode}) { return <StudioContext.Provider value={useStudioState()}>{children}</StudioContext.Provider>; }

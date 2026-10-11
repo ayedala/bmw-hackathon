@@ -305,6 +305,7 @@ export async function loadDataset(): Promise<Dataset> {
     hypotheses: graph.hypotheses,
     findings: graph.findings,
     requirements,
+    model_coverage: live.available ? live.model_coverage || [] : [],
     benchmark: [],
     audit: [],
     research_runs: runs,

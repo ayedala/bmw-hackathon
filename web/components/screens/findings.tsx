@@ -28,6 +28,10 @@ function FindingDetail({ row }: { row: FindingRow }) {
   const f = row.finding;
   const supporting = row.links.filter((l) => l.stance === "supports" && l.evidence).map((l) => ({ evidence: l.evidence!, note: l.note || l.hypothesis_id }));
   const contradicting = row.links.filter((l) => l.stance === "contradicts" && l.evidence).map((l) => ({ evidence: l.evidence!, note: l.note || l.hypothesis_id }));
+  const anchors = f.requirement_ids.flatMap((rid) => requirementByDisplayId.get(rid)?.proposal.anchor_ids ?? [])
+    .map((id) => evidenceById.get(id))
+    .filter((e): e is NonNullable<typeof e> => Boolean(e))
+    .map((evidence) => ({ evidence, note: "Source anchor cited by the proposal; interpretation requires review." }));
   const b = row.balance;
 
   return (
@@ -47,21 +51,28 @@ function FindingDetail({ row }: { row: FindingRow }) {
 
       <div className="grid grid-cols-4 gap-px overflow-hidden rounded-md border border-slate-200/60 bg-slate-200/60">
         {[
-          ["Concern / aspiration", b.supporting],
+          ["Topic complaints / wishes", b.supporting],
           ["Opposing", b.contradicting],
           ["Praise / other", b.neutral],
           ["Feedback IDs", b.independent_sources],
         ].map(([label, value]) => (
           <div key={label} className="bg-white px-2.5 py-2">
             <div className="text-2xs uppercase tracking-wide text-slate-500">{label}</div>
-            <div className={label === "Contradicting" ? "text-base font-semibold tabular-nums text-amber-700" : "text-base font-semibold tabular-nums text-zinc-950"}>{value}</div>
+            <div className={label === "Opposing" ? "text-base font-semibold tabular-nums text-amber-700" : "text-base font-semibold tabular-nums text-zinc-950"}>{value}</div>
           </div>
         ))}
       </div>
 
+      {anchors.length > 0 && <div>
+        <SubHeading count={anchors.length}>Proposal anchor records</SubHeading>
+        <p className="mb-2 text-xs leading-relaxed text-slate-600">Start with these cited records, then inspect the wider same-topic signals below.</p>
+        <EvidenceList entries={anchors} initial={3} empty="No proposal anchors available." />
+      </div>}
+
       <div>
-        <SubHeading count={supporting.length}>Potentially relevant concerns</SubHeading>
-        <EvidenceList entries={supporting} initial={3} empty="No concerns linked." />
+        <SubHeading count={supporting.length}>Same-topic complaints and wishes</SubHeading>
+        <p className="mb-2 text-xs leading-relaxed text-slate-600">These spans share a broad topic with this proposal. They have not been checked for relevance to the specific customer outcome, and the count is not a failure rate.</p>
+        <EvidenceList entries={supporting} initial={3} empty="No same-topic complaints or wishes." />
       </div>
       <div>
         <SubHeading count={contradicting.length}>Opposing evidence</SubHeading>
@@ -164,7 +175,7 @@ export function FindingsScreen() {
     { key: "market", header: "Mkt", cell: (r) => <MarketTag market={r.finding.market} />, sortValue: (r) => r.finding.market, className: "w-12" },
     { key: "confidence", header: "Confidence", cell: (r) => <ConfidenceBadge confidence={r.confidence} />, sortValue: (r) => ["Low", "Medium", "High"].indexOf(r.confidence), className: "w-24" },
     { key: "sources", header: "Feedback IDs", cell: (r) => <span className="text-xs tabular-nums">{r.balance.independent_sources}</span>, sortValue: (r) => r.balance.independent_sources, align: "right", className: "w-20" },
-    { key: "support", header: "Concerns", cell: (r) => <span className="text-xs tabular-nums">{r.balance.supporting}</span>, sortValue: (r) => r.balance.supporting, align: "right", className: "w-16" },
+    { key: "support", header: "Topic signals", cell: (r) => <span className="text-xs tabular-nums">{r.balance.supporting}</span>, sortValue: (r) => r.balance.supporting, align: "right", className: "w-20" },
     {
       key: "contra",
       header: "Contra.",
@@ -179,7 +190,7 @@ export function FindingsScreen() {
 
   return (
     <div>
-      <PageHeader title="Customer feedback themes" question="Which customer concerns appear in the US G60 records, and what needs review?" />
+      <PageHeader title="Customer feedback themes" question="Which broad topics appear in US G60 feedback? Counts show extracted signals, not verified support for each proposal." />
       <FilterBar active={active} onClearAll={() => setFilters(DEFAULTS)} resultLabel={`${filtered.length} of ${rows.length} findings`}>
         <Select label="Topic" value={filters.topic} onValueChange={(v) => setFilters((f) => ({ ...f, topic: v }))} options={[{ value: "all", label: "All" }, ...topics.map((t) => ({ value: t, label: TOPIC_LABEL[t] ?? t }))]} />
         <Select label="Market" value={filters.market} onValueChange={(v) => setFilters((f) => ({ ...f, market: v }))} options={[{ value: "all", label: "All" }, ...MARKETS.map((m) => ({ value: m, label: MARKET_LABEL[m] }))]} />

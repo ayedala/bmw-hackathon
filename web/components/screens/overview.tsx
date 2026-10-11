@@ -98,7 +98,7 @@ export function OverviewScreen() {
       ),
       className: "max-w-[420px]",
     },
-    { key: "score", header: "CRPS", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, align: "right", className: "w-24" },
+    { key: "score", header: "Legacy score", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, align: "right", className: "w-24" },
     { key: "confidence", header: "Confidence", cell: (r) => <ConfidenceBadge confidence={r.confidence} />, className: "w-24" },
     {
       key: "evidence",
@@ -170,7 +170,7 @@ export function OverviewScreen() {
 
       <MetricStrip className="grid-cols-3 md:grid-cols-6">
         <Metric label="Active requirements" value={active.length} detail={`${rows.length - active.length} rejected`} href="/requirements" />
-        <Metric label="Illustrative P1" value={p1.length} detail={MARKET_LABEL[market]} href="/prioritization" hint="Unapproved seed ratings: CRPS ≥70 under the current weights, with uncertainty below 4." />
+        <Metric label="Illustrative P1" value={p1.length} detail={MARKET_LABEL[market]} href="/prioritization" hint="Unapproved seed ratings: legacy planning score ≥70 under the current weights, with uncertainty below 4." />
         <Metric label="Findings" value={dataset.findings.length} href="/findings" />
         <Metric label="Captured external sources" value={externalGroups.size} detail={`+${feedbackRecords} linked feedback IDs`} href="/sources" hint="Captured pipeline source groups only; curated discovery notes are excluded." />
         <Metric label="Evidence records" value={dataset.evidence.length} detail={`${dataset.evidence.filter((e) => e.provenance === "pipeline").length} from pipeline`} href="/evidence" />
@@ -180,7 +180,7 @@ export function OverviewScreen() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Section
           title="Top priority requirements"
-          description={`Sorted by priority, then CRPS under the current weights · ${MARKET_LABEL[market]}.`}
+          description={`Sorted by priority, then legacy planning score under the current weights · ${MARKET_LABEL[market]}.`}
           actions={
             <Link href="/requirements" className="text-xs text-slate-600 hover:text-zinc-900">
               All requirements

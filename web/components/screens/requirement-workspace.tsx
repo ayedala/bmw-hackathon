@@ -5,6 +5,7 @@ import { useMemo } from "react";
 
 import { BalanceBar, ConfidenceBadge, DecisionBadge, HypothesisStatusBadge, PriorityBadge, ScoreValue } from "@/components/app/badges";
 import { DecisionControls } from "@/components/app/decision-controls";
+import { CrpsFrameworkPanel } from "@/components/app/crps-framework";
 import { EvidenceList, type EvidenceListEntry } from "@/components/app/evidence-list";
 import { EmptyState, KeyValue, Section, SubHeading } from "@/components/app/layout-parts";
 import { PriorityBreakdown, WeightControls } from "@/components/app/score";
@@ -53,7 +54,7 @@ function ProseBlock({ label, children, tone }: { label: string; children: React.
 }
 
 export function RequirementWorkspace({ displayId }: { displayId: string }) {
-  const { dataset, market, setMarket, policy, requirementByDisplayId, findingsById, hypothesesById, evidenceById, audit, challenges, judgments } = useStore();
+  const { dataset, market, setMarket, policy, requirementByDisplayId, findingsById, hypothesesById, evidenceById, audit, challenges, judgments, crpsAssessments } = useStore();
   const bundle = requirementByDisplayId.get(displayId);
 
   const derived = useMemo(() => {
@@ -120,6 +121,7 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
   }
 
   const { findings, hypotheses, rev, anchors, supporting, opposing, context, balance, sources } = derived;
+  const framework = (crpsAssessments[displayId] ?? []).filter((item) => item.requirement_revision === rev.revision).at(-1);
   const p = bundle.proposal;
   const inScope = isInScope(bundle, market);
   const { factors, basis, assessment } = currentFactors(bundle);
@@ -160,15 +162,22 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
         <h1 className="mt-1 max-w-4xl text-xl font-semibold leading-snug tracking-tight text-zinc-950">{rev.title}</h1>
         <dl className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2">
           <div className="flex items-center gap-2">
-            <dt className="text-2xs uppercase tracking-wide text-slate-500">Priority</dt>
+            <dt className="text-2xs uppercase tracking-wide text-slate-500">Legacy priority</dt>
             <dd>
               <PriorityBadge priority={priority} />
             </dd>
           </div>
           <div className="flex items-center gap-2">
-            <dt className="text-2xs uppercase tracking-wide text-slate-500">CRPS</dt>
+            <dt className="text-2xs uppercase tracking-wide text-slate-500">Legacy score</dt>
             <dd className="text-sm">
               <ScoreValue score={score} basis={basis} />
+            </dd>
+          </div>
+          <div className="flex items-center gap-2">
+            <dt className="text-2xs uppercase tracking-wide text-slate-500">Framework CRPS</dt>
+            <dd className="text-sm font-medium tabular-nums text-zinc-900">
+              {inScope && framework ? framework.result.customer_priority.value?.toFixed(1) ?? `${framework.result.customer_priority.lower.toFixed(1)}–${framework.result.customer_priority.upper.toFixed(1)}` : "Unassessed"}
+              {inScope && framework?.result.priority_band ? ` · ${framework.result.priority_band}` : ""}
             </dd>
           </div>
           <div className="flex items-center gap-2">
@@ -208,7 +217,7 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
       )}
       {openChallenge && status === "challenged" && (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900" role="status">
-          <span className="font-medium">Open challenge {openChallenge.challenge_id}:</span> {openChallenge.statement} CRPS {openChallenge.score_before.toFixed(1)} →{" "}
+          <span className="font-medium">Open challenge {openChallenge.challenge_id}:</span> {openChallenge.statement} legacy score {openChallenge.score_before.toFixed(1)} →{" "}
           {openChallenge.score_after.toFixed(1)}.{" "}
           <Link href="/audit" className="underline underline-offset-2">
             View in audit trail
@@ -320,7 +329,7 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
             <Section title="Evidence summary">
               <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 md:grid-cols-5">
                 {[
-                  ["Extracted concerns", balance.supporting],
+                  ["Same-topic signals", balance.supporting],
                   ["Opposing", balance.contradicting],
                   ["Praise / other", balance.neutral],
                   ["Feedback IDs", balance.independent_sources],
@@ -328,12 +337,12 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
                 ].map(([label, value]) => (
                   <div key={label} className="bg-white px-3 py-2">
                     <div className="text-2xs uppercase tracking-wide text-slate-500">{label}</div>
-                    <div className={cn("mt-0.5 text-base font-semibold tabular-nums text-zinc-950", label === "Contradicting" && "text-amber-700")}>{value}</div>
+                    <div className={cn("mt-0.5 text-base font-semibold tabular-nums text-zinc-950", label === "Opposing" && "text-amber-700")}>{value}</div>
                   </div>
                 ))}
               </div>
               <p className="mt-1.5 text-2xs text-slate-500">
-                Record counts are not prevalence; {rev.denominator_feedback_records.toLocaleString("en-US")} eligible US G60 feedback IDs in the stored baseline run. Assessing a
+                Same-topic counts have not been checked for relevance to this outcome and are not prevalence; {rev.denominator_feedback_records.toLocaleString("en-US")} eligible US G60 feedback IDs in the stored baseline run. Assessing a
                 link records a human judgement; counts and scores do not change automatically.
               </p>
             </Section>
@@ -343,8 +352,8 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
             </Section>
 
             <div className="grid gap-4 xl:grid-cols-2">
-              <Section title="Potentially relevant concerns" description={`${supporting.length} extracted records; review their meaning before deciding`}>
-                <EvidenceList entries={supporting} empty="No concerns are linked." assess={assess} />
+              <Section title="Same-topic complaints and wishes" description={`${supporting.length} extracted spans; review relevance before deciding`}>
+                <EvidenceList entries={supporting} empty="No same-topic complaints or wishes are linked." assess={assess} />
               </Section>
               <Section title="Opposing evidence" description={`${opposing.length} reviewed links`}>
                 <EvidenceList entries={opposing} tone="contradict" empty="No opposing evidence is linked. Review praise and alternative explanations in context; this is not consensus." assess={assess} />
@@ -369,7 +378,7 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
                   <tr className="border-b border-slate-200 text-2xs uppercase tracking-wide text-slate-500">
                     <th scope="col" className="h-8 px-3 text-left font-medium">Market</th>
                     <th scope="col" className="px-3 text-left font-medium">Status</th>
-                    <th scope="col" className="px-3 text-right font-medium">CRPS</th>
+                    <th scope="col" className="px-3 text-right font-medium">Legacy score</th>
                     <th scope="col" className="px-3 text-left font-medium">Evidence available</th>
                   </tr>
                 </thead>
@@ -412,6 +421,10 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
               </ul>
             </Section>
           </div>
+
+          <Section title="Framework CRPS assessment" description="Seven-factor assessment with source notes, explicit missing inputs and an immutable score snapshot.">
+            <CrpsFrameworkPanel displayId={displayId} requirementId={rev.requirement_id} revision={rev.revision} inScope={inScope} />
+          </Section>
 
           <Section
             title="Priority and decision history"

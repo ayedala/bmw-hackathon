@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DECISION_STATUS_LABEL, formatDate, PRIORITIES, priorityRank, TOPIC_LABEL, type DecisionStatus } from "@/lib/domain/derive";
 import { MARKET_LABEL } from "@/lib/domain/model";
+import type { ModelCoverageSummary } from "@/lib/domain/model";
 import { usePersistentState, useStore } from "@/lib/store";
 import { useRequirementRows, type RequirementRow } from "@/lib/view";
 
@@ -23,6 +24,70 @@ interface Filters {
   decision: string;
 }
 const DEFAULTS: Filters = { q: "", topic: "all", priority: "all", decision: "all" };
+
+type ModelChoice = "F70" | "G60" | "G70";
+const MODEL_NAME: Record<ModelChoice, string> = { F70: "1 Series", G60: "5 Series", G70: "7 Series" };
+const THEME_NAME: Record<string, string> = {
+  controls_usability: "Everyday controls and usability",
+  software_reliability: "Connected functions and software reliability",
+  charging_and_range: "Range and charging confidence",
+  ride_and_comfort: "Ride, seating and comfort",
+  driver_assistance: "Driver assistance behavior",
+  storage_and_practicality: "Storage and practical access",
+  noise_and_refinement: "Cabin noise and refinement",
+};
+
+function ModelChoiceBar({ selected, onSelect, coverage, g60Count }: {
+  selected: ModelChoice;
+  onSelect: (model: ModelChoice) => void;
+  coverage: ModelCoverageSummary[];
+  g60Count: number;
+}) {
+  return <div className="mb-5 grid gap-2 sm:grid-cols-3" role="group" aria-label="Choose BMW model for requirements">
+    {(["F70", "G60", "G70"] as const).map((model) => {
+      const summary = coverage.find((item) => item.model_code === model);
+      return <button key={model} type="button" aria-pressed={selected === model} onClick={() => onSelect(model)}
+        className={`rounded-md border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${selected === model ? "border-brand bg-brand-soft text-zinc-950" : "border-slate-200 bg-white text-slate-700 hover:border-brand-line"}`}>
+        <span className="block text-sm font-semibold">BMW {MODEL_NAME[model]} <span className="font-mono text-xs font-normal">{model}</span></span>
+        <span className="mt-1 block text-xs text-slate-600">{model === "G60" ? `${g60Count} authored requirement drafts` : summary ? `${summary.themes.length} evidence themes · proposals pending` : "Evidence unavailable"}</span>
+      </button>;
+    })}
+  </div>;
+}
+
+function CandidateThemes({ model, summary }: { model: "F70" | "G70"; summary: ModelCoverageSummary | undefined }) {
+  if (!summary) return <EmptyState title="Model evidence is unavailable." detail="Connect the private evidence database and reload to inspect model-specific themes." />;
+  const markets = summary.signal_markets.map((item) => `${item.country} ${item.signals.toLocaleString()}`).join(" · ");
+  return <div className="space-y-5">
+    <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-relaxed text-slate-800">
+      <p className="font-semibold text-zinc-950">Evidence themes for the BMW {MODEL_NAME[model]} ({model})</p>
+      <p className="mt-1">{summary.feedback_records.toLocaleString()} supplied feedback records across {summary.markets.length} markets; {summary.signal_count.toLocaleString()} extracted spans ({markets}). These are candidate requirement areas, not authored or approved requirements. The G60 proposals and scores do not transfer to this model.</p>
+      <p className="mt-1 text-xs text-slate-600">The market control in the workbench header applies to the G60 proposal set. Counts below follow each signal’s own market; feedback IDs are records, not verified unique customers or prevalence estimates.</p>
+    </div>
+    <div className="grid gap-3 lg:grid-cols-2">
+      {summary.themes.map((theme) => <article key={theme.domain} className="rounded-md border border-slate-200 bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Candidate requirement area</p>
+            <h2 className="mt-1 text-base font-semibold text-zinc-950">{THEME_NAME[theme.domain] ?? theme.domain.replaceAll("_", " ")}</h2>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">Unreviewed</span>
+        </div>
+        <p className="mt-2 text-sm text-slate-700">{theme.feedback_count.toLocaleString()} feedback IDs have {theme.signal_count.toLocaleString()} extracted spans in this topic; {theme.concern_count.toLocaleString()} are automatically tagged as complaints or wishes. Topic and polarity labels can be wrong and do not prove support for a specific solution.</p>
+        {theme.examples.length > 0 && <div className="mt-3 border-t border-slate-100 pt-3">
+          <p className="text-xs font-medium text-slate-600">Source span to review</p>
+          <ul className="mt-2 space-y-2">
+            {theme.examples.map((example) => <li key={`${example.source_record_id}-${example.locator}`} className="rounded bg-slate-50 px-3 py-2 text-sm text-zinc-800">
+              <p className="line-clamp-3">“{example.excerpt}”</p>
+              <p className="mt-1 font-mono text-xs text-slate-500">{example.source_record_id} · {example.country}{example.locator ? ` · ${example.locator}` : ""}</p>
+            </li>)}
+          </ul>
+        </div>}
+        <p className="mt-3 text-xs text-slate-600">Next: review source relevance, define a model-specific customer outcome, test alternatives, then assess feasibility, cost and framework CRPS.</p>
+      </article>)}
+    </div>
+  </div>;
+}
 
 export function requirementColumns(market: string): Column<RequirementRow>[] {
   return [
@@ -44,7 +109,7 @@ export function requirementColumns(market: string): Column<RequirementRow>[] {
       className: "min-w-[320px] max-w-[520px]",
     },
     { key: "topic", header: "Topic", cell: (r) => <span className="text-xs text-slate-700">{TOPIC_LABEL[r.bundle.topic]}</span>, sortValue: (r) => r.bundle.topic, className: "w-24" },
-    { key: "crps", header: "CRPS", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, sortValue: (r) => r.score ?? -1, align: "right", className: "w-24" },
+    { key: "crps", header: "Legacy score", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, sortValue: (r) => r.score ?? -1, align: "right", className: "w-24" },
     {
       key: "confidence",
       header: "Confidence",
@@ -56,12 +121,12 @@ export function requirementColumns(market: string): Column<RequirementRow>[] {
       key: "evidence",
       header: "Evidence",
       cell: (r) => (
-        <Tooltip content={`${r.balance.supporting} supporting, ${r.balance.contradicting} contradicting, ${r.balance.independent_sources} independent sources linked through findings.`}>
+        <Tooltip content={`${r.balance.supporting} same-topic complaint or aspiration spans, ${r.balance.contradicting} reviewed opposing spans, ${r.balance.independent_sources} distinct feedback IDs. Relevance to this requirement is unreviewed.`}>
           <span tabIndex={0} className="whitespace-nowrap text-xs tabular-nums text-zinc-800">
             {r.balance.supporting}
             <span className="text-slate-400"> / </span>
             <span className="text-amber-700">{r.balance.contradicting}</span>
-            <span className="ml-1.5 text-slate-500">{r.balance.independent_sources} src</span>
+            <span className="ml-1.5 text-slate-500">{r.balance.independent_sources} IDs</span>
           </span>
         </Tooltip>
       ),
@@ -76,7 +141,8 @@ export function requirementColumns(market: string): Column<RequirementRow>[] {
 
 export function RequirementsScreen() {
   const router = useRouter();
-  const { market } = useStore();
+  const { market, dataset } = useStore();
+  const [model, setModel] = usePersistentState<ModelChoice>("requirements:model", "G60");
   const rows = useRequirementRows(market);
   const [filters, setFilters] = usePersistentState<Filters>("requirements", DEFAULTS);
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
@@ -104,8 +170,10 @@ export function RequirementsScreen() {
     <div>
       <PageHeader
         title="Requirements"
-        question={`Which customer-facing requirements should shape the successor? CRPS under the current weights · ${MARKET_LABEL[market]}.`}
+        question={model === "G60" ? `Which customer-facing requirements should shape the successor? Legacy planning score under the current weights · ${MARKET_LABEL[market]}.` : `Explore the available ${MODEL_NAME[model]} evidence before defining model-specific requirements.`}
       />
+      <ModelChoiceBar selected={model} onSelect={setModel} coverage={dataset.model_coverage} g60Count={rows.length} />
+      {model !== "G60" ? <CandidateThemes model={model} summary={dataset.model_coverage.find((item) => item.model_code === model)} /> : <>
       <FilterBar active={active} onClearAll={() => setFilters(DEFAULTS)} resultLabel={`${filtered.length} of ${rows.length} requirements`}>
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -139,6 +207,7 @@ export function RequirementsScreen() {
           />
         }
       />
+      </>}
     </div>
   );
 }

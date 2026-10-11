@@ -147,6 +147,21 @@ export interface RequirementBundle {
   market_context: Partial<Record<MarketCode, string>>;
 }
 
+export interface ModelCoverageSummary {
+  model_code: "F70" | "G70";
+  feedback_records: number;
+  signal_count: number;
+  markets: { country: string; records: number }[];
+  signal_markets: { country: string; signals: number }[];
+  themes: {
+    domain: string;
+    signal_count: number;
+    feedback_count: number;
+    concern_count: number;
+    examples: { source_record_id: string; country: string; excerpt: string; locator: string }[];
+  }[];
+}
+
 export interface Dataset {
   generated_at: string;
   vehicle: {
@@ -168,6 +183,7 @@ export interface Dataset {
   hypotheses: Hypothesis[];
   findings: Finding[];
   requirements: RequirementBundle[];
+  model_coverage: ModelCoverageSummary[];
   benchmark: CompetitorBenchmark[];
   audit: AuditEvent[];
   research_runs: ResearchRun[];

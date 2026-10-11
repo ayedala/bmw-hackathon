@@ -26,7 +26,7 @@ export function SettingsScreen() {
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <Section title="Priority method (CRPS)" description={`bmw_pm.decision.planning.priority_score · ${PRIORITY_FORMULA}`}>
+        <Section title="Legacy planning priority method" description={`bmw_pm.decision.planning.priority_score · ${PRIORITY_FORMULA}`}>
           <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
             <table className="w-full text-[13px]">
               <caption className="sr-only">Priority factors</caption>

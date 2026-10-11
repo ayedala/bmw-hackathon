@@ -52,7 +52,7 @@ export function PriorityBreakdown({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <div className="text-2xs font-medium uppercase tracking-wide text-slate-500">CRPS</div>
+        <div className="text-2xs font-medium uppercase tracking-wide text-slate-500">Legacy planning score</div>
         <div className={cn("text-2xs", basis === "saved" ? "text-brand" : "text-slate-500")}>{basis === "saved" ? "Saved PM assessment" : "Illustrative seed rating"}</div>
       </div>
       <div className="mt-0.5 flex items-baseline gap-2">
@@ -188,7 +188,7 @@ export function WeightControls({ dense = false }: { dense?: boolean }) {
           <label key={key} className="block">
             <span className="flex items-center justify-between text-xs text-zinc-800">
               {FACTOR_LABEL[key]}
-              <span className="tabular-nums text-slate-500">{Math.round(policy[key] * 100)}%</span>
+              <span className="tabular-nums text-slate-500">{Math.round(policy[key] * 100)}% of total</span>
             </span>
             <input
               type="range"
@@ -199,12 +199,13 @@ export function WeightControls({ dense = false }: { dense?: boolean }) {
               onChange={(e) => setWeights({ ...weights, [key]: Number(e.target.value) })}
               className="mt-0.5 h-1 w-full cursor-pointer accent-brand"
               aria-label={`${FACTOR_LABEL[key]} weight`}
+              aria-valuetext={`${weights[key]} relative weight; ${Math.round(policy[key] * 100)} percent of total`}
             />
           </label>
         ))}
       </div>
       <p className="mt-1.5 text-2xs text-slate-500">
-        {weightsAreDefault ? "Default PriorityPolicy (0.35 / 0.25 / 0.25 / 0.15)." : "Custom weights — every CRPS on every screen uses them. Not an approved BMW policy."}
+        Sliders are relative; displayed shares are normalized to 100%. {weightsAreDefault ? "Default legacy policy (0.35 / 0.25 / 0.25 / 0.15)." : "Custom weights affect legacy planning scores, not framework CRPS assessments."}
       </p>
     </div>
   );

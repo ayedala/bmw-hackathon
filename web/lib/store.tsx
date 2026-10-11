@@ -13,6 +13,7 @@ import type {
   RequirementRevision,
 } from "@/lib/domain/contracts";
 import type { Confidence } from "@/lib/domain/derive";
+import { CRPS_POLICY_VERSION, evaluateCrps, type CrpsAssessment, type CrpsInputs } from "@/lib/domain/crps";
 import type { Dataset, EvidenceItem, Finding, Hypothesis, MarketCode, RequirementBundle } from "@/lib/domain/model";
 import { MARKETS } from "@/lib/domain/model";
 import { DEFAULT_PRIORITY_POLICY, hashString, normalisePolicy, priorityScore } from "@/lib/domain/scoring";
@@ -39,16 +40,17 @@ export interface ChallengeRecord {
 }
 
 interface Overlay {
-  version: 2;
+  version: 3;
   revisions: Record<string, RequirementRevision[]>;
   assessments: Record<string, PriorityAssessment[]>;
+  crpsAssessments: Record<string, CrpsAssessment[]>;
   decisions: Record<string, Decision[]>;
   judgments: EvidenceLinkJudgment[];
   challenges: ChallengeRecord[];
   audit: AuditEvent[];
 }
 
-const EMPTY: Overlay = { version: 2, revisions: {}, assessments: {}, decisions: {}, judgments: [], challenges: [], audit: [] };
+const EMPTY: Overlay = { version: 3, revisions: {}, assessments: {}, crpsAssessments: {}, decisions: {}, judgments: [], challenges: [], audit: [] };
 const OVERLAY_KEY = "bmw-pdl:session:v2";
 const MARKET_KEY = "bmw-pdl:market";
 const WEIGHTS_KEY = "bmw-pdl:weights";
@@ -116,6 +118,7 @@ interface StoreValue {
   audit: AuditEvent[];
   challenges: ChallengeRecord[];
   judgments: EvidenceLinkJudgment[];
+  crpsAssessments: Record<string, CrpsAssessment[]>;
   sessionEventCount: number;
   hydrated: boolean;
   recordDecision: (displayId: string, action: Exclude<DecisionAction, "edit" | "challenge">, rationale: string) => Promise<void>;
@@ -125,6 +128,7 @@ interface StoreValue {
     rationale: string,
   ) => Promise<void>;
   saveAssessment: (displayId: string, factors: PriorityFactors, rationale: string) => Promise<PriorityAssessment>;
+  saveCrpsAssessment: (displayId: string, inputs: CrpsInputs, rationale: string) => Promise<CrpsAssessment>;
   submitChallenge: (
     record: Omit<ChallengeRecord, "challenge_id" | "recorded_at" | "assessment_id" | "score_before" | "score_after">,
   ) => Promise<void>;
@@ -146,8 +150,8 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
   overlayRef.current = overlay;
 
   useEffect(() => {
-    const stored = readStorage<Overlay | null>(OVERLAY_KEY, null);
-    setOverlay(stored && stored.version === 2 ? stored : EMPTY);
+    const stored = readStorage<(Omit<Overlay, "version" | "crpsAssessments"> & { version: 2 }) | Overlay | null>(OVERLAY_KEY, null);
+    setOverlay(stored?.version === 3 ? stored : stored?.version === 2 ? { ...stored, version: 3, crpsAssessments: {} } : EMPTY);
     const m = readStorage<string>(MARKET_KEY, dataset.planning.primary_market);
     if ((MARKETS as readonly string[]).includes(m)) setMarketState(m as MarketCode);
     setWeightsState(readStorage<PriorityPolicy>(WEIGHTS_KEY, DEFAULT_WEIGHTS));
@@ -342,7 +346,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
           object_id: displayId,
           object_revision: latest.revision,
           after_hash: assessment.assessment_id,
-          reason: `CRPS ${fmt(assessment.score)} (impact ${factors.impact}, evidence ${factors.evidence}, market fit ${factors.relevance}, uncertainty ${factors.uncertainty}). ${rationale}`,
+          reason: `Legacy planning score ${fmt(assessment.score)} (impact ${factors.impact}, evidence ${factors.evidence}, market fit ${factors.relevance}, uncertainty ${factors.uncertainty}). ${rationale}`,
         },
       ]);
       commit({
@@ -353,6 +357,35 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       return assessment;
     },
     [appendEvents, buildAssessment, commit, findBundle],
+  );
+
+  const saveCrpsAssessment = useCallback<StoreValue["saveCrpsAssessment"]>(
+    async (displayId, inputs, rationale) => {
+      if (!rationale.trim() || !actorId.trim()) throw new Error("Reviewer and rationale are required.");
+      const { bundle, latest } = findBundle(displayId);
+      const result = evaluateCrps(inputs);
+      if (!bundle.scope_markets.includes(market)) throw new Error(`Requirement is not assessed for ${market}.`);
+      if (result.missing_inputs.length === 11) throw new Error("Rate at least one input before saving a framework assessment.");
+      const base = overlayRef.current;
+      const history = base.crpsAssessments[displayId] ?? [];
+      const assessment: CrpsAssessment = {
+        assessment_id: `crps_${hashString(`${latest.requirement_id}${Date.now()}${history.length}`)}`,
+        requirement_id: latest.requirement_id,
+        requirement_revision: latest.revision,
+        sequence: history.filter((item) => item.requirement_revision === latest.revision).length + 1,
+        policy_version: CRPS_POLICY_VERSION,
+        inputs: structuredClone(inputs), result,
+        actor_id: actorId.trim(), rationale: rationale.trim(), recorded_at: new Date().toISOString(),
+      };
+      const events = await appendEvents(base, [{
+        action: "crps_assessment_saved", object_type: "requirement", object_id: displayId,
+        object_revision: latest.revision, after_hash: await sha256(JSON.stringify(assessment)),
+        reason: `Framework CRPS ${result.customer_priority.value?.toFixed(1) ?? `${result.customer_priority.lower.toFixed(1)}-${result.customer_priority.upper.toFixed(1)}`}; ${result.missing_inputs.length} missing inputs. ${assessment.rationale}`,
+      }]);
+      commit({ ...base, crpsAssessments: { ...base.crpsAssessments, [displayId]: [...history, assessment] }, audit: [...base.audit, ...events] });
+      return assessment;
+    },
+    [actorId, appendEvents, commit, findBundle, market],
   );
 
   const submitChallenge = useCallback<StoreValue["submitChallenge"]>(
@@ -382,7 +415,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         object_id: record.display_id,
         object_revision: latest.revision,
         after_hash: assessment.assessment_id,
-        reason: `CRPS ${fmt(challenge.score_before)} → ${fmt(challenge.score_after)} after ${challenge.challenge_id}${changed.length ? ` (${changed.map((k) => `${k} ${record.factors_before[k]}→${record.factors_after[k]}`).join(", ")})` : ""}.`,
+        reason: `Legacy planning score ${fmt(challenge.score_before)} → ${fmt(challenge.score_after)} after ${challenge.challenge_id}${changed.length ? ` (${changed.map((k) => `${k} ${record.factors_before[k]}→${record.factors_after[k]}`).join(", ")})` : ""}.`,
       });
       const events = await appendEvents(base, drafts);
       commit({
@@ -457,11 +490,13 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       audit,
       challenges: overlay.challenges,
       judgments: overlay.judgments,
+      crpsAssessments: overlay.crpsAssessments,
       sessionEventCount: overlay.audit.length,
       hydrated,
       recordDecision,
       editRequirement,
       saveAssessment,
+      saveCrpsAssessment,
       submitChallenge,
       judgeLink,
       logAction,
@@ -469,7 +504,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
     }),
     [
       dataset, market, setMarket, weights, setWeights, policy, weightsAreDefault, actorId, setActorId, requirements, audit, overlay, hydrated,
-      recordDecision, editRequirement, saveAssessment, submitChallenge, judgeLink, logAction, resetSession,
+      recordDecision, editRequirement, saveAssessment, saveCrpsAssessment, submitChallenge, judgeLink, logAction, resetSession,
     ],
   );
 

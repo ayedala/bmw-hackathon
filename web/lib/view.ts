@@ -32,7 +32,7 @@ export interface RequirementRow {
   in_scope: boolean;
   factors: PriorityFactors;
   basis: "saved" | "seed";
-  /** CRPS under the current what-if weights; null when the market is out of scope. */
+  /** Legacy planning score under the current what-if weights; null when the market is out of scope. */
   score: number | null;
   priority: Priority;
   confidence: Confidence;

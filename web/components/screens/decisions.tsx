@@ -59,7 +59,7 @@ export function DecisionsScreen() {
       ),
       className: "min-w-[280px] max-w-[440px]",
     },
-    { key: "crps", header: "CRPS", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, sortValue: (r) => r.score ?? -1, align: "right", className: "w-20" },
+    { key: "crps", header: "Legacy score", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, sortValue: (r) => r.score ?? -1, align: "right", className: "w-20" },
     { key: "status", header: "Status", cell: (r) => <DecisionBadge status={r.status} />, sortValue: (r) => r.status, className: "w-28" },
     {
       key: "last",
@@ -125,7 +125,7 @@ export function DecisionsScreen() {
                 </Link>
                 <span className="text-zinc-900">{c.statement}</span>
                 <span className="text-right tabular-nums text-slate-600">
-                  CRPS {c.score_before.toFixed(1)} → <span className="font-medium text-zinc-900">{c.score_after.toFixed(1)}</span>
+                  Legacy score {c.score_before.toFixed(1)} → <span className="font-medium text-zinc-900">{c.score_after.toFixed(1)}</span>
                 </span>
               </li>
             ))}

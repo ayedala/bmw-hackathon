@@ -1,7 +1,7 @@
 "use client";
 
 import { Command } from "cmdk";
-import { Search } from "lucide-react";
+import { ArrowUpRight, Search, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -81,7 +81,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-7 items-center justify-between rounded-md px-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35",
+        "flex h-9 items-center justify-between rounded-md px-2.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35",
         active
           ? "bg-brand-soft font-medium text-brand shadow-[inset_2px_0_0_0_#0066cc]"
           : "text-zinc-600 hover:bg-slate-100 hover:text-zinc-900",
@@ -95,7 +95,6 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 
 function AppSidebar() {
   const pathname = usePathname();
-  const liveStudio = pathname === "/" || pathname === "/video-memory" || pathname === "/evaluation";
   const { dataset, requirements } = useStore();
   const openDecisions = requirements.filter((r) => {
     const s = decisionStatus(latestRevision(r), r.decisions);
@@ -103,8 +102,8 @@ function AppSidebar() {
   }).length;
 
   const groups: { label?: string; items: NavItem[] }[] = [
-    { items: [{ href: "/", label: "Decision Studio" }, { href: "/video-memory", label: "Video memory" }, { href: "/evaluation", label: "Evaluation" }] },
-    {label: "Planning workbench", items: [{href: "/overview", label: "Overview"}]},
+    { label: "Create", items: [{ href: "/", label: "Decision Studio" }, { href: "/video-memory", label: "Video memory" }] },
+    { label: "Review", items: [{ href: "/overview", label: "Overview" }, { href: "/evaluation", label: "Evaluation" }] },
     {
       label: "Intelligence",
       items: [
@@ -138,7 +137,7 @@ function AppSidebar() {
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-slate-200 bg-white lg:flex" aria-label="Primary">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white lg:flex" aria-label="Primary">
       <div className="flex h-14 items-center border-b border-slate-200 px-3">
         <Link href="/" className="flex items-center gap-2.5 focus-visible:outline-none">
           {/* eslint-disable-next-line @next/next/no-img-element -- static local SVG */}
@@ -149,8 +148,8 @@ function AppSidebar() {
           </span>
         </Link>
       </div>
-      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
-        {groups.filter((_, index) => !liveStudio || index < 2).map((group, i) => (
+      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-4">
+        {groups.map((group, i) => (
           <div key={group.label ?? i}>
             {group.label && <div className="mb-1 px-2 text-2xs font-medium uppercase tracking-wide text-slate-400">{group.label}</div>}
             <div className="space-y-px">
@@ -162,7 +161,7 @@ function AppSidebar() {
         ))}
       </nav>
       <div className="border-t border-slate-200 px-2 py-2">
-        <NavLink item={{ href: "/settings", label: liveStudio ? "Workbench settings" : "Settings" }} active={isActive("/settings")} />
+        <NavLink item={{ href: "/settings", label: "Settings" }} active={isActive("/settings")} />
       </div>
     </aside>
   );
@@ -189,7 +188,7 @@ function CompactNav() {
   ] as const;
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-1.5 lg:hidden" aria-label="Primary">
-      {items.filter((_, index) => (pathname !== "/" && pathname !== "/video-memory") || index < 3).map(([href, label]) => {
+      {items.map(([href, label]) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
@@ -274,9 +273,11 @@ function ContextBar({ onSearch }: { onSearch: () => void }) {
   const { dataset, market, setMarket } = useStore();
   const pathname = usePathname();
   if (pathname === "/" || pathname === "/video-memory") return (
-    <div className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 lg:px-6">
-      <span className="text-[13px] font-semibold">BMW Decision Studio</span>
-      <span className="text-xs text-slate-500">Customer evidence · Market research · Video memory</span>
+    <div className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-4 backdrop-blur lg:px-6">
+      <span className="text-[13px] font-semibold text-zinc-900">{pathname === "/" ? "Decision Studio" : "Video memory"}</span>
+      <button type="button" onClick={onSearch} className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600 transition-colors hover:border-brand-line hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35" aria-label="Search (Ctrl+K)">
+        <Search className="size-3.5" aria-hidden /><span className="hidden sm:inline">Search the workbench</span><kbd className="hidden font-mono text-2xs text-slate-400 sm:inline">Ctrl K</kbd>
+      </button>
     </div>
   );
   return (
@@ -476,11 +477,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           Skip to content
         </a>
         <AppSidebar />
-        <div className="lg:pl-56">
+        <div className="lg:pl-60">
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />
           <main id="main" className="mx-auto max-w-[1680px] px-4 py-5 lg:px-6">
-            {pathname !== "/" && pathname !== "/video-memory" && pathname !== "/evaluation" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">Planning drafts use read-only US G60 feedback from the configured database. Extracted claims and proposed priorities still need human review. Actions on these pages stay in this browser; use the Python review workbench for shared, audited decisions. <Link href="/" className="font-medium text-brand">Decision Studio</Link></div>}
+            {pathname !== "/" && pathname !== "/video-memory" && pathname !== "/evaluation" && <details className="mb-4 rounded-md border border-slate-200 bg-white text-xs text-slate-600"><summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 font-medium text-zinc-800"><ShieldCheck className="size-4 text-brand" aria-hidden />Planning sandbox <span className="font-normal text-slate-500">· source review required · browser-local actions</span><ArrowUpRight className="ml-auto size-3.5 text-slate-400" aria-hidden /></summary><p className="border-t border-slate-100 px-3 py-2 leading-5">Planning drafts use read-only US G60 feedback from the configured database. Extracted claims and proposed priorities need human review. Actions on these pages stay in this browser; use the Python review workbench for shared, audited decisions. <Link href="/" className="font-medium text-brand">Open Decision Studio</Link>.</p></details>}
             {children}
           </main>
         </div>

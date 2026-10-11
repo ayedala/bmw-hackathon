@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import type { Signal, SourceLocator } from "@/lib/domain/contracts";
+import type { ModelCoverageSummary } from "@/lib/domain/model";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,7 @@ export interface LiveSnapshot {
   eligible_feedback_records?: number;
   feedback?: LiveFeedback[];
   signals?: Signal[];
+  model_coverage?: ModelCoverageSummary[];
 }
 
 let cached: { root: string; expires: number; value: LiveSnapshot } | null = null;

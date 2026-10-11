@@ -41,7 +41,7 @@ export interface DistributionDatum {
 
 export function ScoreDistributionChart({ data }: { data: DistributionDatum[] }) {
   return (
-    <div className="h-36 w-full" role="img" aria-label="Requirements by CRPS lower-bound band">
+    <div className="h-36 w-full" role="img" aria-label="Requirements by legacy planning priority band">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -24 }}>
           <CartesianGrid vertical={false} stroke="#f1f5f9" />

@@ -349,7 +349,7 @@ function RateDialog({ bundle, factors, open, onClose }: Props & { open: boolean;
         <div className="space-y-3">
           <FactorEditor factors={draft} original={factors} onChange={setDraft} />
           <div className="flex items-center justify-between rounded-sm bg-slate-50 px-3 py-2">
-            <span className="text-xs text-slate-600">CRPS under current weights</span>
+            <span className="text-xs text-slate-600">Legacy planning score under current weights</span>
             <ScoreDiff before={before} after={after} />
           </div>
           <ReviewerField id="rate-reviewer" />
@@ -476,8 +476,8 @@ function ChallengeDialog({ bundle, revision, factors, balance, confidence, suppo
 
           <div className="grid gap-4 lg:grid-cols-2">
             <div>
-              <SubHeading count={supporting.length}>Supporting evidence</SubHeading>
-              <EvidenceList entries={supporting} initial={5} empty="No supporting evidence is linked." selectable={{ selected: excluded, onToggle: toggle, label: "Exclude" }} />
+              <SubHeading count={supporting.length}>Same-topic complaints and wishes</SubHeading>
+              <EvidenceList entries={supporting} initial={5} empty="No same-topic complaints or wishes are linked." selectable={{ selected: excluded, onToggle: toggle, label: "Exclude" }} />
             </div>
             <div>
               <SubHeading count={opposing.length}>Opposing evidence</SubHeading>
@@ -490,7 +490,7 @@ function ChallengeDialog({ bundle, revision, factors, balance, confidence, suppo
               />
             </div>
           </div>
-          <p className="-mt-2 text-2xs text-slate-500">Tick a record to exclude it from this challenge (e.g. not applicable to the US successor scope).</p>
+          <p className="-mt-2 text-2xs text-slate-500">Same-topic spans are unreviewed for relevance. Tick a record to exclude it from this challenge (e.g. not applicable to the US successor scope).</p>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div>
@@ -507,7 +507,7 @@ function ChallengeDialog({ bundle, revision, factors, balance, confidence, suppo
               <SubHeading>Result</SubHeading>
               <dl className="space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <dt className="text-slate-500">CRPS</dt>
+                  <dt className="text-slate-500">Legacy planning score</dt>
                   <dd>
                     <ScoreDiff before={before} after={after} />
                   </dd>
@@ -529,7 +529,7 @@ function ChallengeDialog({ bundle, revision, factors, balance, confidence, suppo
                   </dd>
                 </div>
                 <div className="flex items-center justify-between">
-                  <dt className="text-slate-500">Evidence balance</dt>
+                  <dt className="text-slate-500">Topic complaints / opposing / feedback IDs</dt>
                   <dd className="tabular-nums text-zinc-800">
                     {balanceAfter.supporting} / <span className="text-amber-700">{balanceAfter.contradicting}</span> · {balanceAfter.independent_sources} sources
                   </dd>

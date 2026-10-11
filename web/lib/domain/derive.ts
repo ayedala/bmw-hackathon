@@ -14,14 +14,14 @@ import type {
 } from "./model";
 
 /* ---------------------------------------------------------------- */
-/* Priority (CRPS = bmw_pm.decision.planning.priority_score)          */
+/* Historical four-factor planning priority                           */
 /* ---------------------------------------------------------------- */
 
 export type Priority = "P1" | "P2" | "P3" | "P4" | "Watch";
 export const PRIORITIES: Priority[] = ["P1", "P2", "P3", "P4", "Watch"];
 
 export const PRIORITY_RULE =
-  "CRPS = 25 × [impact·w + evidence·w + market fit·w + (4 − uncertainty)·w]. P1 ≥70, P2 ≥60, P3 ≥50, P4 below. Watch: uncertainty rated 4, so the order is not decision-grade.";
+  "Legacy planning score = 25 × [impact·w + evidence·w + market fit·w + (4 − uncertainty)·w]. P1 ≥70, P2 ≥60, P3 ≥50, P4 below. Watch: uncertainty rated 4, so the order is not decision-grade. Framework CRPS is assessed separately.";
 
 export function priorityOf(score: number | null, factors: PriorityFactors | null): Priority {
   if (score === null || !factors) return "Watch";
@@ -134,10 +134,10 @@ export function hypothesisStatus(balance: Balance): HypothesisStatus {
 }
 
 export const HYPOTHESIS_STATUS_LABEL: Record<HypothesisStatus, string> = {
-  supported: "Concern observed",
-  contested: "Mixed signals",
-  not_supported: "Few concerns",
-  insufficient: "Few records",
+  supported: "Same-topic concerns found",
+  contested: "Mixed topic signals",
+  not_supported: "Few topic concerns",
+  insufficient: "Few linked records",
 };
 
 /* ---------------------------------------------------------------- */

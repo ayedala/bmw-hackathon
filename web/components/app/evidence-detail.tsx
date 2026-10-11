@@ -19,7 +19,8 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
   const findings = dataset.findings.filter((f) => f.hypothesis_ids.some((id) => usedBy.some((h) => h.id === id)));
   const reqs = requirements.filter(
     (r) => r.finding_ids.some((fid) => findings.some((f) => f.id === fid)) ||
-      r.revisions.some((rev) => rev.evidence_links.some((l) => l.signal_id === evidence.id)),
+      r.revisions.some((rev) => rev.evidence_links.some((l) => l.signal_id === evidence.id)) ||
+      r.proposal.anchor_ids.includes(evidence.id),
   );
   const original = evidence.duplicate_of ? evidenceById.get(evidence.duplicate_of) : undefined;
 
