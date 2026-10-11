@@ -16,6 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 ai = ["openai>=2,<3"]
+postgres = ["psycopg[binary]>=3.2,<4"]
+data = ["pypdf[crypto]>=6,<7", "fonttools>=4,<5"]
 
 [dependency-groups]
 dev = ["pytest>=8.3,<10"]
@@ -25,6 +27,11 @@ bmw-pm = "bmw_pm.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bmw_pm"]
+# Collectors keep their own dependency environments and are source-checkout tools.
+exclude = [
+  "src/bmw_pm/data_pipeline/web_research/**",
+  "src/bmw_pm/data_pipeline/youtube_research/**",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"

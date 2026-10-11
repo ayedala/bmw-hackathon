@@ -1,0 +1,59 @@
+{
+  "schema_version": "1",
+  "report_id": "bmw_group_report_2025",
+  "published_on": "2026-03-12",
+  "source_url": "https://www.bmwgroup.com/content/dam/grpw/websites/bmwgroup_com/ir/downloads/en/2026/bericht/BMW-Group-Report-2025-en.pdf",
+  "status": "company_report_context_not_feature_evidence",
+  "items": [
+    {
+      "id": "china_market_2025",
+      "page": 77,
+      "fact": "BMW Group deliveries in China fell 12.5% in 2025, while Europe grew 7.3% and the Americas grew 5.6%.",
+      "consideration": "Check China-specific demand, pricing and study evidence before claiming a global requirement or ranking.",
+      "domains": ["*"],
+      "powertrains": ["*"],
+      "kind": "portfolio_context",
+      "limitation": "Company-wide regional deliveries do not measure demand for a G60 feature. The supplied feedback has no China verbatims."
+    },
+    {
+      "id": "margin_cash_2025",
+      "page": 70,
+      "fact": "Group revenue fell 6.3% to EUR 133.453 billion; Automotive EBIT margin was 5.3%, down from 6.3%; Automotive free cash flow fell to EUR 3.240 billion from EUR 4.852 billion.",
+      "consideration": "Request scoped cost, price, adoption and cash-flow estimates before treating a proposed update as a business case.",
+      "domains": ["*"],
+      "powertrains": ["*"],
+      "kind": "portfolio_context",
+      "limitation": "Group and segment totals cannot establish the profitability of an individual feature. Free cash flow appears on report page 72."
+    },
+    {
+      "id": "tariffs_outlook_2026",
+      "page": 263,
+      "fact": "Tariffs reduced the 2025 Automotive EBIT margin by approximately 1.5 percentage points. BMW's report expected approximately 1.25 points of tariff impact in 2026 and guided to a 4-6% Automotive EBIT margin.",
+      "consideration": "Stress-test market, sourcing and price assumptions; recheck the dated 2026 outlook before using it in a current decision.",
+      "domains": ["*"],
+      "powertrains": ["*"],
+      "kind": "portfolio_context",
+      "limitation": "The 2026 outlook is a forecast made when the 2025 report was prepared, not a current result or a feature-level cost estimate. The 2025 tariff figure appears on report page 70."
+    },
+    {
+      "id": "electric_mix_neue_klasse",
+      "page": 77,
+      "fact": "Battery-electric vehicles were 17.9% of 2025 deliveries (442,059 units), up 3.6% in units; electrified BEV plus PHEV deliveries rose 8.2% to 642,071.",
+      "consideration": "For electric-vehicle requirements, assess battery-electric and plug-in-hybrid applicability separately and test fit with the NEUE KLASSE launch plan.",
+      "domains": ["charging_and_range", "software_reliability"],
+      "powertrains": ["BEV", "PHEV"],
+      "kind": "domain_context",
+      "limitation": "Portfolio delivery mix does not quantify customer demand for a specific charging or software change."
+    },
+    {
+      "id": "climate_2025_outlook_2026",
+      "page": 264,
+      "fact": "BMW reported 118.7 million tonnes of targeted Scope 3 CO2e emissions in 2025 and forecast a slight increase for 2026.",
+      "consideration": "For energy and charging proposals, check lifecycle and use-phase effects against a reviewed vehicle-specific method.",
+      "domains": ["charging_and_range"],
+      "powertrains": ["BEV", "PHEV"],
+      "kind": "domain_context",
+      "limitation": "The report's targeted Scope 3 measure covers specified categories and depends partly on vehicle-use assumptions; it is not a feature-level emissions estimate. The 2025 figure appears on report page 68."
+    }
+  ]
+}

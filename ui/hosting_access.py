@@ -1,3 +1,5 @@
+"""Hosted access boundary for the prototype review workbench."""
+
 from __future__ import annotations
 
 import time

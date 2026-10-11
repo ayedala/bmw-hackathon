@@ -1,3 +1,5 @@
+"""Typed evidence, requirement, score and audit contracts shared across modules."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -246,7 +248,66 @@ class RequirementEvidenceLink(Contract):
     author_expertise: Literal["unknown"] = "unknown"
 
 
+class CrossChannelEvidence(Contract):
+    evidence_id: str
+    channel: Literal["youtube", "bmw_study", "bmw_sales", "bmw_equipment", "imported_context"]
+    role: Literal["supports", "preserves", "context"]
+    source_family: str
+    claim: str
+    locator: dict[str, Any]
+    payload: dict[str, Any]
+    applicability: Literal["matched", "scope_unconfirmed"]
+    limitations: list[str]
+    semantic_entailment: Literal["unreviewed"] = "unreviewed"
+
+
+class BMWContextObservation(Contract):
+    observation_id: str
+    channel: Literal["bmw_sales", "bmw_equipment"]
+    source_id: str
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_codes: list[str]
+    market: str
+    metric: str
+    year: int | None = None
+    value: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    locator: SourceLocator
+    raw_payload: dict[str, Any]
+    limitations: list[str]
+
+
+class YouTubeFinding(Contract):
+    evidence_id: str
+    video_id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    generation: str
+    topic: str
+    feedback_type: Literal["positive", "pain_point", "requested_improvement"]
+    source_statement: str
+    supporting_excerpt: str = Field(min_length=1)
+    timestamp_seconds: float = Field(ge=0, allow_inf_nan=False)
+    transcript_segment: dict[str, Any]
+    transcript_sha256: str
+    bundle_sha256: str
+    payload: dict[str, Any]
+
+
+class EvidenceLinkJudgment(Contract):
+    """A human assessment of one candidate signal-to-requirement link."""
+
+    schema_version: str = "1"
+    judgment_id: str
+    requirement_id: str
+    requirement_revision: int = Field(ge=1)
+    signal_id: str
+    verdict: Literal["supports", "does_not_support", "context_only"]
+    rationale: str = Field(min_length=1)
+    actor_id: str = Field(min_length=1)
+    recorded_at: datetime
+    request_id: str
+
+
 class RequirementRevision(Contract):
+    successor_draft_id: str | None = None
     schema_version: str = "1"
     requirement_id: str
     revision: int = Field(ge=1)
@@ -275,6 +336,8 @@ class RequirementRevision(Contract):
     processed_feedback_records: int = Field(ge=0)
     support_count: int = Field(ge=0)
     counter_count: int = Field(ge=0)
+    cross_channel_evidence: list[CrossChannelEvidence] = Field(default_factory=list)
+    evidence_synthesis: list[str] = Field(default_factory=list)
 
 
 class CriterionDefinition(Contract):
@@ -363,6 +426,45 @@ class ScoreSnapshot(Contract):
     run_id: str
 
 
+class EvaluationRecord(Contract):
+    record_id: str
+    grouped_record_ids: list[str]
+    split: Literal["development", "heldout_g60", "transfer_f70", "transfer_g70"]
+    model: str
+    source_label: str | None
+    country: str | None
+    powertrain: str | None
+    source_hash: str
+    content_hash: str
+    group_hash: str
+    double_label: bool
+    selection_reason: str = "Deterministic round-robin across source/country/powertrain strata; not population representative."
+
+
+class EvaluationManifest(Contract):
+    schema_version: str = "1"
+    evaluation_id: str
+    seed: str
+    corpus_hash: str
+    records: list[EvaluationRecord]
+    limitations: list[str]
+
+    @model_validator(mode="after")
+    def independent_groups(self) -> "EvaluationManifest":
+        ids = [item.record_id for item in self.records]
+        groups = [item.group_hash for item in self.records]
+        if len(ids) != len(set(ids)) or len(groups) != len(set(groups)):
+            raise ValueError("evaluation records and groups must be unique")
+        return self
+
+
+class DecisionReadiness(Contract):
+    requirement_id: str
+    ready_for_commitment: bool
+    blockers: list[str]
+    interpretation: str = "Readiness checks are safeguards, not measured recommendation quality."
+
+
 class ProviderDescriptor(Contract):
     name: str
     mode: Literal["baseline_no_ai", "live_ai", "cached_replay"]
@@ -408,8 +510,87 @@ class Decision(Contract):
     recorded_at: datetime
     policy_revision: int | None = None
     score_snapshot_id: str | None = None
+    priority_assessment_id: str | None = None
     expected_revision: int
     request_id: str
+    uncertainty_acknowledged: bool = False
+
+
+class PriorityFactors(Contract):
+    impact: int = Field(ge=0, le=4)
+    evidence: int = Field(ge=0, le=4)
+    relevance: int = Field(ge=0, le=4)
+    uncertainty: int = Field(ge=0, le=4)
+
+
+class PriorityPolicy(Contract):
+    impact: float = Field(ge=0, le=1)
+    evidence: float = Field(ge=0, le=1)
+    relevance: float = Field(ge=0, le=1)
+    uncertainty: float = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def normalized(self):
+        if abs(sum(self.model_dump().values()) - 1) > 1e-9:
+            raise ValueError("priority weights must sum to one")
+        return self
+
+
+class PlanningCriterion(Contract):
+    name: str = Field(min_length=1)
+    rating: float = Field(ge=0, le=4, allow_inf_nan=False)
+    weight: float = Field(ge=0, allow_inf_nan=False)
+    direction: Literal["benefit", "risk"] = "benefit"
+    explanation: str = Field(min_length=1)
+
+
+class PriorityAssessment(Contract):
+    criteria: list[PlanningCriterion] = Field(default_factory=list)
+    rank_override: int | None = Field(default=None, ge=1)
+    priority_confirmed: bool = False
+    input_origin: Literal["legacy_unconfirmed", "explicit_pm"] = "legacy_unconfirmed"
+    assessment_id: str
+    requirement_id: str
+    requirement_revision: int = Field(ge=1)
+    sequence: int = Field(ge=1)
+    factors: PriorityFactors
+    policy: PriorityPolicy
+    score: float = Field(ge=0, le=100)
+    actor_id: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    recorded_at: datetime
+    request_id: str
+    interpretation: str = "Declared PM judgement, not measured customer prevalence or calibrated confidence."
+
+
+class SuccessorProposal(Contract):
+    domain: str
+    title: str
+    outcome: str
+    value: str
+    interpretation: str
+    future_assumption: str
+    contrary: str
+    validation: str
+    review_trigger: str
+    anchor_ids: list[str]
+    factors: PriorityFactors
+
+
+class SuccessorDraft(Contract):
+    draft_id: str
+    requirement_id: str
+    base_revision: int
+    recipe_version: str
+    method: str = "Assistant-authored evidence-linked template synthesis; no live model call."
+    planning_window: str = "2029–2031: scenario 3–5 years from 2026, not a launch commitment"
+    proposal: SuccessorProposal
+    quoted_records: list[FeedbackRecord]
+    context_evidence: list[CrossChannelEvidence]
+    external_context: list[dict[str, str]] = Field(default_factory=list)
+    unknowns: list[str]
+    priority_policy: PriorityPolicy
+    priority_explanations: dict[str, str]
 
 
 class AuditEvent(Contract):

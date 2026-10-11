@@ -1,0 +1,15 @@
+{
+  "schema_version": "1",
+  "nhtsa": {
+    "model_years": [2024, 2025, 2026],
+    "model_prefixes": {
+      "G60": ["5", "I5"],
+      "G70": ["7", "I7"]
+    }
+  },
+  "afdc": {
+    "url": "https://afdc.energy.gov/stations/states?count=public",
+    "access": "public",
+    "status": "available"
+  }
+}

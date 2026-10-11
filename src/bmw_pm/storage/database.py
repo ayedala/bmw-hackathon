@@ -1,3 +1,5 @@
+"""SQLite persistence, immutable revisions and an append-only chained application audit trail."""
+
 from __future__ import annotations
 
 import json
@@ -11,6 +13,7 @@ from ..contracts import (
     AuditEvent,
     Decision,
     DecisionAction,
+    EvidenceLinkJudgment,
     FeedbackIngestionResult,
     FeedbackRecord,
     RequirementRevision,
@@ -20,6 +23,7 @@ from ..contracts import (
     StudyIngestionResult,
 )
 from ..utils import canonical_json, content_hash, sha256_bytes, utc_now
+from .config import database_target, is_postgres
 
 
 class RevisionConflict(RuntimeError):
@@ -116,11 +120,38 @@ CREATE TABLE IF NOT EXISTS decisions (
     FOREIGN KEY(requirement_id, requirement_revision)
       REFERENCES requirement_revisions(requirement_id, revision)
 );
+CREATE TABLE IF NOT EXISTS evidence_link_judgments (
+    judgment_id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    requirement_revision INTEGER NOT NULL,
+    signal_id TEXT NOT NULL,
+    request_id TEXT NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    FOREIGN KEY(requirement_id, requirement_revision)
+      REFERENCES requirement_revisions(requirement_id, revision),
+    FOREIGN KEY(signal_id) REFERENCES signals(signal_id)
+);
 CREATE TABLE IF NOT EXISTS run_manifests (
     run_id TEXT PRIMARY KEY,
     payload_json TEXT NOT NULL,
     payload_hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS report_context (
+    context_id TEXT PRIMARY KEY,
+    report_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS public_evidence (
+    record_id TEXT PRIMARY KEY,
+    logical_key TEXT NOT NULL,
+    snapshot_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_public_evidence_latest
+  ON public_evidence(logical_key, snapshot_at DESC);
 CREATE TABLE IF NOT EXISTS audit_events (
     monotonic_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id TEXT NOT NULL UNIQUE,
@@ -138,9 +169,26 @@ CREATE TABLE IF NOT EXISTS audit_events (
 );
 CREATE INDEX IF NOT EXISTS ix_feedback_scope
   ON feedback_records(model_code, country, powertrain);
+CREATE TABLE IF NOT EXISTS priority_assessments (
+    assessment_id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    requirement_revision INTEGER NOT NULL,
+    sequence INTEGER NOT NULL,
+    request_id TEXT NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    UNIQUE(requirement_id, requirement_revision, sequence),
+    FOREIGN KEY(requirement_id,requirement_revision) REFERENCES requirement_revisions(requirement_id,revision)
+);
+CREATE TRIGGER IF NOT EXISTS priorities_no_update BEFORE UPDATE ON priority_assessments
+BEGIN SELECT RAISE(ABORT, 'priorities are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS priorities_no_delete BEFORE DELETE ON priority_assessments
+BEGIN SELECT RAISE(ABORT, 'priorities are immutable'); END;
 CREATE INDEX IF NOT EXISTS ix_signals_domain ON signals(need_domain);
 CREATE INDEX IF NOT EXISTS ix_requirements_latest
   ON requirement_revisions(requirement_id, revision DESC);
+CREATE INDEX IF NOT EXISTS ix_evidence_judgment_lookup
+  ON evidence_link_judgments(requirement_id, requirement_revision, signal_id);
 CREATE TRIGGER IF NOT EXISTS audit_events_no_update
 BEFORE UPDATE ON audit_events
 BEGIN SELECT RAISE(ABORT, 'audit_events are append-only'); END;
@@ -153,20 +201,173 @@ BEGIN SELECT RAISE(ABORT, 'requirement revisions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS requirement_revisions_no_delete
 BEFORE DELETE ON requirement_revisions
 BEGIN SELECT RAISE(ABORT, 'requirement revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS evidence_link_judgments_no_update
+BEFORE UPDATE ON evidence_link_judgments
+BEGIN SELECT RAISE(ABORT, 'evidence judgments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS evidence_link_judgments_no_delete
+BEFORE DELETE ON evidence_link_judgments
+BEGIN SELECT RAISE(ABORT, 'evidence judgments are append-only'); END;
 """
 
 
 class Database:
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.target = database_target(path)
+        self.is_postgres = is_postgres(self.target)
+        # Existing UI cache keys may use .path; never put credentials there.
+        self.path = Path('shared-postgresql') if self.is_postgres else Path(self.target)
+
+    def exists(self) -> bool:
+        return self.is_postgres or self.path.is_file()
 
     def initialize(self) -> None:
+        if self.is_postgres:
+            from .postgres import assert_schema
+            with self.connect() as connection:
+                assert_schema(connection)
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
 
+    def sync_report_context(self, document: dict[str, Any]) -> int:
+        """Store a curated report snapshot without modifying customer evidence or scores."""
+        from ..report_context import validate_report_context
+
+        items = validate_report_context(document)
+        self.initialize()
+        inserted = 0
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for item in items:
+                context_id = f"{document['report_id']}:{item['id']}"
+                payload = {
+                    **item,
+                    "context_id": context_id,
+                    "report_id": document["report_id"],
+                    "published_on": document["published_on"],
+                    "source_url": document["source_url"],
+                    "status": document["status"],
+                }
+                payload_hash = content_hash(payload)
+                was_inserted = self._insert_immutable(
+                    connection, "report_context", "context_id", context_id,
+                    {"context_id": context_id, "report_id": document["report_id"],
+                     "payload_json": canonical_json(payload), "payload_hash": payload_hash},
+                )
+                if was_inserted:
+                    inserted += 1
+                    self._append_audit(
+                        connection, actor_id="report-context-import", actor_type="pipeline",
+                        action="sync_report_context", object_type="report_context",
+                        object_id=context_id, object_revision=None, before_hash=None,
+                        after_hash=payload_hash, reason="Curated, dated planning context; no score input.",
+                        request_id=f"report-context:{context_id}:{payload_hash}", result="success",
+                    )
+            connection.commit()
+        return inserted
+
+    def report_context_for_requirement(self, requirement: RequirementRevision) -> list[dict[str, Any]]:
+        from ..report_context import applies_to_requirement
+
+        self.initialize()
+        domain = self.source_domain_for_requirement(requirement)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT payload_json FROM report_context ORDER BY context_id"
+            ).fetchall()
+        return [item for row in rows
+                if applies_to_requirement(item := json.loads(row["payload_json"]), requirement,
+                                          domain=domain)]
+
+    def source_domain_for_requirement(self, requirement: RequirementRevision) -> str | None:
+        """Resolve the immutable linked-signal topic, independent of a PM display title."""
+        domains: set[str] = set()
+        ids = getattr(requirement, "supporting_signal_ids", [])
+        if not ids:
+            return None
+        with self.connect() as connection:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = connection.execute(
+                    f"SELECT DISTINCT need_domain FROM signals WHERE signal_id IN ({placeholders})",
+                    chunk,
+                ).fetchall()
+                domains.update(row["need_domain"] for row in rows)
+        if len(domains) > 1:
+            raise WorkflowError("requirement links inconsistent signal domains")
+        return next(iter(domains), None)
+
+    def persist_public_evidence(self, records: Sequence[dict[str, Any]]) -> int:
+        """Append sourced public snapshots; existing scores and customer records stay immutable."""
+        from ..public_datasets import validate_public_record
+
+        self.initialize()
+        inserted = 0
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            for record in records:
+                validate_public_record(record)
+                payload_hash = content_hash(record)
+                was_inserted = self._insert_immutable(
+                    connection, "public_evidence", "record_id", record["record_id"],
+                    {"record_id": record["record_id"], "logical_key": record["logical_key"],
+                     "snapshot_at": record["snapshot_at"],
+                     "payload_json": canonical_json(record), "payload_hash": payload_hash},
+                )
+                if was_inserted:
+                    inserted += 1
+                    self._append_audit(
+                        connection, actor_id="public-dataset-import", actor_type="pipeline",
+                        action="sync_public_evidence", object_type="public_evidence",
+                        object_id=record["record_id"], object_revision=None,
+                        before_hash=None, after_hash=payload_hash,
+                        reason="Sourced external context; no automatic score adjustment.",
+                        request_id=f"public-evidence:{record['record_id']}:{payload_hash}",
+                        result="success",
+                    )
+            connection.commit()
+        return inserted
+
+    def public_evidence_for_requirement(
+        self, requirement: RequirementRevision, *, state: str | None = None
+    ) -> list[dict[str, Any]]:
+        from ..public_datasets import public_record_applies
+
+        self.initialize()
+        domain = self.source_domain_for_requirement(requirement)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT payload_json FROM public_evidence ORDER BY snapshot_at DESC, record_id DESC"
+            ).fetchall()
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            record = json.loads(row["payload_json"])
+            if record["logical_key"] not in latest:
+                latest[record["logical_key"]] = record
+        return [record for record in latest.values()
+                if public_record_applies(record, requirement, state=state, domain=domain)]
+
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
+    def connect(self, *, readonly: bool = False) -> Iterator:
+        if self.is_postgres:
+            from .postgres import PostgresConnection
+            connection = PostgresConnection(str(self.target), readonly=readonly)
+            try:
+                yield connection
+            finally:
+                connection.close()
+            return
+        if readonly:
+            connection = sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True)
+            connection.row_factory = sqlite3.Row
+            connection.execute('PRAGMA query_only=ON')
+            try:
+                yield connection
+            finally:
+                connection.close()
+            return
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -258,6 +459,8 @@ class Database:
         result: str,
         run_id: str | None = None,
     ) -> AuditEvent:
+        if hasattr(connection, 'write_lock'):
+            connection.write_lock()
         existing = self._existing_event(connection, request_id)
         if existing:
             return existing
@@ -592,7 +795,8 @@ class Database:
             target = requirement
             if row:
                 current = RequirementRevision.model_validate_json(row["payload_json"])
-                if self._requirement_semantic_payload(current) == self._requirement_semantic_payload(
+                reviewed = connection.execute("SELECT 1 FROM decisions WHERE requirement_id=? LIMIT 1", (requirement.requirement_id,)).fetchone()
+                if reviewed or self._requirement_semantic_payload(current) == self._requirement_semantic_payload(
                     requirement
                 ):
                     target = current
@@ -765,6 +969,133 @@ class Database:
             ),
         )
 
+    def latest_evidence_judgments(
+        self, requirement_id: str, revision: int
+    ) -> dict[str, EvidenceLinkJudgment]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT payload_json FROM evidence_link_judgments
+                   WHERE requirement_id=? AND requirement_revision=? ORDER BY rowid""",
+                (requirement_id, revision),
+            ).fetchall()
+        latest: dict[str, EvidenceLinkJudgment] = {}
+        for row in rows:
+            judgment = EvidenceLinkJudgment.model_validate_json(row["payload_json"])
+            latest[judgment.signal_id] = judgment
+        return latest
+
+    def record_evidence_judgment(
+        self,
+        *,
+        requirement_id: str,
+        expected_revision: int,
+        signal_id: str,
+        verdict: str,
+        rationale: str,
+        actor_id: str,
+        request_id: str,
+    ) -> EvidenceLinkJudgment:
+        self.initialize()
+        if not rationale.strip() or not actor_id.strip():
+            raise ValueError("evidence judgment requires a rationale and reviewer ID")
+        conflict_message: str | None = None
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            previous_request = connection.execute(
+                "SELECT payload_json FROM evidence_link_judgments WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if previous_request:
+                connection.rollback()
+                return EvidenceLinkJudgment.model_validate_json(previous_request["payload_json"])
+            row = connection.execute(
+                """SELECT payload_json FROM requirement_revisions
+                   WHERE requirement_id=? ORDER BY revision DESC LIMIT 1""",
+                (requirement_id,),
+            ).fetchone()
+            if not row:
+                connection.rollback()
+                raise KeyError(requirement_id)
+            current = RequirementRevision.model_validate_json(row["payload_json"])
+            if current.revision != expected_revision:
+                conflict_message = (
+                    f"Stale evidence review: expected revision {expected_revision}, "
+                    f"latest is {current.revision}."
+                )
+                self._append_audit(
+                    connection,
+                    actor_id=actor_id.strip(), actor_type="demo_pm",
+                    action="evidence_review_revision_conflict",
+                    object_type="requirement", object_id=requirement_id,
+                    object_revision=expected_revision,
+                    before_hash=content_hash(current), after_hash=None,
+                    reason=conflict_message, request_id=request_id, result="failure",
+                )
+                connection.commit()
+            else:
+                linked_ids = (
+                    set(current.supporting_signal_ids)
+                    | set(current.counter_signal_ids)
+                    | set(current.context_signal_ids)
+                )
+                if signal_id not in linked_ids:
+                    connection.rollback()
+                    raise WorkflowError("signal is not linked to this requirement revision")
+                signal_row = connection.execute(
+                    "SELECT 1 FROM signals WHERE signal_id=?", (signal_id,)
+                ).fetchone()
+                if not signal_row:
+                    connection.rollback()
+                    raise WorkflowError("linked signal cannot be resolved")
+                previous = connection.execute(
+                    """SELECT payload_json FROM evidence_link_judgments
+                       WHERE requirement_id=? AND requirement_revision=? AND signal_id=?
+                       ORDER BY rowid DESC LIMIT 1""",
+                    (requirement_id, expected_revision, signal_id),
+                ).fetchone()
+                judgment = EvidenceLinkJudgment(
+                    judgment_id=f"evidence_judgment_{uuid4().hex}",
+                    requirement_id=requirement_id,
+                    requirement_revision=expected_revision,
+                    signal_id=signal_id,
+                    verdict=verdict,
+                    rationale=rationale.strip(),
+                    actor_id=actor_id.strip(),
+                    recorded_at=utc_now(),
+                    request_id=request_id,
+                )
+                connection.execute(
+                    """INSERT INTO evidence_link_judgments
+                       (judgment_id,requirement_id,requirement_revision,signal_id,
+                        request_id,payload_json,payload_hash)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (
+                        judgment.judgment_id, requirement_id, expected_revision,
+                        signal_id, request_id, judgment.model_dump_json(),
+                        content_hash(judgment),
+                    ),
+                )
+                self._append_audit(
+                    connection,
+                    actor_id=actor_id.strip(), actor_type="demo_pm",
+                    action="review_evidence_link",
+                    object_type="evidence_link",
+                    object_id=f"{requirement_id}:{signal_id}",
+                    object_revision=expected_revision,
+                    before_hash=(
+                        content_hash(EvidenceLinkJudgment.model_validate_json(previous["payload_json"]))
+                        if previous else None
+                    ),
+                    after_hash=content_hash(judgment),
+                    reason=f"{judgment.verdict}: {judgment.rationale}",
+                    request_id=request_id, result="success",
+                )
+                connection.commit()
+                return judgment
+        if conflict_message:
+            raise RevisionConflict(conflict_message)
+        raise AssertionError("evidence review transaction ended without a result")
+
     def atomic_review(
         self,
         *,
@@ -776,6 +1107,8 @@ class Database:
         role: str,
         request_id: str,
         edited_revision: RequirementRevision | None = None,
+        uncertainty_acknowledged: bool = False,
+        expected_priority_sequence: int | None = None,
     ) -> tuple[Decision, RequirementRevision | None]:
         self.initialize()
         conflict_message: str | None = None
@@ -790,8 +1123,16 @@ class Database:
                     connection.rollback()
                     raise RevisionConflict(existing_event.reason)
                 decision = Decision.model_validate_json(row["payload_json"])
+                if (decision.requirement_id, decision.expected_revision, decision.action, decision.rationale, decision.actor_id, decision.role, decision.uncertainty_acknowledged) != (requirement_id, expected_revision, action, rationale, actor_id, role, uncertainty_acknowledged):
+                    raise WorkflowError("Request ID reused with a different review payload")
+                replayed_revision = None
+                if edited_revision is not None:
+                    saved_row = connection.execute("SELECT payload_json FROM requirement_revisions WHERE requirement_id=? AND revision=?", (requirement_id, expected_revision+1)).fetchone()
+                    replayed_revision = RequirementRevision.model_validate_json(saved_row[0])
+                    if self._requirement_semantic_payload(replayed_revision) != self._requirement_semantic_payload(edited_revision):
+                        raise WorkflowError("Request ID reused with a different edit payload")
                 connection.rollback()
-                return decision, None
+                return decision, replayed_revision
             row = connection.execute(
                 """
                 SELECT payload_json FROM requirement_revisions
@@ -876,6 +1217,12 @@ class Database:
                     """,
                     (requirement_id, expected_revision),
                 ).fetchone()
+                priority_row = connection.execute(
+                    "SELECT assessment_id,sequence FROM priority_assessments WHERE requirement_id=? AND requirement_revision=? ORDER BY sequence DESC LIMIT 1",
+                    (requirement_id, expected_revision),
+                ).fetchone()
+                if expected_priority_sequence is not None and expected_priority_sequence != (priority_row["sequence"] if priority_row else 0):
+                    raise RevisionConflict("Priority changed since this review opened; reload before deciding")
                 decision = Decision(
                     decision_id=f"decision_{uuid4().hex}",
                     requirement_id=requirement_id,
@@ -886,8 +1233,10 @@ class Database:
                     role=role,
                     recorded_at=utc_now(),
                     score_snapshot_id=score_row["score_snapshot_id"] if score_row else None,
+                    priority_assessment_id=priority_row["assessment_id"] if priority_row else None,
                     expected_revision=expected_revision,
                     request_id=request_id,
+                    uncertainty_acknowledged=uncertainty_acknowledged,
                 )
                 connection.execute(
                     """
@@ -971,9 +1320,18 @@ class Database:
                     (requirement_id,),
                 ).fetchall()
             ]
+            judgments = [
+                EvidenceLinkJudgment.model_validate_json(row["payload_json"])
+                for row in connection.execute(
+                    """SELECT payload_json FROM evidence_link_judgments
+                       WHERE requirement_id=? ORDER BY rowid""",
+                    (requirement_id,),
+                ).fetchall()
+            ]
         return {
             "audit_valid": valid,
             "audit_checkpoint": checkpoint,
             "revisions": [item.model_dump(mode="json") for item in revisions],
             "decisions": [item.model_dump(mode="json") for item in decisions],
+            "evidence_judgments": [item.model_dump(mode="json") for item in judgments],
         }

@@ -1,3 +1,5 @@
+"""Offline keyword extraction fallback; its output must never be presented as AI inference."""
+
 from __future__ import annotations
 
 import json
@@ -12,7 +14,7 @@ from ..contracts import (
     ProviderDescriptor,
     Signal,
 )
-from ..utils import stable_id
+from ..utils import content_hash, stable_id
 from .provider import ExtractionProvider
 
 
@@ -41,6 +43,10 @@ class BaselineExtractionProvider(ExtractionProvider):
             prompt_version=str(self.config["version"]),
             label=str(self.config["label"]),
         )
+
+    @property
+    def configuration_hash(self) -> str:
+        return content_hash(self.config)
 
     @staticmethod
     def _sentence_span(text: str, start: int, end: int) -> tuple[int, int]:
@@ -75,7 +81,7 @@ class BaselineExtractionProvider(ExtractionProvider):
             text = record.redacted_text
             for domain, definition in self.config["domains"].items():
                 applicable = definition.get("applicable_powertrains")
-                if applicable and record.powertrain not in applicable:
+                if applicable and record.powertrain not in applicable and record.powertrain != "BEVE":
                     continue
                 matches = []
                 for phrase in sorted(definition["phrases"], key=len, reverse=True):

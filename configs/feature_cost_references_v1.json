@@ -1,0 +1,490 @@
+{
+  "schema_version": "1",
+  "references": [
+    {
+      "id": "doe_2025_light_vehicle_battery",
+      "keywords": [
+        "battery",
+        "capacity",
+        "range",
+        "pack"
+      ],
+      "label": "High-voltage battery pack, light-duty vehicles",
+      "value_low": 128,
+      "value_high": 133,
+      "unit": "USD per kWh",
+      "price_year": 2024,
+      "published": "2025-01",
+      "source_url": "https://www.energy.gov/sites/default/files/2025-01/2025.01.13_DOE_Incremental_Cost_Report_for_publication.pdf",
+      "locator": "Executive Summary page 1; section 3, page 11",
+      "use": "Reference only for a defined incremental battery-capacity scenario at comparable scale and specification.",
+      "limit": "Modeled US market cost, not a BMW quote. Battery changes also require pack design, thermal, BMS, validation and integration costs.",
+      "markets": [
+        "US"
+      ],
+      "advisor_eligible": true,
+      "category": "vehicle_battery",
+      "evidence_type": "modeled_manufacturing_cost",
+      "currency": "USD"
+    },
+    {
+      "id": "doe_2023_traction_drive",
+      "keywords": [
+        "motor",
+        "inverter",
+        "drive",
+        "traction",
+        "acceleration"
+      ],
+      "label": "100 kW traction motor and inverter reference",
+      "value": 1140,
+      "unit": "USD per 100 kW system",
+      "price_year": 2022,
+      "published": "2024",
+      "source_url": "https://www.energy.gov/sites/default/files/2024-06/EDTT_Roadmap_2023_JOG_Consensus_compliant.pdf",
+      "locator": "Electric Drive Technical Team Roadmap, Current Technical Target Status",
+      "use": "Historical scale reference for a specified 100 kW motor plus inverter system.",
+      "limit": "2022 estimate derived from older public teardown/scaling, not a current BMW supplier quote. Excludes drivetrain integration, cooling, wiring, testing and tooling.",
+      "markets": [
+        "US"
+      ],
+      "advisor_eligible": true,
+      "category": "vehicle_electric_drive",
+      "evidence_type": "modeled_manufacturing_cost",
+      "currency": "USD"
+    },
+    {
+      "id": "bls_2025_mechanical_engineer",
+      "keywords": [
+        "button",
+        "seat",
+        "suspension",
+        "steering",
+        "climate",
+        "mechanical"
+      ],
+      "label": "US mechanical engineer mean wage",
+      "value": 54.62,
+      "unit": "USD per hour",
+      "price_year": 2025,
+      "published": "2026",
+      "source_url": "https://www.bls.gov/news.release/ocwage.t01.htm",
+      "locator": "May 2025 national OEWS Table 1, Mechanical engineers",
+      "use": "Reference when checking an engineering labor assumption.",
+      "limit": "National wage, not BMW loaded engineering rate; excludes benefits, overhead, supplier margins and program geography.",
+      "markets": [
+        "US"
+      ],
+      "advisor_eligible": true,
+      "category": "engineering_wage",
+      "evidence_type": "mean_wage",
+      "currency": "USD"
+    },
+    {
+      "id": "bls_2025_electrical_engineer",
+      "keywords": [
+        "electric",
+        "sensor",
+        "camera",
+        "charging",
+        "display",
+        "electrical"
+      ],
+      "label": "US electrical engineer mean wage",
+      "value": 60.15,
+      "unit": "USD per hour",
+      "price_year": 2025,
+      "published": "2026",
+      "source_url": "https://www.bls.gov/news.release/ocwage.t01.htm",
+      "locator": "May 2025 national OEWS Table 1, Electrical engineers",
+      "use": "Reference when checking an engineering labor assumption.",
+      "limit": "National wage, not BMW loaded engineering rate; excludes benefits, overhead, supplier margins and program geography.",
+      "markets": [
+        "US"
+      ],
+      "advisor_eligible": true,
+      "category": "engineering_wage",
+      "evidence_type": "mean_wage",
+      "currency": "USD"
+    },
+    {
+      "id": "bls_2025_software_developer",
+      "keywords": [
+        "software",
+        "app",
+        "navigation",
+        "voice",
+        "infotainment",
+        "digital"
+      ],
+      "label": "US software developer mean wage",
+      "value": 71.2,
+      "unit": "USD per hour",
+      "price_year": 2025,
+      "published": "2026",
+      "source_url": "https://www.bls.gov/news.release/ocwage.t01.htm",
+      "locator": "May 2025 national OEWS Table 1, Software developers",
+      "use": "Reference when checking a software engineering labor assumption.",
+      "limit": "National wage, not BMW loaded engineering rate; excludes benefits, overhead, supplier margins and program geography.",
+      "markets": [
+        "US"
+      ],
+      "advisor_eligible": true,
+      "category": "engineering_wage",
+      "evidence_type": "mean_wage",
+      "currency": "USD"
+    },
+    {
+      "id": "nhtsa_2025_draft_electric_drive",
+      "keywords": [
+        "motor",
+        "inverter",
+        "traction",
+        "drivetrain"
+      ],
+      "label": "Modeled electric traction motor plus inverter, per peak kW",
+      "value": 22.51,
+      "unit": "USD per kW peak motor power",
+      "currency": "USD",
+      "price_year": 2024,
+      "published": "2025-12",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_electric_drive",
+      "evidence_type": "modeled_direct_manufacturing_cost",
+      "advisor_eligible": true,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2025-12/CAFE-SAFE-MY-2022-2031-NPRM-TSD-tag.pdf",
+      "locator": "Chapter 3, Table 3-60 (ETDS)",
+      "use": "Scale a defined peak-power motor-plus-inverter case, then add omitted vehicle integration and program costs.",
+      "limit": "Draft regulatory analysis, 2024-dollar adjustment of older public teardown/model inputs. Direct manufacturing cost, not current BMW procurement price; overlaps the DOE traction-drive reference, so do not add both."
+    },
+    {
+      "id": "nhtsa_2025_draft_onboard_charger",
+      "keywords": [
+        "charger",
+        "charging",
+        "onboard"
+      ],
+      "label": "Modeled vehicle on-board charger, per rated kW",
+      "value": 106.32,
+      "unit": "USD per kW charger rating",
+      "currency": "USD",
+      "price_year": 2024,
+      "published": "2025-12",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_charging_electronics",
+      "evidence_type": "modeled_direct_manufacturing_cost",
+      "advisor_eligible": true,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2025-12/CAFE-SAFE-MY-2022-2031-NPRM-TSD-tag.pdf",
+      "locator": "Chapter 3, Table 3-60 (On-Board Charger)",
+      "use": "Reference for a specified in-vehicle charger power rating only.",
+      "limit": "Draft regulatory model based on older teardown data, adjusted to 2024 dollars. Assumes 7 kW BEV or 2 kW PHEV; excludes installation, integration, controls and validation. Not an external charging-station price."
+    },
+    {
+      "id": "nhtsa_2025_draft_dc_dc_converter",
+      "keywords": [
+        "converter",
+        "electric",
+        "voltage"
+      ],
+      "label": "Modeled vehicle DC/DC converter, per rated kW",
+      "value": 114.74,
+      "unit": "USD per kW converter rating",
+      "currency": "USD",
+      "price_year": 2024,
+      "published": "2025-12",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_power_electronics",
+      "evidence_type": "modeled_direct_manufacturing_cost",
+      "advisor_eligible": true,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2025-12/CAFE-SAFE-MY-2022-2031-NPRM-TSD-tag.pdf",
+      "locator": "Chapter 3, Table 3-60 (DC/DC Converter)",
+      "use": "Reference for a specified in-vehicle converter rated power; study assumes 2 kW.",
+      "limit": "Draft regulatory model based on older teardown data, adjusted to 2024 dollars. Excludes integration, controls and validation; not a BMW quote."
+    },
+    {
+      "id": "nhtsa_2025_draft_hv_cables",
+      "keywords": [
+        "cable",
+        "wiring",
+        "harness",
+        "voltage"
+      ],
+      "label": "Modeled high-voltage cables, fixed 360 V system",
+      "value": 562.89,
+      "unit": "USD per 360 V vehicle system",
+      "currency": "USD",
+      "price_year": 2024,
+      "published": "2025-12",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_high_voltage_wiring",
+      "evidence_type": "modeled_direct_manufacturing_cost",
+      "advisor_eligible": true,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2025-12/CAFE-SAFE-MY-2022-2031-NPRM-TSD-tag.pdf",
+      "locator": "Chapter 3, Table 3-60 (High Voltage Cables)",
+      "use": "Historical scale check only for a comparable 360 V system.",
+      "limit": "Draft regulatory model updates a 2011 hybrid teardown to 2024 dollars; not suitable for a different voltage, architecture, cable length or incremental wiring change without engineering review."
+    },
+    {
+      "id": "destatis_2025_germany_manufacturing_labor",
+      "keywords": [
+        "assembly",
+        "factory",
+        "manufacturing",
+        "production",
+        "labor"
+      ],
+      "label": "German manufacturing employer labor cost",
+      "value": 49.5,
+      "unit": "EUR per hour worked",
+      "currency": "EUR",
+      "price_year": 2025,
+      "published": "2026-04",
+      "markets": [
+        "DE"
+      ],
+      "category": "manufacturing_labor",
+      "evidence_type": "sector_average_employer_labor_cost",
+      "advisor_eligible": true,
+      "source_url": "https://www.destatis.de/Europa/EN/Topic/Population-Labour-Social-Issues/Labour-market/EU_LabourCostPerHourWorked.html",
+      "locator": "2025 labour costs per hour worked, Manufacturing, Germany",
+      "use": "Reference when checking a Germany-based manufacturing or assembly labor input.",
+      "limit": "Manufacturing-sector average across employers, not BMW plant, job grade, supplier rate or an incremental vehicle assembly quote."
+    },
+    {
+      "id": "bls_2025_automotive_service_technician",
+      "keywords": [
+        "repair",
+        "service",
+        "maintenance",
+        "warranty",
+        "technician"
+      ],
+      "label": "US automotive service technician mean wage",
+      "value": 27.13,
+      "unit": "USD per hour",
+      "currency": "USD",
+      "price_year": 2025,
+      "published": "2026",
+      "markets": [
+        "US"
+      ],
+      "category": "service_labor",
+      "evidence_type": "mean_wage",
+      "advisor_eligible": true,
+      "source_url": "https://www.bls.gov/news.release/ocwage.t01.htm",
+      "locator": "May 2025 national OEWS Table 1, Automotive service technicians and mechanics",
+      "use": "Reference for reviewing a service labor assumption.",
+      "limit": "National employee wage, not a dealer labor charge, warranty reimbursement rate or loaded employer cost."
+    },
+    {
+      "id": "afdc_public_l2_equipment",
+      "keywords": [
+        "charging",
+        "station",
+        "infrastructure"
+      ],
+      "label": "Public Level 2 charging equipment",
+      "value": 3500,
+      "unit": "USD per connector",
+      "currency": "USD",
+      "price_year": null,
+      "published": "page checked 2026-10-11",
+      "markets": [
+        "US"
+      ],
+      "category": "external_charging_infrastructure",
+      "evidence_type": "reported_equipment_cost",
+      "advisor_eligible": false,
+      "source_url": "https://afdc.energy.gov/fuels/electricity-infrastructure-development",
+      "locator": "Cost Considerations > Equipment",
+      "use": "Only for a US public charging-site project, separate from vehicle feature cost.",
+      "limit": "Source page does not specify a common price year. Site electricity, networking, installation, permits and operations are separate. Never use as an on-board charger cost."
+    },
+    {
+      "id": "afdc_public_dc_fast_equipment",
+      "keywords": [
+        "charging",
+        "station",
+        "infrastructure"
+      ],
+      "label": "Public DC fast charging equipment",
+      "value_low": 38000,
+      "value_high": 90000,
+      "unit": "USD per connector",
+      "currency": "USD",
+      "price_year": null,
+      "published": "page checked 2026-10-11",
+      "markets": [
+        "US"
+      ],
+      "category": "external_charging_infrastructure",
+      "evidence_type": "reported_equipment_cost",
+      "advisor_eligible": false,
+      "source_url": "https://afdc.energy.gov/fuels/electricity-infrastructure-development",
+      "locator": "Cost Considerations > Equipment",
+      "use": "Only for a US public charging-site project, separate from vehicle feature cost.",
+      "limit": "Source page does not specify a common price year. Power rating drives cost; grid work, installation and operations are separate. Never use as a vehicle cost."
+    },
+    {
+      "id": "afdc_public_l2_installation",
+      "keywords": [
+        "charging",
+        "station",
+        "infrastructure"
+      ],
+      "label": "Public or workplace Level 2 charger installation",
+      "value": 2500,
+      "unit": "USD per connector",
+      "currency": "USD",
+      "price_year": null,
+      "published": "page checked 2026-10-11",
+      "markets": [
+        "US"
+      ],
+      "category": "external_charging_infrastructure",
+      "evidence_type": "reported_installation_cost",
+      "advisor_eligible": false,
+      "source_url": "https://afdc.energy.gov/fuels/electricity-infrastructure-development",
+      "locator": "Cost Considerations > Installation",
+      "use": "Only for a US public or workplace charging-site project, separate from equipment and vehicle cost.",
+      "limit": "Source page does not specify a common price year. Site conditions, trenching, grid upgrade, permits and scale can change cost materially."
+    },
+    {
+      "id": "afdc_public_dc_fast_installation",
+      "keywords": [
+        "charging",
+        "station",
+        "infrastructure"
+      ],
+      "label": "Public DC fast charger installation",
+      "value_low": 20000,
+      "value_high": 60000,
+      "unit": "USD per connector",
+      "currency": "USD",
+      "price_year": null,
+      "published": "page checked 2026-10-11",
+      "markets": [
+        "US"
+      ],
+      "category": "external_charging_infrastructure",
+      "evidence_type": "reported_installation_cost",
+      "advisor_eligible": false,
+      "source_url": "https://afdc.energy.gov/fuels/electricity-infrastructure-development",
+      "locator": "Cost Considerations > Installation",
+      "use": "Only for a US public charging-site project, separate from equipment and vehicle cost.",
+      "limit": "Source page does not specify a common price year. Power and site count affect cost; grid upgrade, permits and operations may add more."
+    },
+    {
+      "id": "nhtsa_2022_final_electric_power_steering",
+      "keywords": [
+        "steering",
+        "mechanical",
+        "assist"
+      ],
+      "label": "Modeled absolute electric power steering technology cost, MY 2025",
+      "value": 117.28,
+      "unit": "USD per vehicle technology",
+      "currency": "USD",
+      "price_year": 2018,
+      "model_year": 2025,
+      "published": "2022-04",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_steering",
+      "evidence_type": "historical_regulatory_model",
+      "advisor_eligible": false,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2022-04/Final-Rule-Preamble_CAFE-MY-2024-2026.pdf",
+      "locator": "Table III-33, EPS, MY 2025 column",
+      "use": "Historical scale check for the entire modeled EPS technology only.",
+      "limit": "2018-dollar regulatory model based on older studies, with learning effects; absolute technology cost rather than incremental cost of a new steering feature. Not suitable for automatic current feature pricing."
+    },
+    {
+      "id": "nhtsa_2022_final_improved_accessories",
+      "keywords": [
+        "accessory",
+        "pump",
+        "fan",
+        "alternator"
+      ],
+      "label": "Modeled absolute improved accessory system cost, MY 2025",
+      "value": 146.67,
+      "unit": "USD per vehicle technology",
+      "currency": "USD",
+      "price_year": 2018,
+      "model_year": 2025,
+      "published": "2022-04",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_mechanical_accessories",
+      "evidence_type": "historical_regulatory_model",
+      "advisor_eligible": false,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2022-04/Final-Rule-Preamble_CAFE-MY-2024-2026.pdf",
+      "locator": "Table III-33, IACC, MY 2025 column",
+      "use": "Historical scale check for the modeled accessory bundle only.",
+      "limit": "2018-dollar regulatory model based on older studies. Bundle definition and vehicle architecture determine relevance; not the cost of any individual pump, fan or alternator."
+    },
+    {
+      "id": "nhtsa_2022_final_low_drag_brakes",
+      "keywords": [
+        "brake",
+        "drag",
+        "mechanical"
+      ],
+      "label": "Modeled absolute low-drag-brake technology cost, MY 2025",
+      "value": 78.35,
+      "unit": "USD per vehicle technology",
+      "currency": "USD",
+      "price_year": 2018,
+      "model_year": 2025,
+      "published": "2022-04",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_braking",
+      "evidence_type": "historical_regulatory_model",
+      "advisor_eligible": false,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2022-04/Final-Rule-Preamble_CAFE-MY-2024-2026.pdf",
+      "locator": "Table III-33, LDB, MY 2025 column",
+      "use": "Historical scale check for the modeled low-drag-brake technology only.",
+      "limit": "2018-dollar regulatory model based on older studies; low-drag brakes were treated as baseline technology in the rulemaking. Not an incremental price for a new braking feature."
+    },
+    {
+      "id": "nhtsa_2022_final_secondary_axle_disconnect",
+      "keywords": [
+        "axle",
+        "disconnect",
+        "mechanical",
+        "drivetrain"
+      ],
+      "label": "Modeled absolute secondary axle-disconnect technology cost, MY 2025",
+      "value": 80.34,
+      "unit": "USD per vehicle technology",
+      "currency": "USD",
+      "price_year": 2018,
+      "model_year": 2025,
+      "published": "2022-04",
+      "markets": [
+        "US"
+      ],
+      "category": "vehicle_drivetrain_mechanics",
+      "evidence_type": "historical_regulatory_model",
+      "advisor_eligible": false,
+      "source_url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2022-04/Final-Rule-Preamble_CAFE-MY-2024-2026.pdf",
+      "locator": "Table III-33, SAX, MY 2025 column",
+      "use": "Historical scale check for the modeled disconnect technology only.",
+      "limit": "2018-dollar regulatory model based on older studies; actual architecture, packaging and actuation differ. Not a current BMW axle-system quote."
+    }
+  ],
+  "as_of": "2026-10-11",
+  "scope": "Public benchmarks for scoped scenarios; never BMW supplier prices or automatic feature estimates."
+}

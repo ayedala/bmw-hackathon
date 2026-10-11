@@ -1,8 +1,11 @@
+"""Check stored provenance, scope and scoring invariants without calling a model."""
+
 from __future__ import annotations
 
 from typing import Any
 
-from .contracts import FeedbackRecord, RequirementRevision, Signal, SourceDocument
+from .contracts import BMWContextObservation, FeedbackRecord, RequirementRevision, Signal, SourceDocument
+from .utils import content_hash
 from .storage import Database
 
 
@@ -66,6 +69,24 @@ def validate_database(database: Database, *, expect_supplied_shape: bool = False
                 "SELECT source_id,payload_json FROM sources"
             ).fetchall()
         }
+        if (connection.execute("SELECT 1 FROM sqlite_master WHERE name='bmw_context'").fetchone()
+                and connection.execute("SELECT 1 FROM bmw_context LIMIT 1").fetchone()):
+            context_rows = connection.execute("SELECT payload_json,payload_hash FROM bmw_context").fetchall()
+            context_errors, counts = [], {"bmw_sales": 0, "bmw_equipment": 0}
+            for row in context_rows:
+                observation = BMWContextObservation.model_validate_json(row["payload_json"])
+                counts[observation.channel] += 1
+                source = sources.get(observation.source_id)
+                if (not source or source.sha256 != observation.source_hash
+                    or observation.locator.source_id != observation.source_id
+                    or observation.locator.source_hash != observation.source_hash
+                    or content_hash(observation) != row["payload_hash"]):
+                    context_errors.append(observation.observation_id)
+                if observation.channel == "bmw_equipment" and observation.locator.exact_quote != observation.raw_payload.get("text"):
+                    context_errors.append(observation.observation_id + ":page text mismatch")
+            checks.append({"check": "provided_context_reconciliation", "passed": not context_errors and (
+                counts == {"bmw_sales": 36, "bmw_equipment": 78} if expect_supplied_shape else True),
+                "detail": {"counts": counts, "errors": context_errors}})
         records = {
             row["record_id"]: FeedbackRecord.model_validate_json(row["payload_json"])
             for row in connection.execute(
@@ -197,6 +218,36 @@ def validate_database(database: Database, *, expect_supplied_shape: bool = False
             }
         )
 
+    from .intelligence.fusion import validate_cross_channel_links
+    cross_errors = validate_cross_channel_links(database, latest_requirements)
+    checks.append({"check": "cross_channel_citation_resolution", "passed": not cross_errors,
+                   "detail": {"errors": cross_errors, "links": sum(len(r.cross_channel_evidence) for r in latest_requirements)}})
+    from .decision.planning import PriorityService, priority_score, criteria_score
+    priority_errors = []
+    priorities = {}
+    for requirement in latest_requirements:
+        try:
+            for assessment in PriorityService(database).history(requirement.requirement_id):
+                priorities[assessment.assessment_id] = assessment
+                if abs(assessment.score - (criteria_score(assessment.criteria) if assessment.criteria else priority_score(assessment.factors, assessment.policy))) > 1e-8:
+                    priority_errors.append(f"{assessment.assessment_id}: score mismatch")
+        except (ValueError, RuntimeError) as error:
+            priority_errors.append(str(error))
+    with database.connect() as connection:
+        import json
+        for row in connection.execute("SELECT payload_json FROM decisions").fetchall():
+            decision = json.loads(row[0])
+            ref = decision.get("priority_assessment_id")
+            if ref:
+                assessment = priorities.get(ref)
+                if not assessment or (assessment.requirement_id, assessment.requirement_revision) != (decision["requirement_id"], decision["requirement_revision"]):
+                    priority_errors.append(f"{ref}: decision revision mismatch")
+    checks.append({"check":"priority_scores_and_decision_bindings", "passed":not priority_errors,
+        "detail":{"assessments":len(priorities), "errors":priority_errors}})
+    from .decision.drafts import validate_successor_drafts
+    draft_errors = validate_successor_drafts(database, latest_requirements)
+    checks.append({"check":"successor_draft_provenance", "passed":not draft_errors,
+        "detail":{"errors":draft_errors}})
     audit_valid, checkpoint = database.verify_audit_chain()
     checks.append(
         {
