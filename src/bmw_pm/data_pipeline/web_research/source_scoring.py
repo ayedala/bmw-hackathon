@@ -14,7 +14,6 @@ fall back to ``other``.
 
 from __future__ import annotations
 
-from models import SOURCE_FAMILIES
 from utils import domain_of, registrable_domain
 
 #: Fixed quality score per source family, 0-100.

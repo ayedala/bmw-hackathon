@@ -26,6 +26,7 @@ from utils import (
     canonicalize_url,
     first_present,
     get_logger,
+    is_permanent_error,
     registrable_domain,
     redact_sensitive_text,
     utc_now_iso,
@@ -223,7 +224,34 @@ class ScrapeCoordinator:
         self.scrapes = 0
         self.failures = 0
 
+    @property
+    def scrape_call_count(self) -> int:
+        """Firecrawl scrape requests issued, retries included; 0 when planning."""
+        return self._client.call_count if self._client is not None else 0
+
     # -- planning (no network, no credits) --------------------------------- #
+
+    def save_ledger(self) -> None:
+        """Flush the visited-URL ledger to disk.
+
+        Called after every page so an interrupted run keeps the record of what
+        it already fetched and judged. ``VisitedUrlStore.save`` writes through a
+        temp file and ``os.replace``, so the ledger is never left half-written.
+        """
+        self._visited.save()
+
+    def is_terminal(self, url: str) -> bool:
+        """Whether *url* carries a terminal outcome from an earlier run."""
+        return self._visited.is_terminal(url)
+
+    def mark_terminal(self, url: str, *, status: str, detail: str = "", topic: str = "") -> None:
+        """Record a deterministic verdict so *url* stops competing for a slot.
+
+        Called by whoever owns the verdict: the thin-page decision happens in
+        the extractor, after the scrape, so the coordinator cannot see it.
+        """
+        self._visited.mark(url, status=status, detail=detail, topic=topic, terminal=True)
+        self._log.info("marked terminal (%s): %s", status, url)
 
     def plan(self, hit: SearchHit) -> ScrapeOutcome:
         """Predict how *hit* would be resolved, without contacting any provider.
@@ -233,6 +261,8 @@ class ScrapeCoordinator:
         """
         if self._force:
             return ScrapeOutcome.SCRAPED
+        if self._visited.is_terminal(hit.canonical_url):
+            return ScrapeOutcome.SKIPPED
         if self._cache.has(hit.canonical_url):
             return ScrapeOutcome.CACHED
         if self._visited.was_scraped(hit.canonical_url):
@@ -246,6 +276,10 @@ class ScrapeCoordinator:
         canonical = hit.canonical_url or canonicalize_url(hit.url)
 
         if not self._force:
+            if self._visited.is_terminal(canonical):
+                self._log.info("skip terminal  %s (deterministically unusable)", canonical)
+                return ScrapeResult(ScrapeOutcome.SKIPPED, None, "terminal outcome")
+
             cached = self._cache.get(canonical)
             if cached is not None:
                 self.cache_hits += 1
@@ -267,8 +301,20 @@ class ScrapeCoordinator:
         except Exception as exc:  # noqa: BLE001 - one bad page must not stop the run
             self.failures += 1
             safe_detail = redact_sensitive_text(exc, limit=300)
-            self._log.error("scrape failed  %s: %s", hit.url, safe_detail)
-            self._visited.mark(canonical, status="failed", topic=hit.topic, query=hit.query, detail=safe_detail)
+            # A permanent error is a verdict about the URL, not a bad moment, so
+            # record it as terminal and stop giving it a budget slot. Temporary
+            # failures stay plain "failed" and are retried on a later run.
+            permanent = is_permanent_error(exc)
+            self._log.error(
+                "scrape %s  %s: %s",
+                "unsupported" if permanent else "failed", hit.url, safe_detail,
+            )
+            self._visited.mark(
+                canonical,
+                status="unsupported" if permanent else "failed",
+                topic=hit.topic, query=hit.query, detail=safe_detail,
+                terminal=True if permanent else None,
+            )
             return ScrapeResult(ScrapeOutcome.FAILED, None, safe_detail)
 
         self.scrapes += 1

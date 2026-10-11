@@ -63,8 +63,12 @@ scraper.py          canonicalize -> visited? -> cached? -> only then scrape
 data/raw/           raw_pages.jsonl (markdown + provenance)
       |
       v
-extractor.py        trim -> chunk -> LLM -> atomic claim records
-      |                (llm_provider.py: OpenAI or Anthropic)
+extractor.py        trim -> thin gate -> relevance gate   <- no LLM call yet
+      |                (relevance.py, deterministic)
+      v
+extractor.py        chunk (7k) -> LLM per chunk -> merge + dedup
+      |                (llm_provider.py: OpenAI or Anthropic;
+      |                 a truncated chunk is retried as two halves)
       v
 models.py           Pydantic validation against the controlled vocabulary
       |
@@ -221,6 +225,7 @@ python main.py --topic charging --max-pages 10 # the real thing
 | `python main.py --max-pages 10` | cap pages this run |
 | `python main.py --search-limit 5` | results requested per query |
 | `python main.py --dry-run` | plan only — no scrape, no LLM |
+| `python main.py --reprocess-cache` | replay cached pages, **zero** Firecrawl calls |
 | `python main.py --force` | re-scrape cached / visited URLs |
 | `python main.py --search-delay 5` | seconds between Firecrawl requests |
 | `python main.py --max-retries 6` | attempts per Firecrawl request |
@@ -371,7 +376,7 @@ later run.
 Every run appends its actual counts to
 `data/metadata/research_runs.jsonl`, so the spend is auditable after the fact.
 Use `pages_scraped` for credits billed and `firecrawl_scrape_calls` for requests
-issued — they differ when a page needed retries (see §10).
+issued — they differ when a page needed retries (see §11).
 
 **`--force` spends credits.** It bypasses both the cache and the visited ledger
 and re-scrapes everything in the plan. Use it when a page has genuinely changed.
@@ -415,7 +420,103 @@ ledger.
 To reset: delete `data/cache/*.json` and `data/metadata/visited_urls.json`.
 The next run will re-scrape and re-spend.
 
-## 10. Output file formats
+## 10. Cache-only reprocessing
+
+Every scraped page is kept in `data/cache/`, so improving the post-scrape
+pipeline does not require re-buying the pages. This mode replays them:
+
+```bash
+python main.py --topic charging --reprocess-cache
+```
+
+**It spends nothing.** Neither Firecrawl adapter is constructed, so there is no
+client that could issue a request, and no `FIRECRAWL_API_KEY` is needed. It does
+consume LLM tokens, since extraction is the point.
+
+The run output is unmistakable:
+
+```
+==============================================================================
+CACHE-ONLY REPROCESS - no Firecrawl search, no Firecrawl scrape, 0 credits
+==============================================================================
+
+reprocessing 3 cached page(s) from .../data/cache:
+
+    15569 chars  https://insideevs.de/reviews/765911/audi-a6-etron-avant-test
+     4700 chars  https://adac.de/.../bmw--i5-touring-edrive40-id-5115
+      428 chars  https://faq.bmwusa.com/s/article/My-BMW-App-Map-Plan-route-...
+
+==============================================================================
+CACHE-ONLY REPROCESS - run metrics
+==============================================================================
+  firecrawl search calls   0
+  firecrawl scrape calls   0
+  cached pages processed   3
+  ----------------------------------------
+  pages skipped thin       1
+  pages skipped irrelevant 0
+  extraction failures      0
+  zero-evidence pages      0
+  pages with evidence      2
+  ----------------------------------------
+  chunks processed         4
+  chunks failed            0
+  evidence created         7
+  evidence duplicates      0
+  evidence per good page   3.50
+  llm calls                4
+==============================================================================
+```
+
+The run record is stamped `mode: "reprocess-cache"`, so a zero-credit run is
+distinguishable in `research_runs.jsonl` afterwards.
+
+### How cached pages are discovered
+
+Cache-first: every `*.json` in `data/cache/` is a page, ordered by filename so
+the run is deterministic. The payload supplies the URL, title, source name,
+published date, content and capture time. The cache does not record *which
+search found* the page, so the topic and query come from
+`data/metadata/visited_urls.json` — **read only; a reprocess run never writes
+the ledger, and never touches a cache file.**
+
+`--topic` filters on that recorded topic. A cached page whose topic was never
+recorded is reprocessed when no `--topic` is given, and skipped (with a count in
+the log) when one is.
+
+Page fields are reconstructed exactly as the scrape path builds them, so a
+reprocessed record lands on the same `source_url` — and therefore the same
+`evidence_id` — as the original run produced.
+
+### Output, and why re-runs are safe
+
+Reprocessed evidence goes to its own file:
+
+```
+data/processed/cache_reprocess_evidence.jsonl
+```
+
+The main `external_evidence.jsonl` is never read or written in this mode, so
+reprocessing can never disturb evidence from a real scrape.
+
+That file is **rebuilt, not appended**. Append-only is right for a scrape run,
+where each page is fetched once; it is wrong for reprocessing, which re-derives
+evidence for pages that already have rows. Appending would grow the file on
+every pass, and skipping by `evidence_id` would not catch it, because a model
+that rewords a claim produces a new id.
+
+So rows belonging to the pages being reprocessed are dropped and rewritten,
+while rows from any other page are preserved. Running three times over the same
+cache yields the same file — verified. The write is atomic (temp file plus
+`os.replace`), so an interrupted rebuild cannot truncate the store.
+
+Cross-source duplicate marking reads from this same file, so a reprocess run
+compares against its own output rather than the scrape store.
+
+`--reprocess-cache` is rejected together with `--dry-run` (different modes) and
+with `--force` (nothing is scraped, so it has no meaning).
+
+## 11. Output file formats
 
 All four outputs are append-only. JSONL is one JSON object per line.
 
@@ -430,7 +531,7 @@ retrieved_at, markdown
 
 ### `data/processed/external_evidence.jsonl`
 
-The main output — see §16.
+The main output — see §19.
 
 ### `data/metadata/research_runs.jsonl`
 
@@ -467,7 +568,7 @@ disk. **Re-running a topic does not duplicate rows** — verified end to end: a
 second `--topic charging` run served all pages from cache, spent zero credits
 and added zero rows.
 
-## 11. Candidate ranking and source diversity
+## 12. Candidate ranking and source diversity
 
 Both steps are deterministic and LLM-free. They decide only *which pages get
 scraped first*, never what the evidence means.
@@ -544,7 +645,7 @@ rather than five forum threads. Over-budget candidates are **deferred**, not
 discarded; a later run picks them up. Growing `--max-pages` only appends — the
 earlier slots never reorder.
 
-## 12. Firecrawl rate limiting
+## 13. Firecrawl rate limiting
 
 The free tier limits requests per minute, and a 50-query run will hit it. The
 pipeline values finishing a run over finishing it fast.
@@ -583,7 +684,352 @@ remaining queries. A rate limit never ends a run.
 Non-429 errors (timeouts, 5xx) use the same backoff but never consult
 `Retry-After`.
 
-## 13. Source quality policy
+## 14. Evidence yield per scraped page
+
+A Firecrawl credit buys one page. What that page is worth depends entirely on
+how much evidence comes out of it, so three deterministic steps sit between the
+scrape and the model. The first real charging run motivated all of them:
+
+| Page | Before | After |
+|---|---|---|
+| ADAC i5 Touring test, 2,650 chars | 8 records from 1 chunk | unchanged |
+| InsideEVs A6 e-tron test, 14,844 chars | **0 records** - one oversized chunk hit the output cap and the whole page was lost | 3 chunks, each well inside the cap |
+| BMW USA route-planning FAQ, 428 chars | **0 records** and one wasted LLM call - the page is a `"Loading … Sorry to interrupt"` JS shell | skipped before any model call |
+
+### Thin-content gate
+
+Below `MIN_CONTENT_CHARS` (default **1000**) of trimmed text, the page is
+skipped without an extraction request and recorded as `pages_skipped_thin`. The
+log names the dead-page markers it found, so a thin page says *why* it was thin
+rather than just vanishing.
+
+The old threshold was 400 characters, which the 428-char BMW FAQ cleared by 28.
+
+### Relevance gate
+
+`relevance.py` reads the scraped text and counts distinct hits from two
+vocabularies. It is deterministic - no LLM - and shares its topic vocabulary
+with the pre-scrape URL filter so the two cannot drift apart.
+
+A page passes on **either** signal:
+
+- `MIN_TOPIC_HITS` (default 3) distinct topic terms, counted across **all four
+  topics**, or
+- `MIN_VEHICLE_HITS` (default 2) distinct vehicle terms - a page clearly about
+  the target car earns a look even if it words its topic unusually.
+
+Terms are anchored with `\b` at the start but not the end, which handles German
+compounds for free: `lade` matches `Ladeleistung`, `Ladekurve` and `Ladeplanung`
+while the word boundary still stops it matching `Schokolade`.
+
+The gate is deliberately **conservative** - extracting from a marginal page is
+far cheaper than silently discarding a strong one. A comfort article with no
+charging term and no model name still passes on its comfort vocabulary; a
+Bundesnetzagentur infrastructure page passes with no vehicle term at all; an
+Audi A6 e-tron charging test passes because competitor models are in the vehicle
+vocabulary on purpose.
+
+### Chunking
+
+Trimmed text is split into `EXTRACTION_CHUNK_CHARS` (default **7000**) pieces
+with `EXTRACTION_CHUNK_OVERLAP_CHARS` (default **600**) of overlap, and each
+chunk gets its own request. Splitting on blank lines where possible, falling
+back to a line or space break, and finally a hard cut.
+
+7000 is chosen against the output ceiling, not the input one. The old 15,000
+limit let the 14.8k-char InsideEVs page through as a single chunk; the model
+then tried to emit every record it found in one response, hit the 8,000-token
+output cap, and the truncated JSON was unusable.
+
+**Cross-topic evidence is kept.** A claim is filed under its own topic, not the
+topic of the query that found the page. A charging run over the InsideEVs
+article keeps its comfort, infotainment and market-trend claims too - the page
+is already paid for, and those records are exactly what raises yield per credit.
+
+### Truncation and chunk failure
+
+`finish_reason=length` (OpenAI) and `stop_reason=max_tokens` (Anthropic) now
+raise a distinct `LLMTruncatedError` instead of surfacing as "invalid JSON".
+That matters because the two need opposite responses: invalid JSON is worth
+retrying as-is, whereas a truncated request will truncate again.
+
+A truncated chunk is retried **once** as two overlapping halves. Recursion stops
+there, so one chunk costs at most three requests. The error is raised outside
+the retry wrapper, so the retry budget is never spent on a request that cannot
+succeed as written.
+
+A chunk that fails for any other reason is logged and skipped, and **the
+remaining chunks still contribute**. A page is only reported as
+`extraction_failed` when every one of its chunks failed.
+
+### Merge and dedup after chunking
+
+Overlap means a claim near a boundary is returned by both neighbouring chunks.
+Within one page, records are collapsed on exact normalized claim text first,
+then on near matches at the same similarity threshold used elsewhere (92).
+
+When two records state the same claim the **more complete** one is kept, scored
+by: carries a numeric value and unit, then longer `evidence_text`, then longer
+`claim`. So a chunk that captured "10-80% in 30 minutes" with
+`numeric_value=30` beats a neighbour that only caught "charges quickly".
+
+This runs *before* the cross-source duplicate marking in §17, which is unchanged
+and still never merges independent sources.
+
+### Source span locators
+
+`source_start_char` / `source_end_char` continue to address the exact quote in
+the captured page. Offsets are resolved against the **whole page**, not the
+chunk the quote arrived in, so splitting a page into more chunks cannot move
+them. A quote the model paraphrased rather than copied is not a locatable span
+and the record is rejected.
+
+One known limit: the offset is the *first* occurrence of the quote in the page,
+so a sentence repeated verbatim resolves to its first appearance.
+
+## 15. Semantic normalization
+
+Extraction yield is only half the problem. The first high-yield run produced
+records that were technically valid and semantically wrong, so a deterministic
+pass runs after extraction and before anything is written. It never touches
+`evidence_text`, `source_start_char` or `source_end_char`.
+
+Seven passes, in order: **scope filter → split → canonical unit → reclassify →
+canonicalize subtopic → clean claim → measure language.**
+
+The unit pass runs *before* reclassification on purpose: promoting `kWh` to
+`kWh/100 km` is exactly the signal the consumption rule keys on, so
+reclassifying first would miss every consumption figure not already written per
+100 km.
+
+### A rule reads the quote, not the claim
+
+The single most important property here: the correction rules classify from
+`evidence_text`, not from `claim`. The quote is verifiable text lifted from the
+page; the claim is prose the model wrote. When they disagree about what a record
+is about, the quote decides. A "ride comfort is excellent" claim whose quote is
+a charging-power figure gets retopiced to charging, because the quote is the
+evidence.
+
+### Claim language
+
+Claims are normalized to **English**; `evidence_text` stays verbatim in the
+page's own language and is **never translated**.
+
+The mechanism is the extraction prompt, which now requires an English claim and
+a verbatim original-language quote. No deterministic rule can translate prose,
+so `normalization.looks_non_english` is a *detector*, not a translator: it flags
+a residual non-English claim, counts it in `non_english_claims`, and keeps the
+record. That makes the prompt contract measurable instead of assumed.
+
+Detection fires on a German-only character (`ä`, `ö`, `ü`, `ß`), on two distinct
+German function words, or on one function word plus a German nominalisation
+ending (`-ung`, `-keit`, `-heit`, `-lich`). The third test is what catches a
+short ASCII-spelled sentence like "Die Ladeleistung faellt ab 60 Prozent ab."
+An English claim naming a German model has no function word, so it never
+reaches those tests.
+
+### Correction rules
+
+Each rule requires a *combination* of signals - a unit plus a keyword, or a
+keyword plus a figure - so a passing mention of a word cannot retopic a record.
+The first rule that fires wins; when none fires, the model's classification
+stands untouched.
+
+| Rule | Fires on | Result |
+|---|---|---|
+| `consumption_unit` | `kWh/100 km` in the quote or unit | `range` / `energy_consumption` |
+| `wltp_range` | `WLTP` plus a distance, and no consumption unit | `range` / `wltp_range` |
+| `winter_range` | measured range, winter context in quote or page | `range` / `winter_range` |
+| `measured_range` | range word plus a test signal, not WLTP | `range` / `real_world_range` |
+| `preconditioning` | names battery preconditioning | `charging` / `battery_preconditioning` |
+| `charging_time` | charge-duration word, or a 10-80 % window with minutes | `charging` / `charging_time` |
+| `charging_curve` | charging-curve word, or charge power that tapers | `charging` / `charging_curve` |
+| `charge_port` | names a physical charging port or flap | `charging` / `charging_port_access` |
+| `steering` | names steering behaviour, **not** the steering wheel | `driving_experience` / `steering_response` |
+| `braking` | names braking | `driving_experience` / `braking_feel` |
+| `charging_speed` | a kW figure **plus** a charging word | `charging` / `charging_speed` |
+
+Two guards worth knowing, both drawn from the real pages:
+
+- **Consumption beats the WLTP label.** `| WLTP-Verbrauch | 14,8 - 17,0 kWh/100 km |`
+  is a consumption figure, not a range figure, so the unit rule is ordered first.
+- **Range gained by charging is a charging metric.** `| Nachgeladene Reichweite in 20 Minuten | 184 km |`
+  says "Reichweite" and quotes kilometres on a range-test page, but it measures
+  charging speed in range units, so the range rules explicitly decline it.
+- **The steering wheel is not the steering.** The real page says "Auch im
+  Lenkrad finden sich Touchtasten" — touch buttons on the wheel, which is
+  infotainment. The steering rule excludes `Lenkrad` so it cannot claim it.
+
+`charging_speed` requires the charging word because `270 kW` on its own could
+be a motor output.
+
+Page context matters for one distinction: the same "Reichweite im Test" quote
+becomes `winter_range` on the ADAC winter test page and `real_world_range` on a
+launch review, decided from the page title, query and URL.
+
+### Canonical numeric units
+
+`numeric_unit` is mapped onto a fixed vocabulary so downstream aggregation can
+group on it: `kW`, `kWh`, `kWh/100 km`, `V`, `A`, `km`, `km/h`, `minutes`,
+`hours`, `percent`, `EUR`, `kg`, `litres`, `dB`.
+
+`Min.`, `Minuten`, `min`, `mins` and `minute` all become **`minutes`**; `%` and
+`Prozent` become `percent`; `Euro` and `€` become `EUR`; `Kilowatt` becomes
+`kW`. An unrecognised unit is returned unchanged rather than forced into a
+canonical form that would lose information.
+
+**`kWh` is the one ambiguous case**, because it is both a consumption figure and
+a battery capacity. It is resolved from the quote, in this order:
+
+1. A capacity word (`Akku`, `Batterie`, `netto`, `usable`, `Kapazität`) → stays
+   **`kWh`**. Capacity wins outright: mislabelling a 94,9 kWh pack as
+   consumption is far worse than leaving a consumption figure unpromoted.
+2. A consumption phrasing (`Verbrauch`, `Schnitt`, `Langstrecke`, `konstant`,
+   `Tempo 100`, `/100 km`) → **`kWh/100 km`**.
+3. Neither — then two weaker signals must agree: the *page* has to be about
+   consumption **and** the figure has to be ≤ 40, since production EV
+   consumption sits around 10–35 while usable pack sizes start near 50. This is
+   what resolves a terse reviewer quote like "wir erreichten 16,3 kWh" without
+   ever touching "| Akku netto | 94,9 kWh |".
+
+### Out-of-scope filter
+
+A record is dropped when its text is *primarily* about taxation, company-car
+tax, financing, leasing, insurance, purchase incentives, dealer offers,
+homologation or a pure business case — **and** names no customer-facing product
+subject. Dropped records are counted in `records_filtered_out_of_scope`.
+
+That ordering is the whole design, and it separates the two cases precisely:
+
+| Text | Outcome |
+|---|---|
+| "the 0.25-percent company car taxation now applies up to 100,000 Euro" | **dropped** — taxation, no product subject |
+| "für diesen Preis ist die Materialqualität enttäuschend" | **kept** — a price *and* material quality |
+| "trotz des hohen Listenpreises ist die Verarbeitung gut" | **kept** — list price *and* build quality |
+
+Perceived value and quality complaints, customer expectations, usability,
+comfort, charging, range, software, design, driving experience, space and
+competitor capabilities are all protected by the product-subject list.
+
+One subtlety worth knowing if you edit those patterns: the product list mixes
+anchored and unanchored alternatives on purpose. German compounds carry the
+meaningful stem in the *middle* of a word (`Materialqualität`, `Rücksitz`,
+`Ladeleistung`), so those stems stay unanchored; short English words must be
+anchored, because an unanchored `app` matches **"applies"** — which is exactly
+what let the company-car-taxation line through before it was fixed.
+
+### Claim text cleanup
+
+Formatting artifacts are repaired in the **claim only**. `evidence_text` stays
+byte-for-byte identical and the offsets are untouched.
+
+```
+"The A6e-tron charges quickly."   -> "The A6 e-tron charges quickly."
+"Available onlyfor the top trim." -> "Available only for the top trim."
+"The cabin is veryquiet at speed."-> "The cabin is very quiet at speed."
+```
+
+Repairs are bounded on purpose: a glued pair is split only when **both** halves
+appear in a curated list, so `notable` is not turned into "not able" and
+`online` survives intact.
+
+### Capability versus observation
+
+Two records about the same number can be different evidence:
+
+```
+"DC charging power is rated at 270 kW."                     -> capability
+"The A6 e-tron reaches 270 kW in the test, but only briefly." -> observed
+```
+
+Collapsing these would delete the nuance a product manager most needs, so a
+record carrying an observation marker (`im Test`, `wir erreichten`, `gemessen`,
+`only briefly`, `in der Praxis`) is never merged into one that does not.
+
+The test is **observed versus not observed**, not capability versus observed: a
+flat spec statement often carries no explicit capability marker, and requiring
+the exact pair would merge it into the hedged observation and lose the hedge.
+An observation marker also *wins* when both kinds appear, because the two
+records usually share one quote — a rated phrasing in that shared quote would
+otherwise cancel the observation only one of them actually makes.
+
+Two records that genuinely state the same proposition still collapse, keeping
+the more complete one. The role is computed when needed and never stored, so the
+evidence schema is unchanged.
+
+### Multi-value facts
+
+`| Ladeleistung AC/DC | 11 kW / 270 kW |` arrived as one record with
+`numeric_value: null`. It now becomes two atomic records:
+
+```
+charging/charging_speed   AC charging power is 11 kW.    numeric_value=11    unit=kW
+charging/charging_speed   DC charging power is 270 kW.   numeric_value=270   unit=kW
+```
+
+Both keep the original quote and offsets, because both facts genuinely come from
+that one row. Label-first (`AC 11 kW`) and value-first (`11 kW am AC-Lader`)
+wordings are both handled, in either label order.
+
+A *range* of one value - `14,8 - 17,0 kWh/100 km`, `627 - 720 km` - is one fact
+with an interval, not two facts. It is deliberately left alone rather than
+invented into a structure the schema cannot hold, so `numeric_value` stays null
+and the text carries the interval.
+
+German decimal commas are parsed correctly: `25,6` is 25.6 and `1.234,5` is
+1234.5.
+
+### Same-page deduplication
+
+Five duplicate shapes are handled. The first four are claim-text based; the
+fifth is the language-independent backstop:
+
+1. exact normalized claim text;
+2. paraphrases, at the same-page threshold of **88** - lower than the
+   cross-source 92, because same page plus same subtopic is a much stronger
+   prior;
+3. overlapping-chunk repeats;
+4. multilingual equivalents, once claims are English;
+5. **same evidence span expressing one proposition** - spans overlapping by
+   ≥60% of the shorter one, same topic *and* subtopic, with no conflicting
+   numbers.
+
+Rule 5 is what actually caught the observed bug. The English and German
+wordings of one observation quote the *same German sentence*, so their spans
+coincide even though their claim texts share almost no tokens.
+
+It is deliberately narrow, because the brief is explicit that genuinely
+distinct facts must not merge:
+
+- **Same subtopic required** - seat comfort and ride comfort drawn from
+  "Die Sitze sind bequem, aber der Fahrkomfort leidet" stay separate.
+- **No numeric conflict** - the split `11 kW` and `270 kW` records share one
+  span and one subtopic, and two numbers that disagree mean two facts.
+- **Cross-source behaviour is untouched.** Independent sources reaching the same
+  conclusion are still never merged (§17).
+
+When two records do describe one proposition, the **more complete** one is kept:
+carries a numeric value and unit, then longer `evidence_text`, then longer
+`claim`.
+
+### Before and after, on the real cached pages
+
+Replaying the exact rows the real run stored:
+
+| Before | After |
+|---|---|
+| `comfort/perceived_interior_quality` × 2, one English one German, same quote | one record, English claim |
+| `charging/charging_speed`, `numeric_value: null` for `11 kW / 270 kW` | two records, 11 kW and 270 kW |
+| `charging/long_distance_charging` for `WLTP-Reichweite 627 - 720 km` | `range/wltp_range` |
+| `charging/charging_reliability` for `25,6 kWh/100km` | `range/energy_consumption` |
+| `charging/long_distance_charging` for `Reichweite im Test 351 km` | `range/winter_range` |
+
+Six observed rows become six records - one duplicate removed, one row split -
+with every span still exact, every claim English and every quote verbatim
+German.
+
+## 16. Source quality policy
 
 `source_quality` is a fixed table in `source_scoring.py`, applied after the
 `source_family` has been decided **from the URL's domain**. The LLM never sets
@@ -625,7 +1071,7 @@ BMW press, the German automotive press, Motor-Talk, GoingElectric, …) get two
 privileges: they skip the topic-keyword relevance gate, and they are ranked
 first so that a capped run spends its page budget on them.
 
-## 14. Deduplication behaviour
+## 17. Deduplication behaviour
 
 Two separate ideas, and conflating them is the usual mistake.
 
@@ -689,7 +1135,7 @@ Three further dedup layers run earlier:
    independence group, so a second pass over one thread does not re-append
    near-duplicates.
 
-## 15. Example raw evidence
+## 18. Example raw evidence
 
 The internal `RawEvidence` stage, after validation and before scoring. Note the
 source fields are already filled in by the pipeline, not by the model.
@@ -713,7 +1159,7 @@ source fields are already filled in by the pipeline, not by the model.
 }
 ```
 
-## 16. Example processed evidence
+## 19. Example processed evidence
 
 One line of `data/processed/external_evidence.jsonl`, pretty-printed:
 
@@ -753,12 +1199,14 @@ sources = {r["independence_group"] for r in live}
 print(f"{len(live)} claims from {len(sources)} independent sources")
 ```
 
-## 17. Controlled vocabulary
+## 20. Controlled vocabulary
 
 Validated by `models.py`; an invalid value is a rejected record, not a bad line
 in the output.
 
-**Topics and subtopics** — a subtopic is only valid inside its own topic:
+**Topics and subtopics** — a subtopic is only valid inside its own topic. There
+are five topics; `range` was added for figures that are neither charging nor
+comfort:
 
 - **infotainment**: `touchscreen`, `menu_complexity`, `physical_controls`,
   `climate_control_interaction`, `navigation`, `voice_assistant`,
@@ -772,14 +1220,37 @@ in the output.
   `ride_comfort`, `cabin_noise`, `interior_space`, `climate_comfort`,
   `long_distance_comfort`, `suspension_comfort`, `perceived_interior_quality`,
   `material_quality`
-- **market_trend**: `ev_adoption`, `charging_network_growth`,
-  `charging_behavior`, `future_customer_expectation`
+- **range**: `wltp_range`, `real_world_range`, `winter_range`,
+  `energy_consumption`
+- **driving_experience**: `steering_response`, `handling`, `braking_feel` —
+  deliberately *not* folded into comfort, because how a car steers, grips and
+  stops is a different customer concern from how softly it rides
+- **market_trend**: `infrastructure_growth`, `customer_expectation`,
+  `competitive_benchmark`, `adoption_trend`, plus the earlier
+  `ev_adoption`, `charging_network_growth`, `charging_behavior`,
+  `future_customer_expectation`
+
+Earlier subtopic names stay **valid** so evidence already on disk keeps
+validating, and the normalization pass rewrites new records to the canonical
+name so the vocabulary converges instead of splitting:
+
+| Deprecated | Canonical |
+|---|---|
+| `charging_infrastructure` | `charging_network` |
+| `charging_network_growth` | `infrastructure_growth` |
+| `future_customer_expectation` | `customer_expectation` |
+| `ev_adoption` | `adoption_trend` |
+
+`public_charging` is deliberately **not** folded into `charging_network`: one is
+about the experience of using a public charger, the other about the network
+existing. The taxonomy is extended by editing `SUBTOPICS` in `models.py`, and an
+alias by editing `SUBTOPIC_ALIASES` beside it.
 
 A valid subtopic paired with the wrong topic is repaired from the subtopic. A
 subtopic that is not in the list at all means the record is dropped and counted
 in `records_rejected`.
 
-## 18. Firecrawl SDK usage
+## 21. Firecrawl SDK usage
 
 Verified against **`firecrawl-py` 4.50.0**, released 2026-10-08, and the current
 Firecrawl docs — not from memory.
@@ -841,7 +1312,7 @@ Points worth knowing, all of which this code handles:
   prefill is not used (current models reject it). `stop_reason == "refusal"`
   arrives as HTTP 200 and is checked explicitly.
 
-## 19. Error handling
+## 22. Error handling
 
 One bad page never ends a research run.
 
@@ -861,7 +1332,7 @@ One bad page never ends a research run.
 Retries use `tenacity` with exponential backoff where it is installed, and an
 equivalent internal loop where it is not.
 
-## 20. Common errors
+## 23. Common errors
 
 **`FIRECRAWL_API_KEY is not set`**
 `.env` is missing or in the wrong place. It belongs at
@@ -899,7 +1370,7 @@ Retried with exponential backoff. Lower `--max-pages` if it persists.
 `rapidfuzz` is probably missing, leaving the stricter `difflib` fallback.
 `pip install rapidfuzz`.
 
-## 21. Verification status
+## 24. Verification status
 
 No automated test files or test configuration are included in this checkout, so
 the following prior implementation notes are not independently reproducible
@@ -936,6 +1407,27 @@ results verified by the current validation run:
   is never exceeded at 1/2/4/6 attempts; a provider's 15s is used in place of
   backoff; 99999s is clamped to 120s; one abandoned query leaves the other three
   returning results; search and scrape share one limiter.
+
+The final cleanup pass is verified the same way: `Min.`/`Minuten` canonicalize
+to `minutes`, a long-distance `18,5 kWh` becomes `kWh/100 km` while
+`| Akku netto | 94,9 kWh |` stays `kWh`, the real steering, braking and
+`Ladeanschlüsse auf beiden Seiten` quotes land in `driving_experience` and
+`charging_port_access`, `Lenkrad` touch buttons do **not**, a company-car
+taxation line is filtered while a price-quality complaint is kept, and a rated
+270 kW and an observed "only briefly" 270 kW both survive.
+
+Semantic normalization is verified against the three real cached pages, with
+every fixture quote asserted to be a verbatim span of the page it claims to come
+from: the multilingual duplicate collapses, the AC/DC row splits into two
+numbered records, `25,6 kWh/100km` becomes `range/energy_consumption`, WLTP
+range becomes `range/wltp_range`, `Reichweite im Test` becomes `winter_range` on
+the winter page and `real_world_range` on the launch review, and
+`Nachgeladene Reichweite` is left as a charging metric.
+
+Cache-only reprocessing is verified against the three real cached pages: zero
+Firecrawl clients constructed, the 428-char page skipped as thin, the long
+article split into three chunks, and three consecutive runs producing an
+identical output file.
 
 **Not yet verified:** a live Firecrawl run and a live LLM call, which need your
 API keys. Start with `--dry-run`, then one `--max-pages 2` run, and check

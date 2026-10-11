@@ -30,7 +30,9 @@ SourceFamily = Literal[
     "other",
 ]
 
-Topic = Literal["infotainment", "charging", "comfort", "market_trend"]
+Topic = Literal[
+    "infotainment", "charging", "comfort", "range", "driving_experience", "market_trend"
+]
 
 Stance = Literal["supports", "contradicts", "neutral"]
 
@@ -52,20 +54,39 @@ SUBTOPICS: dict[str, tuple[str, ...]] = {
         "display_usability",
     ),
     "charging": (
+        # Canonical set.
         "charging_speed",
         "charging_curve",
         "charging_time",
         "charging_reliability",
         "battery_preconditioning",
         "route_planning",
-        "public_charging",
+        "charging_network",
         "long_distance_charging",
+        "charging_port_access",
+        "charging_interface",
+        # Retained: narrower distinctions, and rows already stored under them.
+        "public_charging",
         "charging_stop_duration",
         "plug_and_charge",
         "charging_infrastructure",
         "winter_charging",
     ),
+    "range": (
+        "wltp_range",
+        "real_world_range",
+        "winter_range",
+        "energy_consumption",
+    ),
+    # Kept apart from comfort on purpose: how a car steers, grips and stops is
+    # a different customer concern from how softly it rides.
+    "driving_experience": (
+        "steering_response",
+        "handling",
+        "braking_feel",
+    ),
     "comfort": (
+        "seat_comfort",
         "front_seat_comfort",
         "rear_seat_comfort",
         "rear_seat_space",
@@ -79,11 +100,32 @@ SUBTOPICS: dict[str, tuple[str, ...]] = {
         "material_quality",
     ),
     "market_trend": (
+        # Canonical set.
+        "infrastructure_growth",
+        "customer_expectation",
+        "competitive_benchmark",
+        "adoption_trend",
+        # Retained for rows already stored under the earlier names.
         "ev_adoption",
         "charging_network_growth",
         "charging_behavior",
         "future_customer_expectation",
     ),
+}
+
+#: Earlier subtopic names mapped to their canonical replacement. Both spellings
+#: stay valid - rows already on disk must keep validating - but the
+#: normalization pass rewrites new records to the canonical name so the
+#: vocabulary converges instead of splitting.
+#:
+#: Only unambiguous synonyms are aliased. ``public_charging`` is deliberately
+#: *not* folded into ``charging_network``: one is about the experience of using
+#: a public charger, the other about the network existing.
+SUBTOPIC_ALIASES: dict[str, str] = {
+    "charging_infrastructure": "charging_network",
+    "charging_network_growth": "infrastructure_growth",
+    "future_customer_expectation": "customer_expectation",
+    "ev_adoption": "adoption_trend",
 }
 
 ALL_SUBTOPICS: tuple[str, ...] = tuple(
@@ -298,6 +340,10 @@ class ResearchRun(BaseModel):
     started_at: str
     finished_at: str | None = None
 
+    #: ``search`` for the normal flow, ``reprocess-cache`` when replaying
+    #: already-cached pages. Makes a zero-credit run unmistakable in the log.
+    mode: str = "search"
+
     topic: str
     queries_attempted: int = 0
 
@@ -310,8 +356,27 @@ class ResearchRun(BaseModel):
     pages_loaded_from_cache: int = 0
     pages_failed: int = 0
 
+    # Why a scraped page produced nothing. Kept distinct on purpose: "thin" is a
+    # dead page, "irrelevant" is a filter miss, "extraction failed" is a model
+    # or transport problem, and "zero evidence" is a page the model read and
+    # found nothing in. They call for different fixes.
+    pages_skipped_thin: int = 0
+    pages_skipped_irrelevant: int = 0
+    pages_extraction_failed: int = 0
+    pages_zero_evidence: int = 0
+    pages_with_evidence: int = 0
+
+    #: Records dropped by the deterministic scope filter - taxation, financing,
+    #: incentives, insurance and similar, which are not customer-facing product
+    #: evidence.
+    records_filtered_out_of_scope: int = 0
+
+    chunks_processed: int = 0
+    chunks_failed: int = 0
+
     evidence_records_created: int = 0
     evidence_duplicates_found: int = 0
+    evidence_per_extracted_page: float = 0.0
 
     firecrawl_search_calls: int = 0
     firecrawl_scrape_calls: int = 0
@@ -322,6 +387,7 @@ class ResearchRun(BaseModel):
         """Human-readable counter list for the end-of-run log."""
         return [
             f"run_id                  {self.run_id}",
+            f"mode                    {self.mode}",
             f"topic                   {self.topic}",
             f"queries attempted       {self.queries_attempted}",
             f"search results found    {self.search_results_found}",
@@ -329,8 +395,17 @@ class ResearchRun(BaseModel):
             f"urls skipped (filter)   {self.urls_skipped_filtered}",
             f"pages scraped           {self.pages_scraped}",
             f"pages from cache        {self.pages_loaded_from_cache}",
-            f"pages failed            {self.pages_failed}",
+            f"pages failed (scrape)   {self.pages_failed}",
+            f"pages skipped: thin     {self.pages_skipped_thin}",
+            f"pages skipped: offtopic {self.pages_skipped_irrelevant}",
+            f"pages extraction failed {self.pages_extraction_failed}",
+            f"pages with 0 evidence   {self.pages_zero_evidence}",
+            f"pages with evidence     {self.pages_with_evidence}",
+            f"out-of-scope filtered  {self.records_filtered_out_of_scope}",
+            f"chunks processed        {self.chunks_processed}",
+            f"chunks failed           {self.chunks_failed}",
             f"evidence created        {self.evidence_records_created}",
+            f"evidence per good page  {self.evidence_per_extracted_page:.1f}",
             f"evidence duplicates     {self.evidence_duplicates_found}",
             f"firecrawl search calls  {self.firecrawl_search_calls}",
             f"firecrawl scrape calls  {self.firecrawl_scrape_calls}",
