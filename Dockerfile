@@ -6,6 +6,6 @@ COPY src ./src
 COPY configs ./configs
 COPY ui ./ui
 COPY .streamlit/config.toml ./.streamlit/config.toml
-RUN pip install --no-cache-dir ".[ai]"
+RUN pip install --no-cache-dir ".[ai,scrape]"
 EXPOSE 8501
 CMD ["sh", "-c", "exec python -m streamlit run ui/app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]

@@ -7,7 +7,7 @@ The default page is Decision Studio, connected to the existing Python advisor an
 
 For a shared team dataset, configure `DATABASE_URL` and follow the [Supabase migration and collaborator setup](../docs/SUPABASE.md). The same frontend uses the shared database; each collaborator keeps their connection string in their own ignored `.env.local`. The tracked root `.env` contains blank placeholders only.
 
-Keep `OPENAI_API_KEY` in the repository-root `.env.local` file. Install the Python `ai` dependencies in the repository's `.venv` and import the private database first. Then:
+Keep `OPENAI_API_KEY` in the repository-root `.env.local` file. Install the Python `ai` dependencies in the repository's `.venv` and import the private database first. To enable optional inspection of up to two web-cited pages per run, also put `FIRECRAWL_API_KEY` in that file and install `uv sync --extra ai --extra scrape`. The advisor still works with web search alone when that key is absent. Then:
 
 ```powershell
 cd web
