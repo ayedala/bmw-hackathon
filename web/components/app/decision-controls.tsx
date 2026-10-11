@@ -14,6 +14,7 @@ import { balanceOf, confidenceOf, priorityOf, type Balance, type Confidence, typ
 import type { RequirementBundle } from "@/lib/domain/model";
 import { priorityScore } from "@/lib/domain/scoring";
 import { useStore } from "@/lib/store";
+import { RecordingTarget, ReviewErrorNotice } from "./review-authority";
 
 type DialogKind = "approve" | "reject" | "defer" | "edit" | "rate" | "challenge" | null;
 
@@ -153,6 +154,8 @@ function ApproveDialog({ bundle, factors, basis, confidence, open, onClose }: Pr
         }
       >
         <div className="space-y-3">
+          <RecordingTarget displayId={bundle.display_id} />
+          <ReviewErrorNotice />
           {basis === "seed" && (
             <p className="rounded-sm bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
               The priority is still an illustrative seed rating. Save a PM priority assessment first (Rate priority) — an approval must reference a declared judgement.
@@ -210,6 +213,8 @@ function ReasonDialog({ kind, displayId, open, onClose }: { kind: "reject" | "de
         }
       >
         <div className="space-y-3">
+          <RecordingTarget displayId={displayId} />
+          <ReviewErrorNotice />
           <ReviewerField id={`${kind}-reviewer`} />
           <div>
             <Label htmlFor={`${kind}-reason`}>{kind === "reject" ? "Reason" : "Missing input"}</Label>
@@ -278,6 +283,8 @@ function EditDialog({ bundle, revision, open, onClose }: { bundle: RequirementBu
         }
       >
         <div className="space-y-3">
+          <RecordingTarget displayId={bundle.display_id} />
+          <ReviewErrorNotice />
           <div>
             <Label htmlFor="edit-title">Requirement</Label>
             <Input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" />
