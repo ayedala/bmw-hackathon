@@ -11,7 +11,7 @@ SQLite remains available for offline work and tests. Application tables live in 
 2. Open **Connect → Connection string → Session pooler**. Use the actual hostname shown there,
    port **5432**, and the username `postgres.PROJECT_REF`. Transaction pooling on port 6543 is
    intentionally rejected because this application uses session settings.
-3. Put the connection string in the repository-root, Git-ignored `.env`:
+3. Put the connection string in the repository-root, Git-ignored `.env.local`. The tracked `.env` is a blank setup template:
 
    ```dotenv
    DATABASE_URL="postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@YOUR_POOLER_HOST:5432/postgres?sslmode=require"
@@ -29,7 +29,7 @@ SQLite remains available for offline work and tests. Application tables live in 
    ```
 
 An explicit CLI `--db` path uses SQLite. Without one, process environment settings take precedence
-over `.env`: `DATABASE_URL`, then `BMW_PM_DB_PATH`. An invalid shared connection fails visibly;
+over `.env.local`, which takes precedence over `.env`: `DATABASE_URL`, then `BMW_PM_DB_PATH`. An invalid shared connection fails visibly;
 it does not silently switch to a local dataset.
 
 ## 2. Migrate the existing dataset once
@@ -82,7 +82,7 @@ versioned updates when changing audited decisions rather than modifying old audi
 
 Dashboard membership and a local app's PostgreSQL login are separate. The invitation is enough
 to collaborate in the dashboard; running the app against this database also requires a connection
-in the collaborator's local `.env`, as below.
+in the collaborator's local `.env.local`, as below.
 
 ## 4. Connect a collaborator's local app
 
@@ -96,7 +96,7 @@ Create an individual database login instead of distributing the project administ
 Each command generates a strong password and writes a new Git-ignored `.env.bmw_user_NAME` file
 in the repository root. It does not print credentials, overwrite existing files or reset existing
 users. Share that file privately with its named collaborator. They copy its `DATABASE_URL` line
-into their own root `.env`, add their own AI credentials, install the `ai,postgres` extras, and run:
+into their own root `.env.local`, add their own AI credentials, install the `ai,postgres` extras, and run:
 
 ```powershell
 cd web
@@ -122,7 +122,7 @@ still change database policy. Revoking a collaborator is an owner operation, for
 bmw_user_alice NOLOGIN`; end existing sessions as well when immediate revocation is required.
 
 Anonymous Supabase API roles receive no access. The private schema has row policies for the named
-team roles only. Keep the schema out of the public Data API. Do not share the owner `.env` file.
+team roles only. Keep the schema out of the public Data API. Do not share the owner `.env.local` file.
 
 Download an original by its source hash to a new local filename:
 

@@ -14,8 +14,9 @@ class StorageError(RuntimeError):
 
 def local_settings(root: Path = ROOT) -> dict[str, str]:
     values = {}
-    file = root / '.env'
-    if file.is_file():
+    for file in (root / '.env', root / '.env.local'):
+        if not file.is_file():
+            continue
         for line in file.read_text(encoding='utf-8-sig').splitlines():
             line = line.strip()
             if not line or line.startswith('#') or '=' not in line:
@@ -26,7 +27,8 @@ def local_settings(root: Path = ROOT) -> dict[str, str]:
                 continue
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                 value = value[1:-1]
-            values[name] = value
+            if value:
+                values[name] = value
     return values
 
 
@@ -77,4 +79,4 @@ def connection_options(dsn: str) -> dict:
     except StorageError:
         raise
     except Exception:
-        raise StorageError('Check DATABASE_URL in the local .env file; its connection format is invalid.') from None
+        raise StorageError('Check DATABASE_URL in the local .env.local file; its connection format is invalid.') from None

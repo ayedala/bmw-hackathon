@@ -5,9 +5,9 @@ The default page is Decision Studio, connected to the existing Python advisor an
 
 ## Run Decision Studio
 
-For a shared team dataset, configure `DATABASE_URL` and follow the [Supabase migration and collaborator setup](../docs/SUPABASE.md). The same frontend uses the shared database; each collaborator keeps their connection string in their own ignored `.env`.
+For a shared team dataset, configure `DATABASE_URL` and follow the [Supabase migration and collaborator setup](../docs/SUPABASE.md). The same frontend uses the shared database; each collaborator keeps their connection string in their own ignored `.env.local`. The tracked root `.env` contains blank placeholders only.
 
-Keep `OPENAI_API_KEY` in the repository-root `.env` file. Install the Python `ai` dependencies in the repository's `.venv` and import the private database first. Then:
+Keep `OPENAI_API_KEY` in the repository-root `.env.local` file. Install the Python `ai` dependencies in the repository's `.venv` and import the private database first. Then:
 
 ```powershell
 cd web
