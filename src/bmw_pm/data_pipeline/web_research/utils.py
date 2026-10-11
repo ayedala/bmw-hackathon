@@ -754,6 +754,66 @@ def _parse_delta_or_date(raw: str, *, now: float) -> float | None:
     return seconds if seconds > 0 else None
 
 
+#: Provider errors that cannot succeed on a retry. Retrying these spends a
+#: Firecrawl credit and a rate-limit slot to be told the same thing again -
+#: Reddit returning "Website Not Supported" cost three attempts in the first
+#: live run.
+_PERMANENT_MARKERS: tuple[str, ...] = (
+    "website not supported",
+    "site not supported",
+    "not supported",
+    "unsupported website",
+    "unsupported domain",
+    "unsupported site",
+    "unsupported url",
+    "invalid url",
+    "url is invalid",
+    "malformed url",
+    "invalid request",
+    "unauthorized",
+    "authentication failed",
+    "authentication error",
+    "invalid api key",
+    "invalid token",
+    "forbidden",
+    "insufficient credits",
+    "payment required",
+    "quota has been reached",
+)
+
+#: HTTP statuses that mean the request itself is wrong, so a retry is pointless.
+#: 408 (timeout), 425 and 429 are deliberately absent - those are retryable -
+#: and every 5xx is treated as temporary.
+_PERMANENT_STATUSES: frozenset[int] = frozenset(
+    {400, 401, 402, 403, 404, 405, 406, 410, 415, 422, 451}
+)
+
+
+def is_permanent_error(exc: BaseException) -> bool:
+    """Whether retrying *exc* can never help.
+
+    Rate limits are explicitly *not* permanent, even though 429 is a 4xx: they
+    are the one 4xx that succeeds on a later attempt, so they are checked first
+    and handed back as retryable.
+
+    Everything else that identifies a wrong request - an unsupported site, a
+    malformed URL, a failed authorization, an exhausted quota - fails on the
+    first attempt instead of burning the retry budget.
+    """
+    if is_rate_limit_error(exc):
+        return False
+
+    status = _status_code_of(exc)
+    if status is not None:
+        if status in _PERMANENT_STATUSES:
+            return True
+        if 500 <= status < 600 or status in (408, 425):
+            return False
+
+    haystack = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in haystack for marker in _PERMANENT_MARKERS)
+
+
 class RateLimiter:
     """Enforces a minimum interval between calls, plus provider-ordered pauses.
 
@@ -823,10 +883,13 @@ def call_with_rate_limit_retry(
     """Call *func* with throttling and rate-limit-aware retries.
 
     A rate-limit rejection waits for the provider's own ``Retry-After`` when it
-    supplies one, and falls back to exponential backoff when it does not. Other
-    errors always use exponential backoff. ``attempts`` is the total number of
-    tries, so ``attempts=4`` means at most 3 retries; the final failure is
-    re-raised for the caller to handle.
+    supplies one, and falls back to exponential backoff when it does not.
+    Temporary errors use exponential backoff. An error that
+    :func:`is_permanent_error` recognises is re-raised after a single attempt,
+    because retrying it only spends another credit.
+
+    ``attempts`` is the total number of tries, so ``attempts=4`` means at most
+    3 retries; the final failure is re-raised for the caller to handle.
     """
     log = logger or get_logger()
     attempts = max(1, int(attempts))
@@ -838,6 +901,15 @@ def call_with_rate_limit_retry(
             return func()
         except Exception as exc:  # noqa: BLE001 - provider errors are varied
             rate_limited = is_rate_limit_error(exc)
+            if not rate_limited and is_permanent_error(exc):
+                # One attempt only: a retry would spend another credit to be
+                # told the same thing.
+                log.error(
+                    "%s failed permanently on attempt %d/%d, not retrying: %s",
+                    redact_sensitive_text(label), attempt, attempts,
+                    redact_sensitive_text(exc),
+                )
+                raise
             if attempt == attempts:
                 if rate_limited:
                     log.error("%s: rate limited and out of retries (%d/%d): %s", redact_sensitive_text(label), attempt, attempts, redact_sensitive_text(exc))
