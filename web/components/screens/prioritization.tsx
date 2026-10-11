@@ -102,7 +102,7 @@ function CompareTable({ rows }: { rows: RequirementRow[] }) {
           </tr>
           <tr className="border-b border-slate-100">
             <th scope="row" className="px-3 py-1.5 text-left text-xs font-normal text-zinc-800">
-              Evidence (support / contra / sources)
+              Extracted concerns / opposing / feedback IDs
             </th>
             {rows.map((r) => (
               <td key={r.id} className={cn(cell, "text-xs")}>

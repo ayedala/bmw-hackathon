@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { BalanceBar, ConfidenceBadge, DecisionBadge, HypothesisStatusBadge, PriorityBadge, ScoreValue } from "@/components/app/badges";
-import { BenchmarkMatrix } from "@/components/app/benchmark-matrix";
 import { DecisionControls } from "@/components/app/decision-controls";
 import { EvidenceList, type EvidenceListEntry } from "@/components/app/evidence-list";
 import { EmptyState, KeyValue, Section, SubHeading } from "@/components/app/layout-parts";
@@ -92,7 +91,7 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
         else push(context, link.evidence_id, note);
       }
     }
-    const anchorStance = (id: string) => allLinks.find((l) => l.evidence_id === id)?.stance ?? "supports";
+    const anchorStance = (id: string) => allLinks.find((l) => l.evidence_id === id)?.stance ?? "neutral";
     const all = [
       ...anchors.map((e) => ({ stance: anchorStance(e.evidence.id), evidence: e.evidence })),
       ...supporting.map((e) => ({ stance: "supports" as const, evidence: e.evidence })),
@@ -126,7 +125,7 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
   const { factors, basis, assessment } = currentFactors(bundle);
   const score = inScope ? priorityScore(factors, policy) : null;
   const priority = priorityOf(score, inScope ? factors : null);
-  const confidence = confidenceOf(inScope ? factors : null, balance);
+  const confidence = basis === "seed" ? "Low" : confidenceOf(inScope ? factors : null, balance);
   const status = decisionStatus(rev, bundle.decisions);
   const linkJudgments = judgmentsFor(judgments, rev.requirement_id, rev.revision);
   const challengeIds = challenges.filter((c) => c.display_id === displayId).map((c) => c.challenge_id);
@@ -321,10 +320,10 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
             <Section title="Evidence summary">
               <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 md:grid-cols-5">
                 {[
-                  ["Supporting", balance.supporting],
-                  ["Contradicting", balance.contradicting],
-                  ["Neutral", balance.neutral],
-                  ["Independent sources", balance.independent_sources],
+                  ["Extracted concerns", balance.supporting],
+                  ["Opposing", balance.contradicting],
+                  ["Praise / other", balance.neutral],
+                  ["Feedback IDs", balance.independent_sources],
                   ["Links assessed", `${assessed} / ${assessable.length}`],
                 ].map(([label, value]) => (
                   <div key={label} className="bg-white px-3 py-2">
@@ -339,16 +338,16 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
               </p>
             </Section>
 
-            <Section title="Anchor records" description="Supplied BMW feedback records cited by the proposal. Verbatim text stays in the private database.">
+            <Section title="Anchor records" description="Redacted text and source locators from the configured private database. Interpretations remain unreviewed.">
               <EvidenceList entries={anchors} initial={6} empty="The proposal cites no anchor records." assess={assess} />
             </Section>
 
             <div className="grid gap-4 xl:grid-cols-2">
-              <Section title="Supporting evidence" description={`${supporting.length} records, strongest first`}>
-                <EvidenceList entries={supporting} empty="No supporting evidence is linked." assess={assess} />
+              <Section title="Potentially relevant concerns" description={`${supporting.length} extracted records; review their meaning before deciding`}>
+                <EvidenceList entries={supporting} empty="No concerns are linked." assess={assess} />
               </Section>
-              <Section title="Contradicting evidence" description={`${opposing.length} records — weigh before approving`}>
-                <EvidenceList entries={opposing} tone="contradict" empty="No contradicting evidence found. That is a gap to investigate, not proof of consensus." assess={assess} />
+              <Section title="Opposing evidence" description={`${opposing.length} reviewed links`}>
+                <EvidenceList entries={opposing} tone="contradict" empty="No opposing evidence is linked. Review praise and alternative explanations in context; this is not consensus." assess={assess} />
               </Section>
             </div>
             {context.length > 0 && (
@@ -358,12 +357,8 @@ export function RequirementWorkspace({ displayId }: { displayId: string }) {
             )}
           </div>
 
-          <Section title="Competitive benchmark" description={bundle.benchmark_topic ? "BMW i5 against the premium cohort for this topic. Click a cell to open its evidence." : undefined}>
-            {bundle.benchmark_topic ? (
-              <BenchmarkMatrix rows={dataset.benchmark} topics={[bundle.benchmark_topic]} />
-            ) : (
-              <EmptyState title="No competitive dimension is defined for this requirement." detail="Market fit is rated without a cohort comparison." />
-            )}
+          <Section title="Competitive evidence gap">
+            <EmptyState title="No matched cohort comparison has been verified." detail="The curated web notes remain context. Collect like-for-like model, market and test-condition evidence before rating a competitive gap." />
           </Section>
 
           <Section title="Market relevance" description="The proposal is authored for the US. Other markets show what exists and what a transfer would need.">

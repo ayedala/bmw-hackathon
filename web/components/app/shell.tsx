@@ -110,7 +110,6 @@ function AppSidebar() {
       items: [
         { href: "/findings", label: "Findings", count: dataset.findings.length },
         { href: "/evidence", label: "Evidence", count: dataset.evidence.length },
-        { href: "/hypotheses", label: "Hypotheses", count: dataset.hypotheses.length },
       ],
     },
     {
@@ -481,7 +480,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />
           <main id="main" className="mx-auto max-w-[1680px] px-4 py-5 lg:px-6">
-            {pathname !== "/" && pathname !== "/video-memory" && pathname !== "/evaluation" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Planning workbench includes labelled synthetic examples and browser-local review actions. <Link href="/" className="font-medium text-brand">Open Decision Studio</Link> for live research using the evidence database.</div>}
+            {pathname !== "/" && pathname !== "/video-memory" && pathname !== "/evaluation" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">Planning drafts use read-only US G60 feedback from the configured database. Extracted claims and proposed priorities still need human review. Actions on these pages stay in this browser; use the Python review workbench for shared, audited decisions. <Link href="/" className="font-medium text-brand">Decision Studio</Link></div>}
             {children}
           </main>
         </div>

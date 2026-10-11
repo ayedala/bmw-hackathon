@@ -11,7 +11,7 @@ import { usePersistentState, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useRequirementRows } from "@/lib/view";
 
-const PROVENANCES: Provenance[] = ["bmw_record", "pipeline", "curated_seed", "synthetic"];
+const PROVENANCES: Provenance[] = ["bmw_record", "pipeline", "curated_seed"];
 
 export function MarketsScreen() {
   const { dataset, market, setMarket } = useStore();
@@ -32,7 +32,7 @@ export function MarketsScreen() {
     return out;
   }, [dataset.evidence]);
 
-  if (!selected) return <EmptyState title="No successor proposals are loaded." detail="configs/successor_proposals_v1.json is missing or empty." />;
+  if (!selected) return <EmptyState title="No verified successor proposal anchors are loaded." detail="Connect the private evidence database and reload the workbench." />;
   const th = "h-8 px-3 text-2xs font-medium uppercase tracking-wide text-slate-500";
 
   return (

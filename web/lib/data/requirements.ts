@@ -2,12 +2,12 @@
  * Requirement bundles built from configs/successor_proposals_v1.json — the
  * authored US 5 Series (G60) successor proposals on origin/main.
  *
- * Proposal text, anchors and seed factor ratings are real repository data.
- * Display IDs, topic mapping, alternatives and one seeded approval are UI
- * scaffolding. As in bmw_pm.decision.planning.proposal_for, the curated US
+ * Proposal text and seed factor ratings are authored draft data. Real anchors
+ * and extracted signals are loaded from the evidence database. As in
+ * bmw_pm.decision.planning.proposal_for, the curated US
  * hypotheses are never transferred to another vehicle or market.
  */
-import type { Decision, RequirementEvidenceLink, RequirementRevision, Signal, SuccessorProposal, SuccessorProposalFile } from "@/lib/domain/contracts";
+import type { RequirementEvidenceLink, RequirementRevision, Signal, SuccessorProposal, SuccessorProposalFile } from "@/lib/domain/contracts";
 import { hashString } from "@/lib/domain/scoring";
 import type { BenchmarkTopic, MarketCode, RequirementBundle } from "@/lib/domain/model";
 
@@ -38,7 +38,7 @@ const META: Record<string, DomainMeta> = {
     benchmark_topic: "connected",
     powertrains: ["ICE", "PHEV", "BEV"],
     alternatives: ["Pending / confirmed / failed command states", "Local vehicle connectivity fallback", "Actionable recovery prompts"],
-    de: "Synthetic app-review signals only; no German connected-service evidence is captured.",
+    de: "No German connected-service customer evidence is captured.",
   },
   charging_and_range: {
     display_id: "REQ-TRP-03",
@@ -47,7 +47,7 @@ const META: Record<string, DomainMeta> = {
     benchmark_topic: "charging",
     powertrains: ["BEV", "PHEV"],
     alternatives: ["Condition-aware arrival-energy prediction", "Range band instead of a single value", "Faster charging hardware (separate engineering question)"],
-    de: "Eight ADAC i5 test records from the pipeline (400 V, 207 kW, 184 km / 20 min, Munich–Berlin) are German test context, not a German customer sample.",
+    de: "ADAC i5 test notes are German context, not a German customer sample. Compare test conditions before transfer.",
   },
   ride_and_comfort: {
     display_id: "REQ-SEA-04",
@@ -83,7 +83,7 @@ const META: Record<string, DomainMeta> = {
     benchmark_topic: "comfort",
     powertrains: ["ICE", "PHEV", "BEV"],
     alternatives: ["Targeted trim and window seal fixes", "Customer noise-reporting and service path"],
-    de: "A synthetic German test review rates the cabin among the quietest; no German owner reports are linked.",
+    de: "No German owner reports of cabin refinement are linked.",
   },
 };
 
@@ -156,41 +156,18 @@ function revisionFrom(p: SuccessorProposal, meta: DomainMeta, signals: Signal[],
     created_at: "2026-10-10T14:22:00Z",
     denominator_feedback_records: eligible,
     processed_feedback_records: eligible,
-    support_count: p.anchor_ids.length + support.length,
-    counter_count: counter.length,
+    support_count: new Set(support.map((s) => s.feedback_record_id)).size,
+    counter_count: new Set(counter.map((s) => s.feedback_record_id)).size,
   };
 }
 
-/** Eligible US G60 feedback IDs in the stored baseline run (README). */
-const US_ELIGIBLE = 3610;
-
-export function buildRequirements(file: SuccessorProposalFile, signals: Signal[]): RequirementBundle[] {
+export function buildRequirements(file: SuccessorProposalFile, signals: Signal[], eligible: number, resolvedAnchors: Set<string>): RequirementBundle[] {
   return file.proposals
-    .filter((p) => META[p.domain])
+    .filter((p) => META[p.domain] && p.anchor_ids.every((id) => resolvedAnchors.has(id)))
     .map((p) => {
       const meta = META[p.domain]!;
-      const revision = revisionFrom(p, meta, signals, US_ELIGIBLE);
+      const revision = revisionFrom(p, meta, signals, eligible);
       const market_context: Partial<Record<MarketCode, string>> = { DE: meta.de, CN, EU };
-      const decisions: Decision[] =
-        p.domain === "storage_and_practicality"
-          ? [
-              {
-                schema_version: "1",
-                decision_id: `dec-${hashString(meta.display_id)}`,
-                requirement_id: revision.requirement_id,
-                requirement_revision: 1,
-                action: "defer",
-                rationale: "Defer until a physical mock-up and representative US object set are available. Review trigger: concept mock-up gate.",
-                actor_id: "pm.demo",
-                role: "demo_pm",
-                recorded_at: "2026-10-10T15:05:00Z",
-                policy_revision: null,
-                score_snapshot_id: null,
-                expected_revision: 1,
-                request_id: `seed-${hashString(meta.display_id)}`,
-              },
-            ]
-          : [];
       return {
         display_id: meta.display_id,
         domain: p.domain,
@@ -199,7 +176,7 @@ export function buildRequirements(file: SuccessorProposalFile, signals: Signal[]
         revisions: [revision],
         proposal: p,
         assessments: [],
-        decisions,
+        decisions: [],
         finding_ids: meta.finding_ids,
         benchmark_topic: meta.benchmark_topic,
         market_context,

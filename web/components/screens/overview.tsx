@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import { BalanceBar, ConfidenceBadge, DecisionBadge, MarketTag, PriorityBadge, ScoreValue } from "@/components/app/badges";
-import { BenchmarkMatrix } from "@/components/app/benchmark-matrix";
 import { DataTable, type Column } from "@/components/app/data-table";
 import { Metric, MetricStrip, PageHeader, Section } from "@/components/app/layout-parts";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,8 +30,8 @@ export function OverviewScreen() {
   const p1 = active.filter((r) => r.priority === "P1");
   const openDecisions = rows.filter((r) => r.status === "under_review" || r.status === "challenged" || r.status === "draft");
   const nonDuplicate = dataset.evidence.filter((e) => !e.duplicate_of);
-  const externalGroups = new Set(nonDuplicate.filter((e) => e.kind === "external_claim").map((e) => e.independence_group));
-  const feedbackRecords = nonDuplicate.filter((e) => e.kind === "customer_feedback").length;
+  const externalGroups = new Set(nonDuplicate.filter((e) => e.provenance === "pipeline").map((e) => e.independence_group));
+  const feedbackRecords = new Set(nonDuplicate.filter((e) => e.kind === "customer_feedback").map((e) => e.independence_group)).size;
 
   const top = useMemo(
     () =>
@@ -48,7 +47,7 @@ export function OverviewScreen() {
       if (r.status === "challenged") {
         items.push({ key: `${r.id}-c`, label: `${r.id} is challenged`, detail: "Resolve the challenge or record that no change is warranted.", href: `/requirements/${r.id}` });
       } else if (r.priority === "P1" && r.status === "under_review") {
-        items.push({ key: `${r.id}-r`, label: `${r.id} awaits a decision`, detail: `P1 in ${MARKET_LABEL[market]}; ${r.balance.contradicting} contradicting records to weigh.`, href: `/requirements/${r.id}` });
+        items.push({ key: `${r.id}-r`, label: `${r.id} needs a PM assessment`, detail: `Illustrative P1 in ${MARKET_LABEL[market]}; review source spans and preservation evidence.`, href: `/requirements/${r.id}` });
       } else if (r.in_scope && r.priority === "Watch" && r.status !== "rejected") {
         items.push({ key: `${r.id}-w`, label: `${r.id} cannot be ranked yet`, detail: "Uncertainty is rated 4/4 — resolve the open question before ranking.", href: `/requirements/${r.id}` });
       }
@@ -62,14 +61,8 @@ export function OverviewScreen() {
         href: "/prioritization",
       });
     }
-    for (const f of findingRows) {
-      const decisive = f.balance.supporting + f.balance.contradicting;
-      if (decisive > 0 && f.balance.contradicting / decisive >= 0.35) {
-        items.push({ key: f.id, label: `${f.id} is contested`, detail: `${f.balance.supporting} supporting vs ${f.balance.contradicting} contradicting.`, href: `/findings?id=${f.id}` });
-      }
-    }
     return items.slice(0, 7);
-  }, [rows, findingRows, market]);
+  }, [rows, market]);
 
   const chartData = useMemo(() => {
     const map = new Map<string, { Supporting: number; Contradicting: number; Neutral: number }>();
@@ -111,9 +104,9 @@ export function OverviewScreen() {
       key: "evidence",
       header: "Evidence",
       cell: (r) => (
-        <Tooltip content={`${r.balance.supporting} supporting, ${r.balance.contradicting} contradicting, ${r.balance.independent_sources} independent sources linked through findings.`}>
+        <Tooltip content={`${r.balance.supporting} extracted concerns, ${r.balance.neutral} praise or other records, ${r.balance.independent_sources} distinct feedback IDs linked through themes. Semantic relevance is unreviewed.`}>
           <span tabIndex={0} className="whitespace-nowrap text-xs tabular-nums text-zinc-700">
-            {r.balance.independent_sources} sources
+            {r.balance.independent_sources} IDs
           </span>
         </Tooltip>
       ),
@@ -133,7 +126,7 @@ export function OverviewScreen() {
     { key: "topic", header: "Topic", cell: (f) => <span className="text-xs text-slate-600">{TOPIC_LABEL[f.finding.topic]}</span>, className: "w-24" },
     { key: "signal", header: "Signal", cell: (f) => <BalanceBar balance={f.balance} />, className: "w-40" },
     { key: "confidence", header: "Confidence", cell: (f) => <ConfidenceBadge confidence={f.confidence} />, className: "w-24" },
-    { key: "sources", header: "Sources", cell: (f) => <span className="text-xs tabular-nums">{f.balance.independent_sources}</span>, align: "right", className: "w-16" },
+    { key: "sources", header: "Feedback IDs", cell: (f) => <span className="text-xs tabular-nums">{f.balance.independent_sources}</span>, align: "right", className: "w-20" },
   ];
 
   return (
@@ -169,11 +162,17 @@ export function OverviewScreen() {
         </div>
       )}
 
+      {dataset.requirements.length === 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          Customer evidence is unavailable or the proposal anchors did not resolve. Configure the private evidence database and reload. No draft requirement is shown without its source records.
+        </div>
+      )}
+
       <MetricStrip className="grid-cols-3 md:grid-cols-6">
         <Metric label="Active requirements" value={active.length} detail={`${rows.length - active.length} rejected`} href="/requirements" />
-        <Metric label="P1 requirements" value={p1.length} detail={MARKET_LABEL[market]} href="/prioritization" hint="P1: CRPS ≥70 under the current weights, with uncertainty below 4." />
+        <Metric label="Illustrative P1" value={p1.length} detail={MARKET_LABEL[market]} href="/prioritization" hint="Unapproved seed ratings: CRPS ≥70 under the current weights, with uncertainty below 4." />
         <Metric label="Findings" value={dataset.findings.length} href="/findings" />
-        <Metric label="Independent sources" value={externalGroups.size} detail={`+${feedbackRecords} feedback IDs`} href="/sources" hint="Distinct external independence groups; reposts of one origin count once." />
+        <Metric label="Captured external sources" value={externalGroups.size} detail={`+${feedbackRecords} linked feedback IDs`} href="/sources" hint="Captured pipeline source groups only; curated discovery notes are excluded." />
         <Metric label="Evidence records" value={dataset.evidence.length} detail={`${dataset.evidence.filter((e) => e.provenance === "pipeline").length} from pipeline`} href="/evidence" />
         <Metric label="Open PM decisions" value={openDecisions.length} detail={challenges.length > 0 ? `${challenges.length} challenge${challenges.length > 1 ? "s" : ""}` : undefined} href="/decisions" />
       </MetricStrip>
@@ -218,8 +217,8 @@ export function OverviewScreen() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <Section
-          title="Major customer findings"
-          description="Support / contradict / neutral counts are shown together."
+          title="Customer feedback themes"
+          description="Counts come from distinct feedback IDs with validated extracted spans. Theme relevance has not been reviewed."
           actions={
             <Link href="/findings" className="text-xs text-slate-600 hover:text-zinc-900">
               All findings
@@ -228,39 +227,33 @@ export function OverviewScreen() {
         >
           <DataTable
             caption="Major customer findings"
-            rows={[...findingRows].sort((a, b) => b.strength - a.strength).slice(0, 6)}
+            rows={[...findingRows].sort((a, b) => b.balance.independent_sources - a.balance.independent_sources).slice(0, 6)}
             columns={findingColumns}
             getRowId={(f) => f.id}
             onRowClick={(f) => router.push(`/findings?id=${f.id}`)}
           />
         </Section>
         <Section
-          title="Evidence balance by topic"
-          description="Where is the evidence one-sided, and where is it contested? Feedback has no observation dates, so no time trend is shown."
+          title="Extracted signals by topic"
+          description="Concern and other extracted records by topic. These are not votes for a solution or a representative sample."
         >
           <div className="rounded-md border border-slate-200/60 bg-white p-3">
             <EvidenceBalanceChart data={chartData} />
             <div className="mt-1 flex gap-4 text-2xs text-slate-500">
               <span className="inline-flex items-center gap-1">
-                <span aria-hidden className="size-2 rounded-sm bg-zinc-800" /> Supporting
+                <span aria-hidden className="size-2 rounded-sm bg-zinc-800" /> Concern or aspiration
               </span>
               <span className="inline-flex items-center gap-1">
-                <span aria-hidden className="size-2 rounded-sm bg-amber-500" /> Contradicting
+                <span aria-hidden className="size-2 rounded-sm bg-amber-500" /> Opposing
               </span>
               <span className="inline-flex items-center gap-1">
-                <span aria-hidden className="size-2 rounded-sm bg-slate-300" /> Neutral
+                <span aria-hidden className="size-2 rounded-sm bg-slate-300" /> Praise or other
               </span>
             </div>
           </div>
         </Section>
       </div>
 
-      <Section
-        title="Competitive position"
-        description="BMW i5 against the premium BEV cohort. A dash is an evidence gap, not parity — collect matched evidence before rating the competitive criterion."
-      >
-        <BenchmarkMatrix rows={dataset.benchmark} />
-      </Section>
     </div>
   );
 }
