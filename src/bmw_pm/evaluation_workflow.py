@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -49,6 +50,7 @@ class HumanSignal(_Strict):
 
 class ResolvedLabel(_Strict):
     reviewer_id: str = Field(min_length=1)
+    reviewed_at: datetime | None = None
     reason: str = Field(min_length=1)
     signals: list[HumanSignal]
     abstention_reason: str | None = None
@@ -57,6 +59,7 @@ class ResolvedLabel(_Strict):
 class HumanLabel(_Strict):
     record_id: str
     reviewer_id: str | None
+    reviewed_at: datetime | None = None
     review_status: Literal["unlabelled", "labelled"]
     signals: list[HumanSignal]
     abstention_reason: str | None
@@ -99,7 +102,7 @@ def load_frozen(root: Path) -> tuple[EvaluationManifest, dict[str, FrozenPacket]
 
 def _validate_review(label: HumanLabel, packet: FrozenPacket) -> None:
     if label.review_status == "unlabelled":
-        if label.reviewer_id or label.signals or label.abstention_reason or label.adjudication:
+        if label.reviewer_id or label.reviewed_at or label.signals or label.abstention_reason or label.adjudication:
             raise ValueError("unlabelled row contains review content")
         return
     if not label.reviewer_id or not label.reviewer_id.strip():

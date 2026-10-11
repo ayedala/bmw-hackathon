@@ -87,7 +87,7 @@ export async function advisorResponse(request: Request, operation: Operation): P
         if (outputBytes > 16000000) { send({type: "error", message: "The result exceeded the response limit."}); abort(); return; }
         try {
           const event = JSON.parse(line) as {type?: string};
-          if (!event.type || !["progress", "error", "result", "catalog", "sync", "scenarios", "memory"].includes(event.type)) throw new Error();
+          if (!event.type || !["progress", "error", "result", "catalog", "sync", "scenarios", "memory", "evaluation"].includes(event.type)) throw new Error();
           if (event.type !== "progress") terminal = true;
           send(event);
         } catch { send({type: "error", message: "The advisor returned an invalid response."}); abort(); }

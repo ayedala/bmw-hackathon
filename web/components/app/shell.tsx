@@ -95,7 +95,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 
 function AppSidebar() {
   const pathname = usePathname();
-  const liveStudio = pathname === "/" || pathname === "/video-memory";
+  const liveStudio = pathname === "/" || pathname === "/video-memory" || pathname === "/evaluation";
   const { dataset, requirements } = useStore();
   const openDecisions = requirements.filter((r) => {
     const s = decisionStatus(latestRevision(r), r.decisions);
@@ -103,7 +103,7 @@ function AppSidebar() {
   }).length;
 
   const groups: { label?: string; items: NavItem[] }[] = [
-    { items: [{ href: "/", label: "Decision Studio" }, { href: "/video-memory", label: "Video memory" }] },
+    { items: [{ href: "/", label: "Decision Studio" }, { href: "/video-memory", label: "Video memory" }, { href: "/evaluation", label: "Evaluation" }] },
     {label: "Planning workbench", items: [{href: "/overview", label: "Overview"}]},
     {
       label: "Intelligence",
@@ -175,6 +175,7 @@ function CompactNav() {
   const items = [
     ["/", "Decision Studio"],
     ["/video-memory", "Video memory"],
+    ["/evaluation", "Evaluation"],
     ["/overview", "Overview"],
     ["/findings", "Findings"],
     ["/evidence", "Evidence"],
@@ -480,7 +481,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />
           <main id="main" className="mx-auto max-w-[1680px] px-4 py-5 lg:px-6">
-            {pathname !== "/" && pathname !== "/video-memory" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Planning workbench includes labelled synthetic examples and browser-local review actions. <Link href="/" className="font-medium text-brand">Open Decision Studio</Link> for live research using the evidence database.</div>}
+            {pathname !== "/" && pathname !== "/video-memory" && pathname !== "/evaluation" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Planning workbench includes labelled synthetic examples and browser-local review actions. <Link href="/" className="font-medium text-brand">Open Decision Studio</Link> for live research using the evidence database.</div>}
             {children}
           </main>
         </div>

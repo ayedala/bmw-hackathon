@@ -36,6 +36,20 @@ export interface SourceCatalog {
   youtube_findings: number; youtube_videos: number; saved_youtube_runs: number; video_memories: number;
 }
 export interface SyncResult {runs: number; inserted: number; accepted: number; rejected: number; failed_runs: number; memories_inserted: number}
+export interface EvaluationSignal {need_domain: string; atomic_claim: string; customer_outcome: string; polarity: "complaint" | "praise" | "aspiration" | "observation" | "mixed"; evidence_text: string; use_context?: string | null; uncertainties?: string[]}
+export interface EvaluationLabel {reviewer_id: string | null; reviewed_at?: string | null; review_status: "unlabelled" | "labelled"; signals: EvaluationSignal[]; abstention_reason: string | null; difficulty: string | null; adjudication?: {reviewer_id: string; reviewed_at?: string | null; reason: string; signals: EvaluationSignal[]; abstention_reason: string | null} | null}
+export interface EvaluationSnapshot {
+  available: boolean; message?: string; evaluation_id?: string; corpus_hash?: string; total?: number;
+  counts?: {total: number; unlabelled: number; provisional: number; gold_ready: number; second_reviewed: number};
+  items?: {record_id: string; split: string; model: string; double_label: boolean; status: string}[];
+  case?: {record_id: string; text: string; model: string; country: string | null; powertrain: string | null;
+    source_label: string | null; split: string; double_label: boolean; content_hash: string;
+    review?: EvaluationLabel | null; primary?: EvaluationLabel; secondary?: EvaluationLabel | null};
+  role?: "primary" | "secondary" | "adjudicator"; file_version?: string;
+  baseline?: Record<string, {records: number; statuses: Record<string, number>; gold_ready: number; scored_records: number;
+    metrics: {records: number; precision: number | null; recall: number | null; f1: number | null; definition: string} | null}>;
+  limitations?: string[];
+}
 export type StudioEvent =
   | {type: "progress"; message: string}
   | {type: "error"; message: string}
@@ -43,7 +57,8 @@ export type StudioEvent =
   | {type: "catalog"; catalog: SourceCatalog}
   | {type: "sync"; sync: SyncResult; catalog: SourceCatalog}
   | {type: "scenarios"; rows: Record<string, string | number>[]}
-  | {type: "memory"; memory: {memory_id: string; inserted: boolean; video_id: string; characters: number; transcript_sha256: string}; catalog: SourceCatalog};
-export type Operation = "catalog" | "analyze" | "sync" | "scenarios" | "memory";
+  | {type: "memory"; memory: {memory_id: string; inserted: boolean; video_id: string; characters: number; transcript_sha256: string}; catalog: SourceCatalog}
+  | {type: "evaluation"; evaluation: EvaluationSnapshot};
+export type Operation = "catalog" | "analyze" | "sync" | "scenarios" | "memory" | "evaluation";
 export const VEHICLES = {F70: "BMW 1 Series", G60: "BMW 5 Series", G70: "BMW 7 Series"} as const;
 export const MARKETS = {US: "United States", GB: "United Kingdom", DE: "Germany", CN: "China", JP: "Japan", KR: "South Korea"} as const;
