@@ -14,7 +14,7 @@ const splitLabels: Record<string, string> = {development: "5 Series · developme
   transfer_f70: "1 Series · transfer", transfer_g70: "7 Series · transfer"};
 const domains = ["controls_usability", "software_reliability", "charging_and_range", "ride_and_comfort",
   "noise_and_refinement", "storage_and_practicality", "driver_assistance", "other"];
-const emptySignal = (): Draft => ({need_domain: "controls_usability", atomic_claim: "", customer_outcome: "",
+const emptySignal = (): Draft => ({need_domain: "", atomic_claim: "", customer_outcome: "",
   polarity: "complaint", evidence_text: "", use_context: "", uncertainties: []});
 
 export function EvaluationScreen() {
@@ -76,14 +76,15 @@ export function EvaluationScreen() {
       {error ? <p role="alert" className="text-red-700">{error}</p> : <p>{snapshot?.message || "Checking the frozen evaluation set…"}</p>}
       <p className="mt-3">From the repository root, run <code className="rounded bg-slate-100 px-1">uv run bmw-pm freeze-evaluation</code> to create the private 120-record set.</p>
     </section> : <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[["Frozen cases", snapshot.total], ["Gold ready", snapshot.counts?.gold_ready],
-          ["Needs review", snapshot.counts?.unlabelled], ["Awaiting second review or resolution", snapshot.counts?.provisional]].map(([title, value]) =>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {[["Frozen cases", snapshot.total], ["Scoring ready", snapshot.counts?.gold_ready],
+          ["Needs review", snapshot.counts?.unlabelled], ["Awaiting second review or resolution", snapshot.counts?.provisional],
+          ["AI-assisted first reviews", snapshot.counts?.ai_assisted_first_reviews]].map(([title, value]) =>
           <div key={String(title)} className="rounded-md border border-slate-200 bg-white p-3"><p className="text-xs text-slate-500">{title}</p><p className="mt-1 text-xl font-semibold tabular-nums">{value}</p></div>)}
       </div>
       <section className="mt-4 rounded-md border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-semibold">Baseline extraction</h2>
-        <p className="mt-1 text-xs text-slate-500">Results are scored only against completed human labels. Topic, polarity and quote overlap are a proxy; citation entailment and decision quality still need separate review.</p>
+        <p className="mt-1 text-xs text-slate-500">Results are scored only against completed human labels. AI-assisted first reviews are counted separately. Exact topic, polarity and quote overlap are a proxy; detailed topics may differ from the baseline taxonomy. Citation entailment and decision quality still need separate review.</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">{splits.map(split => {
           const row = snapshot.baseline?.[split];
           return <div key={split} className="rounded border border-slate-100 bg-slate-50 p-3 text-xs">
@@ -112,6 +113,7 @@ export function EvaluationScreen() {
         {active && <section className="rounded-md border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">{active.record_id}</h2><span className="text-xs text-slate-500">{splitLabels[active.split]} · {active.country || "market unknown"} · {active.powertrain || "powertrain unknown"}</span></div>
           <p className="mt-2 text-xs text-slate-500">Private redacted feedback. Source label {active.source_label || "unknown"}; hash {active.content_hash.slice(0, 12)}. Do not infer buyer status or severity from this text.</p>
+          {role === "primary" && active.review?.review_method === "ai_assisted_verified" && <p className="mt-2 rounded bg-amber-50 p-2 text-xs text-amber-900">This first review was verified from an AI draft. Its draft hash is retained; any edits remain marked AI-assisted.</p>}
           <div className="mt-3 whitespace-pre-wrap rounded border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed" data-testid="frozen-text">{active.text}</div>
           {role === "adjudicator" && <div className="mt-4 grid gap-3 md:grid-cols-2">{[["First review", active.primary], ["Second review", active.secondary]].map(([title, label]) =>
             <div key={String(title)} className="rounded border border-slate-200 p-3 text-xs"><p className="font-semibold">{String(title)}</p><pre className="mt-2 whitespace-pre-wrap break-words font-sans text-slate-600">{label ? JSON.stringify(label, null, 2) : "No completed review"}</pre></div>)}</div>}
@@ -121,13 +123,14 @@ export function EvaluationScreen() {
             {signals.map((signal, index) => <div key={index} className="mt-3 rounded border border-slate-200 p-3">
               <div className="flex items-center justify-between"><p className="text-xs font-semibold">Signal {index + 1}</p>{signals.length > 1 && <button type="button" className="text-xs text-red-700" onClick={() => setSignals(rows => rows.filter((_, i) => i !== index))}>Remove</button>}</div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label><span className={labelClass}>Topic</span><select className={fieldClass} value={signal.need_domain} onChange={event => changeSignal(index, {need_domain: event.target.value})}>{domains.map(domain => <option key={domain} value={domain}>{domain.replaceAll("_", " ")}</option>)}</select></label>
+                <label><span className={labelClass}>Topic</span><input className={fieldClass} list="evaluation-domains" value={signal.need_domain} onChange={event => changeSignal(index, {need_domain: event.target.value})} placeholder="Choose or enter a topic" /></label>
                 <label><span className={labelClass}>Polarity</span><select className={fieldClass} value={signal.polarity} onChange={event => changeSignal(index, {polarity: event.target.value as Draft["polarity"]})}>{["complaint", "praise", "aspiration", "observation", "mixed"].map(value => <option key={value}>{value}</option>)}</select></label>
                 <label className="sm:col-span-2"><span className={labelClass}>Atomic claim</span><input className={fieldClass} value={signal.atomic_claim} onChange={event => changeSignal(index, {atomic_claim: event.target.value})} placeholder="What this person actually establishes" /></label>
                 <label className="sm:col-span-2"><span className={labelClass}>Customer outcome</span><input className={fieldClass} value={signal.customer_outcome} onChange={event => changeSignal(index, {customer_outcome: event.target.value})} placeholder="What should become easier or better" /></label>
                 <label className="sm:col-span-2"><span className={labelClass}>Exact evidence quote</span><textarea className={fieldClass} rows={2} value={signal.evidence_text} onChange={event => changeSignal(index, {evidence_text: event.target.value})} /></label>
               </div>
             </div>)}
+            <datalist id="evaluation-domains">{domains.map(domain => <option key={domain} value={domain} />)}</datalist>
             <Button type="button" className="mt-3" onClick={() => {setAbstention(""); setSignals(rows => [...rows, emptySignal()]);}}>Add another signal</Button>
             <label className={`${labelClass} mt-4`}>Abstention reason · leave signals empty when used</label><textarea className={fieldClass} rows={2} value={abstention} onChange={event => setAbstention(event.target.value)} placeholder="Why no atomic claim can be supported" />
             {role === "adjudicator" ? <><label className={`${labelClass} mt-3`}>Resolution reason</label><textarea className={fieldClass} rows={2} value={reason} onChange={event => setReason(event.target.value)} placeholder="How both reviews were reconciled" /></>

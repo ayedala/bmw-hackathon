@@ -37,10 +37,10 @@ export interface SourceCatalog {
 }
 export interface SyncResult {runs: number; inserted: number; accepted: number; rejected: number; failed_runs: number; memories_inserted: number}
 export interface EvaluationSignal {need_domain: string; atomic_claim: string; customer_outcome: string; polarity: "complaint" | "praise" | "aspiration" | "observation" | "mixed"; evidence_text: string; use_context?: string | null; uncertainties?: string[]}
-export interface EvaluationLabel {reviewer_id: string | null; reviewed_at?: string | null; review_status: "unlabelled" | "labelled"; signals: EvaluationSignal[]; abstention_reason: string | null; difficulty: string | null; adjudication?: {reviewer_id: string; reviewed_at?: string | null; reason: string; signals: EvaluationSignal[]; abstention_reason: string | null} | null}
+export interface EvaluationLabel {reviewer_id: string | null; reviewed_at?: string | null; review_method?: "independent" | "ai_assisted_verified"; source_draft_hash?: string | null; review_status: "unlabelled" | "labelled"; signals: EvaluationSignal[]; abstention_reason: string | null; difficulty: string | null; adjudication?: {reviewer_id: string; reviewed_at?: string | null; reason: string; signals: EvaluationSignal[]; abstention_reason: string | null} | null}
 export interface EvaluationSnapshot {
   available: boolean; message?: string; evaluation_id?: string; corpus_hash?: string; total?: number;
-  counts?: {total: number; unlabelled: number; provisional: number; gold_ready: number; second_reviewed: number};
+  counts?: {total: number; unlabelled: number; provisional: number; gold_ready: number; second_reviewed: number; ai_assisted_first_reviews: number};
   items?: {record_id: string; split: string; model: string; double_label: boolean; status: string}[];
   case?: {record_id: string; text: string; model: string; country: string | null; powertrain: string | null;
     source_label: string | null; split: string; double_label: boolean; content_hash: string;

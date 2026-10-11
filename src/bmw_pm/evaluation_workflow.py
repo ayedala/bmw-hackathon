@@ -60,6 +60,8 @@ class HumanLabel(_Strict):
     record_id: str
     reviewer_id: str | None
     reviewed_at: datetime | None = None
+    review_method: Literal["independent", "ai_assisted_verified"] = "independent"
+    source_draft_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     review_status: Literal["unlabelled", "labelled"]
     signals: list[HumanSignal]
     abstention_reason: str | None
@@ -102,11 +104,14 @@ def load_frozen(root: Path) -> tuple[EvaluationManifest, dict[str, FrozenPacket]
 
 def _validate_review(label: HumanLabel, packet: FrozenPacket) -> None:
     if label.review_status == "unlabelled":
-        if label.reviewer_id or label.reviewed_at or label.signals or label.abstention_reason or label.adjudication:
+        if (label.reviewer_id or label.reviewed_at or label.review_method != "independent"
+                or label.source_draft_hash or label.signals or label.abstention_reason or label.adjudication):
             raise ValueError("unlabelled row contains review content")
         return
     if not label.reviewer_id or not label.reviewer_id.strip():
         raise ValueError("labelled row needs reviewer_id")
+    if (label.review_method == "ai_assisted_verified") != bool(label.source_draft_hash):
+        raise ValueError("AI-assisted review must retain its draft hash; independent review must not cite one")
     _validate_signals(label.signals, label.abstention_reason, packet)
     if label.adjudication:
         _validate_signals(label.adjudication.signals, label.adjudication.abstention_reason, packet)
@@ -134,7 +139,7 @@ def load_labels(root: Path, manifest: EvaluationManifest, packets: dict[str, Fro
             item = entries.get(row.record_id)
             if item is None or row.record_id in result or row.double_label != item.double_label:
                 raise ValueError(f"unknown, duplicate, or inconsistent label: {row.record_id}")
-            if secondary and (not item.double_label or row.adjudication):
+            if secondary and (not item.double_label or row.adjudication or row.review_method != "independent"):
                 raise ValueError(f"invalid second review: {row.record_id}")
             _validate_review(row, packets[row.record_id])
             result[row.record_id] = row
