@@ -15,6 +15,15 @@ npm ci --ignore-scripts
 npm run dev
 ```
 
+For a faster demo, build once and start the standalone production server:
+
+```powershell
+npm run build
+npm run start
+```
+
+`npm run start` prepares static assets, binds to `127.0.0.1:3000`, and resolves the Python project from the repository root. Rebuild after source changes.
+
 Open `http://127.0.0.1:3000`. The single Next.js server launches a bounded Python worker for each request; no separate API server is required. `BMW_REPO_ROOT` overrides the repository location and `BMW_PYTHON` can select another Python executable. API credentials and model selection remain server-side. The server binds to loopback; the advisor route rejects non-local hosts and cross-origin requests. This adapter is for the local app, not an authenticated hosted deployment.
 
 The three input paths call the same `run_advisor` used by `ui/agent.py`: assess an idea, recommend an improvement, or compare 2–5 ideas. They retain existing scope filters, public web research, citation validation, unknown costs and deterministic scenario arithmetic. Progress streams while research runs, and errors never substitute demo recommendations. Requests/results stay in browser memory across navigation; download a completed brief to retain it across a reload. Model identity remains in its JSON provenance, not in the normal interface. Planning drafts are never passed to the live advisor as evidence.

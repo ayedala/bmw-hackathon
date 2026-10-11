@@ -1,6 +1,6 @@
 import "server-only";
 
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { SUBTOPIC_ALIASES } from "@/lib/domain/contracts";
@@ -40,7 +40,12 @@ const PIPELINE_DIRS = ["src/bmw_pm/data_pipeline/web_research/data", "external_r
 async function firstExisting(relativeFile: string): Promise<string> {
   for (const dir of PIPELINE_DIRS) {
     const candidate = `${dir}/${relativeFile}`;
-    if ((await readText(candidate)) !== null) return candidate;
+    try {
+      await access(path.join(repoRoot(), candidate));
+      return candidate;
+    } catch {
+      // Continue to the legacy data location.
+    }
   }
   return `${PIPELINE_DIRS[0]}/${relativeFile}`;
 }

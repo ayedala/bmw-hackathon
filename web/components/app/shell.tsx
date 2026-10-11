@@ -54,7 +54,7 @@ function EvidencePanelHost({ children }: { children: ReactNode }) {
         }
       >
         {evidence ? (
-          <EvidenceDetail evidence={evidence} />
+          <EvidenceDetail key={evidence.id} evidence={evidence} />
         ) : (
           <p className="text-xs text-slate-500">
             Record <span className="font-mono">{id}</span> is referenced but its source file is not loaded. Check Settings → Data sources.
@@ -93,7 +93,14 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-function AppSidebar() {
+interface SidebarSummary {
+  findings: number;
+  evidence: number;
+  requirements: number;
+  openDecisions: number;
+}
+
+function AppSidebar({ summary }: { summary?: SidebarSummary }) {
   const pathname = usePathname();
   const { dataset, requirements } = useStore();
   const openDecisions = requirements.filter((r) => {
@@ -107,14 +114,14 @@ function AppSidebar() {
     {
       label: "Intelligence",
       items: [
-        { href: "/findings", label: "Findings", count: dataset.findings.length },
-        { href: "/evidence", label: "Evidence", count: dataset.evidence.length },
+        { href: "/findings", label: "Findings", count: summary?.findings ?? dataset.findings.length },
+        { href: "/evidence", label: "Evidence", count: summary?.evidence ?? dataset.evidence.length },
       ],
     },
     {
       label: "Requirements",
       items: [
-        { href: "/requirements", label: "Requirements", count: requirements.length },
+        { href: "/requirements", label: "Requirements", count: summary?.requirements ?? requirements.length },
         { href: "/prioritization", label: "Prioritization" },
       ],
     },
@@ -128,7 +135,7 @@ function AppSidebar() {
     {
       label: "Governance",
       items: [
-        { href: "/decisions", label: "Decisions", count: openDecisions },
+        { href: "/decisions", label: "Decisions", count: summary?.openDecisions ?? openDecisions },
         { href: "/audit", label: "Audit trail" },
       ],
     },
@@ -330,11 +337,33 @@ function ContextBar({ onSearch }: { onSearch: () => void }) {
 /* Command menu (Cmd/Ctrl + K)                                         */
 /* ------------------------------------------------------------------ */
 
+interface SearchIndex {
+  requirements: { id: string; title: string; topic: string }[];
+  findings: { id: string; title: string; market: MarketCode; topic: string }[];
+  hypotheses: { id: string; statement: string }[];
+  evidence: { id: string; claim: string; vehicle: string; market: MarketCode; source_name: string }[];
+  benchmark: { vehicle: string }[];
+}
+
 function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
   const { dataset, requirements, setMarket } = useStore();
   const evidencePanel = useEvidencePanel();
   const [query, setQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState<SearchIndex | null>(null);
+
+  useEffect(() => {
+    if (!open || dataset.evidence.length > 0 || searchIndex) return;
+    const controller = new AbortController();
+    fetch("/api/search-index", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Search index unavailable");
+        return response.json() as Promise<SearchIndex>;
+      })
+      .then(setSearchIndex)
+      .catch(() => { /* Keep navigation links available if search cannot load. */ });
+    return () => controller.abort();
+  }, [open, dataset.evidence.length, searchIndex]);
 
   const run = (fn: () => void) => {
     onOpenChange(false);
@@ -420,6 +449,58 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
                   ))}
                 </Command.Group>
               )}
+              {searchIndex && (
+                <>
+                  <Command.Group heading="Requirements">
+                    {searchIndex.requirements.map((r) => (
+                      <Command.Item key={r.id} value={`${r.id} ${r.title} ${r.topic}`} className={item} onSelect={() => run(() => router.push(`/requirements/${r.id}`))}>
+                        <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{r.id}</span>
+                        <span className="min-w-0 truncate text-zinc-900">{r.title}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                  <Command.Group heading="Findings">
+                    {searchIndex.findings.map((f) => (
+                      <Command.Item key={f.id} value={`${f.id} ${f.title}`} className={item} onSelect={() => run(() => router.push(`/findings?id=${f.id}`))}>
+                        <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{f.id}</span>
+                        <span className="min-w-0 truncate text-zinc-900">{f.title}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                  <Command.Group heading="Hypotheses">
+                    {searchIndex.hypotheses.map((h) => (
+                      <Command.Item key={h.id} value={`${h.id} ${h.statement}`} className={item} onSelect={() => run(() => router.push(`/hypotheses?id=${h.id}`))}>
+                        <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{h.id}</span>
+                        <span className="min-w-0 truncate text-zinc-900">{h.statement}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                  {query.length >= 2 && (
+                    <Command.Group heading="Evidence">
+                      {searchIndex.evidence.map((e) => (
+                        <Command.Item key={e.id} value={`${e.id} ${e.claim} ${e.vehicle} ${e.source_name}`} className={item} onSelect={() => run(() => router.push(`/evidence?id=${e.id}`))}>
+                          <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{e.id}</span>
+                          <span className="min-w-0 truncate text-zinc-900">{e.claim}</span>
+                        </Command.Item>
+                      ))}
+                    </Command.Group>
+                  )}
+                </>
+              )}
+              {query.length >= 2 && dataset.evidence.length === 0 && !searchIndex && (
+                <Command.Group heading="Evidence">
+                  <Command.Item value={`Search evidence ${query}`} className={item} onSelect={() => run(() => router.push(`/evidence?q=${encodeURIComponent(query)}`))}>
+                    Search evidence for “{query}”
+                  </Command.Item>
+                </Command.Group>
+              )}
+              {query.length >= 2 && dataset.requirements.length === 0 && !searchIndex && (
+                <Command.Group heading="Review pages">
+                  <Command.Item value={`Search requirements ${query}`} className={item} onSelect={() => run(() => router.push("/requirements"))}>Open requirements</Command.Item>
+                  <Command.Item value={`Search findings ${query}`} className={item} onSelect={() => run(() => router.push("/findings"))}>Open findings</Command.Item>
+                  <Command.Item value={`Search hypotheses ${query}`} className={item} onSelect={() => run(() => router.push("/hypotheses"))}>Open hypotheses</Command.Item>
+                </Command.Group>
+              )}
               <Command.Group heading="Markets">
                 {MARKETS.map((m) => (
                   <Command.Item key={m} value={`market ${m} ${MARKET_LABEL[m]}`} className={item} onSelect={() => run(() => setMarket(m))}>
@@ -454,7 +535,7 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
 /* Shell                                                                */
 /* ------------------------------------------------------------------ */
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, summary }: { children: ReactNode; summary?: SidebarSummary }) {
   const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const toggle = useCallback(() => setSearchOpen((o) => !o), []);
@@ -476,7 +557,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-2 focus:py-1 focus:text-xs">
           Skip to content
         </a>
-        <AppSidebar />
+        <AppSidebar summary={summary} />
         <div className="lg:pl-60">
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />

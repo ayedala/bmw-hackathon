@@ -68,8 +68,8 @@ export interface EvidenceItem {
   numeric_value: number | null;
   numeric_unit: string | null;
   limitation: string | null;
-  /** The original record exactly as stored, for the raw view. */
-  raw: ProcessedEvidence | Signal | WebResearchSeedRecord | Record<string, unknown>;
+  /** The original record exactly as stored; fetched on demand in the browser. */
+  raw?: ProcessedEvidence | Signal | WebResearchSeedRecord | Record<string, unknown>;
 }
 
 export interface HypothesisLink {

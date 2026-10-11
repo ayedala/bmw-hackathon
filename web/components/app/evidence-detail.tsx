@@ -15,6 +15,25 @@ import { useStore } from "@/lib/store";
 export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
   const { dataset, evidenceById, requirements } = useStore();
   const [showRaw, setShowRaw] = useState(false);
+  const [raw, setRaw] = useState<unknown>(evidence.raw);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawError, setRawError] = useState("");
+  async function toggleRaw() {
+    setShowRaw((value) => !value);
+    if (showRaw || raw !== undefined || rawLoading) return;
+    setRawLoading(true);
+    setRawError("");
+    try {
+      const response = await fetch(`/api/evidence/${encodeURIComponent(evidence.id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Stored record could not be loaded.");
+      const payload = await response.json() as { raw: unknown };
+      setRaw(payload.raw);
+    } catch {
+      setRawError("Stored record could not be loaded. Try again.");
+    } finally {
+      setRawLoading(false);
+    }
+  }
   const usedBy = dataset.hypotheses.filter((h) => h.links.some((l) => l.evidence_id === evidence.id));
   const findings = dataset.findings.filter((f) => f.hypothesis_ids.some((id) => usedBy.some((h) => h.id === id)));
   const reqs = requirements.filter(
@@ -171,13 +190,15 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
       )}
 
       <div>
-        <Button size="sm" variant="ghost" onClick={() => setShowRaw((v) => !v)} aria-expanded={showRaw}>
+        <Button size="sm" variant="ghost" onClick={() => void toggleRaw()} aria-expanded={showRaw}>
           {showRaw ? "Hide stored record" : "Show stored record"}
         </Button>
         {showRaw && (
-          <pre className="mt-2 max-h-72 overflow-auto rounded-sm bg-slate-50 p-2 font-mono text-2xs leading-relaxed text-slate-700">
-            {JSON.stringify(evidence.raw, null, 2)}
-          </pre>
+          rawLoading ? <p className="mt-2 text-xs text-slate-500">Loading stored record…</p>
+            : rawError ? <p role="alert" className="mt-2 text-xs text-red-700">{rawError}</p>
+              : <pre className="mt-2 max-h-72 overflow-auto rounded-sm bg-slate-50 p-2 font-mono text-2xs leading-relaxed text-slate-700">
+                {JSON.stringify(raw, null, 2)}
+              </pre>
         )}
       </div>
     </div>

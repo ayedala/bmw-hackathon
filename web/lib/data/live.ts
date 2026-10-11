@@ -29,25 +29,37 @@ export interface LiveSnapshot {
 }
 
 let cached: { root: string; expires: number; value: LiveSnapshot } | null = null;
+let loading: { root: string; promise: Promise<LiveSnapshot> } | null = null;
 
-export async function loadLiveSnapshot(root: string): Promise<LiveSnapshot> {
-  if (cached && cached.root === root && cached.expires > Date.now()) return cached.value;
+async function fetchLiveSnapshot(root: string): Promise<LiveSnapshot> {
   const localPython = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
   const python = process.env.BMW_PYTHON || (existsSync(localPython) ? localPython : "python");
   try {
     const { stdout } = await execFileAsync(python, [path.join(root, "scripts", "export_planning_snapshot.py")], {
       cwd: root,
       windowsHide: true,
-      timeout: 30000,
+      timeout: 12000,
       maxBuffer: 16 * 1024 * 1024,
     });
     const result = JSON.parse(stdout) as LiveSnapshot;
     const value = result.available && Array.isArray(result.feedback) && Array.isArray(result.signals)
       ? result
       : { available: false, reason: result.reason || "The evidence database is unavailable." };
-    cached = { root, expires: Date.now() + (value.available ? 300000 : 5000), value };
     return value;
   } catch {
     return { available: false, reason: "The evidence database could not be read. Check Python and the database connection." };
   }
+}
+
+export function loadLiveSnapshot(root: string): Promise<LiveSnapshot> {
+  if (cached && cached.root === root && cached.expires > Date.now()) return Promise.resolve(cached.value);
+  if (loading?.root === root) return loading.promise;
+  const promise = fetchLiveSnapshot(root).then((value) => {
+    cached = { root, expires: Date.now() + (value.available ? 300000 : 15000), value };
+    return value;
+  }).finally(() => {
+    if (loading?.promise === promise) loading = null;
+  });
+  loading = { root, promise };
+  return promise;
 }

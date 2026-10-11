@@ -17,10 +17,15 @@ function useStudioState() {
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   const refreshCatalog = useCallback(async () => {
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 15000);
     try {
-      await callAdvisor("catalog", {}, (event) => { if (event.type === "catalog") setCatalog(event.catalog); });
+      await callAdvisor("catalog", {}, (event) => { if (event.type === "catalog") setCatalog(event.catalog); }, abort.signal);
       setCatalogError("");
-    } catch (e) { setCatalog(null); setCatalogError(e instanceof Error ? e.message : "Evidence status could not be loaded."); }
+    } catch (e) {
+      setCatalog(null);
+      setCatalogError(abort.signal.aborted ? "Evidence check timed out. Check the database connection, then retry." : e instanceof Error ? e.message : "Evidence status could not be loaded.");
+    } finally { clearTimeout(timeout); }
   }, []);
   useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
   async function run() {
