@@ -1,0 +1,149 @@
+{
+  "schema_version": "1",
+  "policy_id": "crps_v1",
+  "revision": 1,
+  "name": "Customer Requirement Priority Score (CRPS) v1",
+  "approved": false,
+  "approval_status": "methodology_specified_hackathon_framework",
+  "approval_note": "These weights are the scoring framework specified for this hackathon exercise. They are NOT a BMW-approved prioritisation policy, have not been through weight elicitation with accountable stakeholders, and must not be presented as an approved corporate standard.",
+  "elicitation_record": "Specified in the hackathon task definition rather than elicited from stakeholders. No swing-weighting session was held.",
+  "scale": {
+    "factor_range": [0, 4],
+    "score_range_0_to_4": "weighted sum of factor values on the 0-4 scale",
+    "score_range_0_to_100": "weighted_0_to_4 / 4 * 100",
+    "rounding": "values are rounded for display only; comparisons use unrounded bounds"
+  },
+  "unknown_handling": {
+    "rule": "retain_weight_widen_interval",
+    "description": "An unknown factor keeps its full weight and contributes the interval [0, 4] rather than being dropped or renormalised away. The resulting CRPS is therefore an interval, not a point. A midpoint is never substituted for a missing factor.",
+    "rationale": "Renormalising away an unknown factor silently inflates confidence in the remaining ones."
+  },
+  "ranking_rule": {
+    "rule": "conservative_non_overlapping_only",
+    "description": "Two requirements are only ordered when their CRPS intervals do not overlap. Overlapping intervals are reported as unresolved rather than given a false ordinal position."
+  },
+  "factors": {
+    "customer_impact": {
+      "weight": 0.25,
+      "dimension": "customer",
+      "anchor_0": "No demonstrated improvement to the customer task in question",
+      "anchor_4": "Material improvement to a repeatedly blocked core use case",
+      "source": "pm_judgement_or_evidence",
+      "note": "Contradicting evidence must not automatically reduce this factor; it reduces Consistency inside Evidence Strength."
+    },
+    "evidence_strength": {
+      "weight": 0.20,
+      "dimension": "customer",
+      "anchor_0": "No usable evidence, or only a single non-independent source",
+      "anchor_4": "Multiple independent high-quality sources agreeing, recent and sufficient in volume",
+      "source": "deterministic_subscore",
+      "subscore": "evidence_strength_v1"
+    },
+    "frequency": {
+      "weight": 0.15,
+      "dimension": "customer",
+      "anchor_0": "Affects a negligible share of the eligible population",
+      "anchor_4": "Affects the declared saturation share of the eligible population",
+      "source": "denominator_required",
+      "note": "Requires a valid denominator of unique eligible records. Public web evidence cannot establish population prevalence, so Frequency is reported unknown rather than inferred from page counts."
+    },
+    "market_relevance": {
+      "weight": 0.15,
+      "dimension": "customer",
+      "anchor_0": "Evidence is out of scope for the planning market",
+      "anchor_4": "Evidence is directly about the planning market",
+      "source": "deterministic_from_evidence_market",
+      "mapping": {
+        "4": "direct evidence for the primary market (DE)",
+        "3": "strong EU evidence likely applicable to DE",
+        "2": "broader comparable market evidence (for example US, UK, global)",
+        "1": "weak indirect applicability",
+        "0": "out-of-scope evidence"
+      }
+    },
+    "competitive_gap": {
+      "weight": 0.10,
+      "dimension": "business",
+      "anchor_0": "Verified adequate position against the compared set",
+      "anchor_4": "Material matched gap against at least one compared competitor",
+      "source": "deterministic_from_matched_competitor_evidence",
+      "note": "Scored only from matched BMW-versus-competitor evidence on the same dimension. Unmatched dimensions are reported as missing rather than assumed adequate."
+    },
+    "future_relevance": {
+      "weight": 0.10,
+      "dimension": "business",
+      "anchor_0": "No evidence that this matters more toward the planning horizon",
+      "anchor_4": "Strong explicit trend, infrastructure or expectation evidence pointing to the horizon",
+      "source": "deterministic_from_trend_evidence",
+      "note": "Scored only from market-trend, future-expectation, infrastructure-trend or planning-context evidence actually present. Never inferred by a model."
+    },
+    "strategic_fit": {
+      "weight": 0.05,
+      "dimension": "business",
+      "anchor_0": "No contribution to an agreed product objective",
+      "anchor_4": "Strong direct contribution to an approved objective",
+      "source": "approved_objectives_or_pm_input",
+      "note": "Reported unknown unless versioned strategic objectives exist in config or a PM supplies an explicit value. An assumption about what the business probably values is not a strategic fact."
+    }
+  },
+  "evidence_strength_subscore": {
+    "subscore_id": "evidence_strength_v1",
+    "components": {
+      "source_quality": {
+        "weight": 0.30,
+        "basis": "mean source_quality of independent supporting evidence, mapped from the source-family quality guide onto 0-4"
+      },
+      "source_diversity": {
+        "weight": 0.25,
+        "basis": "count of distinct independence_group values and distinct source_family values, saturating"
+      },
+      "consistency": {
+        "weight": 0.20,
+        "basis": "supporting independent groups versus contradicting independent groups; contradiction reduces this component only"
+      },
+      "evidence_volume": {
+        "weight": 0.15,
+        "basis": "count of independent groups, saturating, so repeated rows from one source cannot dominate"
+      },
+      "recency": {
+        "weight": 0.10,
+        "basis": "age of the newest independent supporting evidence, by published_at where present and retrieved_at otherwise"
+      }
+    },
+    "independence_rule": "Rows with duplicate_of set are never counted as independent confirmation. Confirmation counts use independence_group, so ten rows from one page count once.",
+    "saturation": {
+      "diversity_saturation_groups": 6,
+      "volume_saturation_groups": 8,
+      "note": "Chosen so a handful of strong independent sources is not beaten by a large number of duplicated or same-source rows."
+    },
+    "recency_bands_days": {
+      "4": 365,
+      "3": 730,
+      "2": 1095,
+      "1": 1825,
+      "0": "older than 1825 days, or no date available"
+    }
+  },
+  "decision_confidence": {
+    "subscore_id": "decision_confidence_v1",
+    "description": "How much the evidence base supports acting, reported separately from priority. Priority answers 'how much does this matter'; confidence answers 'how sure are we'.",
+    "components": {
+      "evidence_strength": 0.45,
+      "consistency": 0.25,
+      "source_diversity": 0.20,
+      "recency": 0.10
+    },
+    "range_0_to_100": "weighted components on 0-4, divided by 4, times 100",
+    "note": "Never folded into CRPS. A high-priority requirement with weak evidence must display high priority and low confidence."
+  },
+  "priority_bands": {
+    "approval_status": "hackathon_display_policy_unapproved",
+    "note": "These thresholds are a display convention introduced for this exercise. They are not specified by BMW and are not derived from any approved policy. Bands are assigned from the LOWER bound of the CRPS interval so an incomplete score cannot be promoted by its optimistic end.",
+    "bands": [
+      { "band": "P1", "label": "Critical", "min_crps_100": 80 },
+      { "band": "P2", "label": "High", "min_crps_100": 65 },
+      { "band": "P3", "label": "Medium", "min_crps_100": 50 },
+      { "band": "P4", "label": "Low", "min_crps_100": 0 }
+    ]
+  }
+}
