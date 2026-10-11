@@ -937,8 +937,11 @@ class TestSemanticNormalization(unittest.TestCase):
     }
 
     def setUp(self):
-        self.insideevs = self._page_containing("insideevs")
-        self.adac = self._page_containing("adac.de")
+        # Match distinctive URL *paths*, not domains: later runs cached more
+        # adac.de and insideevs.de pages, and a domain match silently returned
+        # the wrong page, failing every needle in this class.
+        self.insideevs = self._page_containing("765911/audi-a6-etron-avant-test")
+        self.adac = self._page_containing("elektroauto-reichweite-im-winter")
         if self.insideevs is None or self.adac is None:
             self.skipTest("the real cached pages are not in data/cache/")
         for name, needle in self.INSIDEEVS_NEEDLES.items():
@@ -948,7 +951,12 @@ class TestSemanticNormalization(unittest.TestCase):
 
     @staticmethod
     def _page_containing(fragment):
-        for path in CACHE_DIR.glob("*.json"):
+        """First cached page whose canonical URL contains *fragment*.
+
+        *fragment* must identify one page: a bare domain is not enough once a
+        later run has cached siblings on the same domain.
+        """
+        for path in sorted(CACHE_DIR.glob("*.json")):
             data = json.loads(path.read_text())
             if fragment in data.get("canonical_url", "") and data.get("markdown"):
                 url = data["canonical_url"]
@@ -1454,9 +1462,9 @@ class TestExpandedTaxonomy(unittest.TestCase):
     def test_real_steering_and_port_quotes_are_on_the_cached_page(self):
         """The needles these subtopics exist for come from the real page."""
         page_text = None
-        for path in CACHE_DIR.glob("*.json"):
+        for path in sorted(CACHE_DIR.glob("*.json")):
             data = json.loads(path.read_text())
-            if "insideevs" in data.get("canonical_url", ""):
+            if "765911/audi-a6-etron-avant-test" in data.get("canonical_url", ""):
                 page_text = data["markdown"]
         if page_text is None:
             self.skipTest("InsideEVs page not cached")
