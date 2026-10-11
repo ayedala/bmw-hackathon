@@ -18,6 +18,7 @@ CATEGORIES: tuple[str, ...] = (
     "infotainment",
     "charging",
     "comfort",
+    "driving_experience",
     "competitor_benchmark",
     "market",
 )
@@ -32,9 +33,20 @@ class SearchQuery:
     category: str
 
 
-def _group(category: str, topic: str, texts: Iterable[str]) -> tuple[SearchQuery, ...]:
+def _group(
+    category: str,
+    topic: str,
+    texts: Iterable[str],
+) -> tuple[SearchQuery, ...]:
     """Build a query group where every query shares one topic."""
-    return tuple(SearchQuery(text=text, topic=topic, category=category) for text in texts)
+    return tuple(
+        SearchQuery(
+            text=text,
+            topic=topic,
+            category=category,
+        )
+        for text in texts
+    )
 
 
 INFOTAINMENT_QUERIES: tuple[SearchQuery, ...] = _group(
@@ -54,6 +66,7 @@ INFOTAINMENT_QUERIES: tuple[SearchQuery, ...] = _group(
     ),
 )
 
+
 CHARGING_QUERIES: tuple[SearchQuery, ...] = _group(
     "charging",
     "charging",
@@ -70,6 +83,7 @@ CHARGING_QUERIES: tuple[SearchQuery, ...] = _group(
         "BMW i5 Winter Laden Erfahrungen",
     ),
 )
+
 
 COMFORT_QUERIES: tuple[SearchQuery, ...] = _group(
     "comfort",
@@ -88,20 +102,117 @@ COMFORT_QUERIES: tuple[SearchQuery, ...] = _group(
     ),
 )
 
+
+DRIVING_EXPERIENCE_QUERIES: tuple[SearchQuery, ...] = _group(
+    "driving_experience",
+    "driving_experience",
+    (
+        "BMW i5 Fahrverhalten Erfahrungen",
+        "BMW G60 Fahrdynamik Test",
+        "BMW i5 Lenkung Erfahrungen",
+        "BMW i5 handling review",
+        "BMW i5 steering feedback",
+        "BMW i5 Fahrwerk Test",
+        "BMW i5 Kurvenverhalten",
+        "BMW i5 braking review",
+        "BMW i5 Autobahn Fahrverhalten",
+        "BMW i5 M60 handling review",
+    ),
+)
+
+
 #: Competitor and benchmark queries. Each is tagged with the topic it probes so
 #: that a topic-scoped run includes the matching competitor comparison.
 COMPETITOR_QUERIES: tuple[SearchQuery, ...] = (
-    SearchQuery("Audi A6 e-tron Laden Erfahrungen", "charging", "competitor_benchmark"),
-    SearchQuery("Audi A6 e-tron infotainment review", "infotainment", "competitor_benchmark"),
-    SearchQuery("Audi A6 e-tron charging test", "charging", "competitor_benchmark"),
-    SearchQuery("Mercedes EQE Ladeprobleme Erfahrungen", "charging", "competitor_benchmark"),
-    SearchQuery("Mercedes EQE infotainment usability", "infotainment", "competitor_benchmark"),
-    SearchQuery("Mercedes EQE charging test", "charging", "competitor_benchmark"),
-    SearchQuery("Porsche Taycan charging test", "charging", "competitor_benchmark"),
-    SearchQuery("Porsche Taycan infotainment usability", "infotainment", "competitor_benchmark"),
-    SearchQuery("Tesla Model S infotainment usability", "infotainment", "competitor_benchmark"),
-    SearchQuery("Tesla Model S charging test", "charging", "competitor_benchmark"),
+    SearchQuery(
+        "Audi A6 e-tron Laden Erfahrungen",
+        "charging",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Audi A6 e-tron infotainment review",
+        "infotainment",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Audi A6 e-tron charging test",
+        "charging",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Mercedes EQE Ladeprobleme Erfahrungen",
+        "charging",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Mercedes EQE infotainment usability",
+        "infotainment",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Mercedes EQE charging test",
+        "charging",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Porsche Taycan charging test",
+        "charging",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Porsche Taycan infotainment usability",
+        "infotainment",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Tesla Model S infotainment usability",
+        "infotainment",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Tesla Model S charging test",
+        "charging",
+        "competitor_benchmark",
+    ),
+
+    # Driving-experience benchmarks
+    SearchQuery(
+        "Audi A6 e-tron handling review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Audi A6 e-tron steering review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Mercedes EQE handling review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Mercedes EQE steering review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Porsche Taycan handling review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Porsche Taycan steering review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
+    SearchQuery(
+        "Tesla Model S handling review",
+        "driving_experience",
+        "competitor_benchmark",
+    ),
 )
+
 
 MARKET_QUERIES: tuple[SearchQuery, ...] = _group(
     "market",
@@ -120,17 +231,21 @@ MARKET_QUERIES: tuple[SearchQuery, ...] = _group(
     ),
 )
 
+
 ALL_QUERIES: tuple[SearchQuery, ...] = (
     INFOTAINMENT_QUERIES
     + CHARGING_QUERIES
     + COMFORT_QUERIES
+    + DRIVING_EXPERIENCE_QUERIES
     + COMPETITOR_QUERIES
     + MARKET_QUERIES
 )
 
 
 def select_queries(
-    *, topic: str | None = None, category: str | None = None
+    *,
+    topic: str | None = None,
+    category: str | None = None,
 ) -> tuple[SearchQuery, ...]:
     """Return the queries matching *topic* and/or *category*.
 
@@ -138,23 +253,42 @@ def select_queries(
         ValueError: if *topic* or *category* is not a known value.
     """
     if topic is not None and topic not in TOPICS:
-        raise ValueError(f"unknown topic {topic!r}; expected one of {', '.join(TOPICS)}")
+        raise ValueError(
+            f"unknown topic {topic!r}; expected one of {', '.join(TOPICS)}"
+        )
+
     if category is not None and category not in CATEGORIES:
         raise ValueError(
             f"unknown category {category!r}; expected one of {', '.join(CATEGORIES)}"
         )
 
     selected = ALL_QUERIES
+
     if topic is not None:
-        selected = tuple(q for q in selected if q.topic == topic)
+        selected = tuple(
+            query
+            for query in selected
+            if query.topic == topic
+        )
+
     if category is not None:
-        selected = tuple(q for q in selected if q.category == category)
+        selected = tuple(
+            query
+            for query in selected
+            if query.category == category
+        )
+
     return selected
 
 
 def queries_by_topic() -> dict[str, int]:
     """Count of catalogued queries per topic (used by ``--list-queries``)."""
-    counts: dict[str, int] = {topic: 0 for topic in TOPICS}
+    counts: dict[str, int] = {
+        topic: 0
+        for topic in TOPICS
+    }
+
     for query in ALL_QUERIES:
         counts[query.topic] += 1
+
     return counts
