@@ -19,6 +19,13 @@ import { FACTOR_LABEL } from "@/lib/domain/derive";
 import { DEFAULT_PRIORITY_POLICY, hashString, priorityScore } from "@/lib/domain/scoring";
 import type { Dataset, EvidenceItem, MarketCode, RequirementBundle } from "@/lib/domain/model";
 import { MARKETS } from "@/lib/domain/model";
+import type {
+  ArtifactCustomerNeed,
+  ArtifactFinding,
+  ArtifactRequirement,
+  ArtifactRequirementScore,
+} from "@/lib/domain/reasoning";
+import { buildReasoningGraph } from "@/lib/domain/reasoning";
 import { SYNTHETIC_EXTERNAL } from "./fixtures/external";
 import { feedbackEvidence, SYNTHETIC_SIGNALS } from "./fixtures/feedback";
 import { BENCHMARK, FINDINGS, HYPOTHESES } from "./fixtures/graph";
@@ -399,6 +406,17 @@ export async function loadDataset(): Promise<Dataset> {
   const context = await readJson<PlanningContextSource[]>(FILES.context, [], status);
   const pipeline = await readJsonl<ProcessedEvidence>(await firstExisting("processed/external_evidence.jsonl"), status);
   const seeds = await readJsonl<WebResearchSeedRecord>(FILES.seeds, status);
+
+  // The real reasoning chain. Present on main; absent in demo checkouts, in
+  // which case the fixture graph below is used and the UI says so.
+  const artifactFindings = await readJsonl<ArtifactFinding>(
+    await firstExisting("processed/findings.jsonl"), status);
+  const artifactNeeds = await readJsonl<ArtifactCustomerNeed>(
+    await firstExisting("processed/customer_needs.jsonl"), status);
+  const artifactRequirements = await readJsonl<ArtifactRequirement>(
+    await firstExisting("processed/requirements.jsonl"), status);
+  const artifactScores = await readJsonl<ArtifactRequirementScore>(
+    await firstExisting("processed/requirement_scores.jsonl"), status);
   const runs = await readJsonl<ResearchRun>(await firstExisting("metadata/research_runs.jsonl"), status);
 
   const evidence: EvidenceItem[] = [
@@ -412,6 +430,14 @@ export async function loadDataset(): Promise<Dataset> {
 
   const requirements = buildRequirements(proposals, SYNTHETIC_SIGNALS);
 
+  const reasoning = buildReasoningGraph({
+    evidence: pipeline,
+    findings: artifactFindings,
+    needs: artifactNeeds,
+    requirements: artifactRequirements,
+    scores: artifactScores,
+  });
+
   return {
     generated_at: new Date().toISOString(),
     vehicle: { family: "BMW 5 Series", generation: "G60", successor_label: "G60 → Successor", horizon: proposals.planning_window },
@@ -423,11 +449,20 @@ export async function loadDataset(): Promise<Dataset> {
     signals: SYNTHETIC_SIGNALS,
     hypotheses: HYPOTHESES,
     findings: FINDINGS,
+    reasoning,
     requirements,
     benchmark: BENCHMARK,
     audit: buildSeedAudit(requirements, pipeline.length + seeds.length + context.length, runs),
     research_runs: runs,
     data_notes: [
+      reasoning.authoritative
+        ? `Reasoning chain is the real pipeline output: ${reasoning.counts.findings} findings, ` +
+          `${reasoning.counts.needs} customer needs and ${reasoning.counts.requirements} requirements ` +
+          `resolved against ${reasoning.counts.evidence} evidence records` +
+          (reasoning.issues.length
+            ? `; ${reasoning.issues.length} traceability issue(s) are reported rather than repaired.`
+            : " with every reference resolving.")
+        : "Reasoning artifacts (findings/customer_needs/requirements) were not found, so the demo fixture graph is shown. These are illustrations, not evidence-derived findings.",
       "Requirements are the authored successor proposals in configs/successor_proposals_v1.json; seed factor ratings are illustrative PM judgements.",
       "Anchor records (G60-xxxx) are real supplied feedback IDs; their verbatim text stays in the private bmw_pm.db.",
       "Pipeline evidence, curated seeds and planning context are read from the repository at request time.",

@@ -6,6 +6,8 @@
  *   Source → Evidence → Hypothesis → Finding → Customer need → Requirement
  *          → Score snapshot → PM decision → Audit event
  */
+import type { ReasoningGraph } from "./reasoning";
+
 import type {
   AuditEvent,
   Decision,
@@ -168,6 +170,13 @@ export interface Dataset {
   signals: Signal[];
   hypotheses: Hypothesis[];
   findings: Finding[];
+  /**
+   * The real reasoning chain loaded from the web-research artifacts. When
+   * `reasoning.authoritative` is true these findings/needs/requirements are the
+   * source of truth and `findings` above is the legacy fixture view kept for
+   * screens not yet migrated.
+   */
+  reasoning: ReasoningGraph;
   requirements: RequirementBundle[];
   benchmark: CompetitorBenchmark[];
   audit: AuditEvent[];
