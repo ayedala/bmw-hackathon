@@ -1,5 +1,11 @@
 # Task board
 
+### 11 October 2026: ground the Next.js planning workbench
+
+- Acceptance: no synthetic customer comments, competitor parity claims or prefilled PM decisions on planning pages; resolve proposal anchors against the configured private database and show real, source-located G60 feedback signals. Fail closed when the database or anchors are unavailable. Keep authored proposals and scores explicitly provisional.
+- Implemented a read-only Python snapshot bridge for SQLite/PostgreSQL, server-side five-minute caching, real anchor excerpts and signal-derived feedback themes. Removed synthetic fixture data and the unsupported competitive matrix. The seven drafts appear only when all cited US G60 anchors resolve. Browser-local PM actions remain separate from shared database governance.
+- Verification and limits: a read-only shared-database query returned 10,128 total feedback IDs, 3,610 US G60 IDs, nine source-hash-checked anchors and 2,518 payload-hash-checked US G60 extracted signals. `npm run build`, `npm run typecheck`, `npm run lint`, `python -m py_compile scripts/export_planning_snapshot.py`, `git diff --check`, and 15 focused Python planning/draft tests passed. A local production route returned HTTP 200 for overview and requirement detail, included the live counts and source locators, and omitted the old synthetic example. This is data lineage and software behavior, not human-labelled entailment, representative prevalence or model accuracy. Matched competitor evidence and shared Next.js PM writes remain open; the Python workbench provides persisted audited PM decisions.
+
 ### 11 October 2026: feature cost estimator integration
 
 - The workbench and advisor cost tab now accept explicit program and per-vehicle line items, quantities, volume and fitment, then calculate low/base/high conditional cost subtotals. The advisor retrieves only market- and topic-matched dated cost references from the public catalog. Missing cost categories remain visible; the calculator does not infer BMW supplier prices, feasibility or revenue.

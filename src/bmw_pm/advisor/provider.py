@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from ..intelligence.provider import ProviderError
 from .contracts import AdvisorRequest, DecisionReport, EvidenceItem, ResearchBundle, ResearchPlan
+from .public_tools import PublicPageInspector, firecrawl_key
 
 PROMPT_VERSION = "product-advisor-v1"
 DEFAULT_MODEL = "gpt-6-astra"
@@ -113,7 +114,67 @@ class AdvisorProvider:
             tool_choice="required", include=["web_search_call.action.sources"],
             input=[{"role": "system", "content": GUARDRAILS + "\nSearch primary sources: manufacturers, suppliers, original research and regulators. Seek at least three distinct sources where possible. Check current BMW baseline, relevant competitors, availability versus concept, technical dependencies, costs/prices with their exact meaning, and evidence gaps. Cite factual claims inline. Search only public topic concepts. Do not claim a failed/absent search proves a competitor lacks a feature. Keep the report under 1,200 words."},
                    {"role": "user", "content": json.dumps(public_brief)}])
-        return parse_research(response)
+        research = parse_research(response)
+        key = firecrawl_key()
+        return self.inspect_research_pages(research, PublicPageInspector(key)) if key else research
+
+    def inspect_research_pages(self, research: ResearchBundle, inspector: PublicPageInspector) -> ResearchBundle:
+        """Let the model request at most two already-cited pages for closer reading."""
+        allowed = {item.locator["url"] for item in research.sources if "url" in item.locator}
+        if not allowed:
+            return research
+        tool = {"type": "function", "name": "inspect_public_page",
+                "description": "Read the main text of one cited public HTTPS page to verify product details. Only use URLs in cited_urls.",
+                "strict": True, "parameters": {"type": "object", "properties": {"url": {"type": "string"}},
+                                                "required": ["url"], "additionalProperties": False}}
+        prompt = [
+            {"role": "system", "content": GUARDRAILS + "\nChoose up to two cited public pages whose full text would materially improve verification of competitor availability, vehicle specifications, or pricing. Call inspect_public_page only with an exact cited URL. If search citations suffice, do not call it. Never supply private database data."},
+            {"role": "user", "content": json.dumps({"cited_urls": sorted(allowed), "public_research": research.text[:7000]})},
+        ]
+        try:
+            response = self._call("Source selection", input=prompt, tools=[tool], tool_choice="auto",
+                                  max_output_tokens=1200)
+        except ProviderError:
+            return research.model_copy(update={"search_actions": [*research.search_actions,
+                json.dumps({"type": "inspect_public_page", "status": "unavailable"})]})
+        calls = [item for item in response.output if getattr(item, "type", None) == "function_call"]
+        if not calls:
+            return research
+        outputs = []
+        pages = []
+        actions = list(research.search_actions)
+        for call in calls:
+            if call.name != "inspect_public_page" or len(outputs) >= 2:
+                result = {"error": "Only two allowlisted page inspections are available."}
+            else:
+                try:
+                    arguments = json.loads(call.arguments)
+                    if not isinstance(arguments, dict) or set(arguments) != {"url"}:
+                        raise ValueError("Invalid page tool arguments.")
+                    url = arguments["url"]
+                    if url in {page.locator["url"] for page in pages}:
+                        raise ValueError("This page was already inspected.")
+                    page = inspector.inspect(url, allowed, f"page:{len(pages) + 1}")
+                    pages.append(page)
+                    actions.append(json.dumps({"type": "inspect_public_page", "url": url, "status": "completed"}))
+                    result = {"evidence_id": page.evidence_id, "url": page.locator["url"], "text": page.text,
+                              "limitations": page.limitations}
+                except (ValueError, RuntimeError, TypeError):
+                    # Tool errors are visible to the model; provider exceptions and credentials are not.
+                    result = {"error": "Page inspection was rejected or unavailable."}
+                    actions.append(json.dumps({"type": "inspect_public_page", "status": "failed"}))
+                except Exception:
+                    result = {"error": "Page inspection was unavailable."}
+                    actions.append(json.dumps({"type": "inspect_public_page", "status": "failed"}))
+            outputs.append({"type": "function_call_output", "call_id": call.call_id,
+                            "output": json.dumps(result, ensure_ascii=False)})
+        # Stateless continuation: replay the model output, including reasoning items, because store=False.
+        try:
+            self._call("Source inspection follow-up", input=[*prompt, *response.output, *outputs],
+                       max_output_tokens=1200)
+        except ProviderError:
+            actions.append(json.dumps({"type": "inspect_public_page", "status": "follow_up_unavailable"}))
+        return research.model_copy(update={"sources": [*research.sources, *pages], "search_actions": actions})
 
     def synthesize(self, payload: dict) -> DecisionReport:
         response = self._call("Decision analysis", structured=True, text_format=DecisionReport, max_output_tokens=11000,

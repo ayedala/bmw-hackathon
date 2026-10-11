@@ -17,10 +17,15 @@ function useStudioState() {
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   const refreshCatalog = useCallback(async () => {
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), 15000);
     try {
-      await callAdvisor("catalog", {}, (event) => { if (event.type === "catalog") setCatalog(event.catalog); });
+      await callAdvisor("catalog", {}, (event) => { if (event.type === "catalog") setCatalog(event.catalog); }, abort.signal);
       setCatalogError("");
-    } catch (e) { setCatalogError(e instanceof Error ? e.message : "Evidence status could not be loaded."); }
+    } catch (e) {
+      setCatalog(null);
+      setCatalogError(abort.signal.aborted ? "Evidence check timed out. Check the database connection, then retry." : e instanceof Error ? e.message : "Evidence status could not be loaded.");
+    } finally { clearTimeout(timeout); }
   }, []);
   useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
   async function run() {
@@ -39,8 +44,9 @@ function useStudioState() {
       setError(abort.signal.aborted ? "Research stopped. No completed recommendation was generated." : e instanceof Error ? e.message : "Research could not finish.");
     } finally { controller.current = null; setRunning(false); void refreshCatalog(); }
   }
+  function reset() { setResult(null); setSteps([]); setError(""); }
   return {request, setRequest, constraints, setConstraints, ideaText, setIdeaText, catalog, setCatalog, catalogError,
-    refreshCatalog, result, setResult, running, steps, error, run, stop: () => controller.current?.abort()};
+    refreshCatalog, result, setResult, running, steps, error, run, reset, stop: () => controller.current?.abort()};
 }
 const StudioContext = createContext<ReturnType<typeof useStudioState> | null>(null);
 export function StudioProvider({children}: {children: ReactNode}) { return <StudioContext.Provider value={useStudioState()}>{children}</StudioContext.Provider>; }

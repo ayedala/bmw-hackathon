@@ -73,8 +73,8 @@ export interface EvidenceItem {
   numeric_value: number | null;
   numeric_unit: string | null;
   limitation: string | null;
-  /** The original record exactly as stored, for the raw view. */
-  raw: ProcessedEvidence | Signal | WebResearchSeedRecord | Record<string, unknown>;
+  /** The original record exactly as stored; fetched on demand in the browser. */
+  raw?: ProcessedEvidence | Signal | WebResearchSeedRecord | Record<string, unknown>;
 }
 
 export interface HypothesisLink {
@@ -155,6 +155,21 @@ export interface RequirementBundle {
   market_context: Partial<Record<MarketCode, string>>;
 }
 
+export interface ModelCoverageSummary {
+  model_code: "F70" | "G70";
+  feedback_records: number;
+  signal_count: number;
+  markets: { country: string; records: number }[];
+  signal_markets: { country: string; signals: number }[];
+  themes: {
+    domain: string;
+    signal_count: number;
+    feedback_count: number;
+    concern_count: number;
+    examples: { source_record_id: string; country: string; excerpt: string; locator: string }[];
+  }[];
+}
+
 export interface Dataset {
   mode: "canonical" | "demo" | "unavailable";
   generated_at: string;
@@ -174,7 +189,6 @@ export interface Dataset {
   profile: VehicleProfile;
   planning_context: PlanningContextSource[];
   evidence: EvidenceItem[];
-  signals: Signal[];
   hypotheses: Hypothesis[];
   findings: Finding[];
   /**
@@ -185,6 +199,7 @@ export interface Dataset {
    */
   reasoning: ReasoningGraph;
   requirements: RequirementBundle[];
+  model_coverage: ModelCoverageSummary[];
   benchmark: CompetitorBenchmark[];
   audit: AuditEvent[];
   research_runs: ResearchRun[];

@@ -44,6 +44,7 @@ interface Row {
   evidence: EvidenceItem;
   stance: Stance | null;
   hypothesis: string | null;
+  proposalAnchor: boolean;
 }
 
 export function EvidenceExplorer() {
@@ -83,14 +84,15 @@ export function EvidenceExplorer() {
     }
     return map;
   }, [dataset.hypotheses, dataset.reasoning.authoritative, requirements]);
+  const anchorIds = useMemo(() => new Set(requirements.flatMap((r) => r.proposal.anchor_ids)), [requirements]);
 
   const rows: Row[] = useMemo(
     () =>
       dataset.evidence.map((evidence) => {
         const s = stanceOf.get(evidence.id);
-        return { id: evidence.id, evidence, stance: s?.stance ?? null, hypothesis: s?.hypothesis ?? null };
+        return { id: evidence.id, evidence, stance: s?.stance ?? null, hypothesis: s?.hypothesis ?? null, proposalAnchor: anchorIds.has(evidence.id) };
       }),
-    [dataset.evidence, stanceOf],
+    [dataset.evidence, stanceOf, anchorIds],
   );
 
   const brands = useMemo(() => [...new Set(dataset.evidence.map((e) => e.brand))].filter((b) => b && b !== "—").sort(), [dataset.evidence]);
@@ -130,7 +132,7 @@ export function EvidenceExplorer() {
     market: (v) => MARKET_LABEL[v as keyof typeof MARKET_LABEL] ?? v,
     topic: (v) => TOPIC_LABEL[v] ?? v,
     family: (v) => FAMILY_LABEL[v] ?? v,
-    stance: (v) => (v === "unlinked" ? "Not linked" : humanize(v)),
+    stance: (v) => (v === "unlinked" ? "No hypothesis link" : humanize(v)),
     date: (v) => DATE_OPTIONS.find((d) => d.value === v)?.label ?? v,
     provenance: (v) => PROVENANCE_LABEL[v as keyof typeof PROVENANCE_LABEL] ?? v,
   };
@@ -192,7 +194,7 @@ export function EvidenceExplorer() {
     },
     {
       key: "stance",
-      header: "Stance",
+      header: "Hypothesis link",
       cell: (r) =>
         r.stance ? (
           <Tooltip content={`Stance toward ${r.hypothesis}`}>
@@ -200,8 +202,10 @@ export function EvidenceExplorer() {
               <StanceBadge stance={r.stance} />
             </span>
           </Tooltip>
+        ) : r.proposalAnchor ? (
+          <span className="text-2xs text-brand">Proposal anchor</span>
         ) : (
-          <span className="text-2xs text-slate-400">Not linked</span>
+          <span className="text-2xs text-slate-400">No hypothesis link</span>
         ),
       sortValue: (r) => r.stance ?? "z",
       className: "w-28",
@@ -212,13 +216,12 @@ export function EvidenceExplorer() {
     <div>
       <PageHeader
         title="Evidence"
-        question="What supports or contradicts our conclusions, and where does it come from?"
+        question="Which records and extracted spans are available, and how are they linked? Hypothesis links still need relevance review."
         meta={
           <>
-            <span>{dataset.evidence.filter((e) => e.provenance === "bmw_record").length} BMW anchor records</span>
+            <span>{dataset.evidence.filter((e) => e.provenance === "bmw_record").length} BMW source records and spans</span>
             <span>{dataset.evidence.filter((e) => e.provenance === "pipeline").length} pipeline</span>
             <span>{dataset.evidence.filter((e) => e.provenance === "curated_seed").length} curated seeds</span>
-            <span>{dataset.evidence.filter((e) => e.provenance === "synthetic").length} synthetic</span>
             <span>{dataset.evidence.filter((e) => e.duplicate_of).length} duplicate</span>
           </>
         }
@@ -236,12 +239,12 @@ export function EvidenceExplorer() {
           <Search aria-hidden className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
           <Input value={filters.q} onChange={(e) => set("q", e.target.value)} placeholder="Search claim, excerpt, source" aria-label="Search evidence" className="h-7 w-64 pl-7 text-xs" />
         </div>
-        <Select label="Vehicle" value={filters.vehicle} onValueChange={(v) => set("vehicle", v)} options={[{ value: "all", label: "All" }, ...brands.map((b) => ({ value: b, label: b }))]} />
+        <Select label="Brand" value={filters.vehicle} onValueChange={(v) => set("vehicle", v)} options={[{ value: "all", label: "All" }, ...brands.map((b) => ({ value: b, label: b }))]} />
         <Select label="Market" value={filters.market} onValueChange={(v) => set("market", v)} options={[{ value: "all", label: "All" }, ...MARKETS.map((m) => ({ value: m, label: MARKET_LABEL[m] }))]} />
         <Select label="Topic" value={filters.topic} onValueChange={(v) => set("topic", v)} options={[{ value: "all", label: "All" }, ...topics.map((t) => ({ value: t, label: TOPIC_LABEL[t] ?? t }))]} />
         <Select label="Source family" value={filters.family} onValueChange={(v) => set("family", v)} options={[{ value: "all", label: "All" }, ...families.map((f) => ({ value: f, label: FAMILY_LABEL[f] ?? f }))]} />
         <Select
-          label="Stance"
+          label="Hypothesis link"
           value={filters.stance}
           onValueChange={(v) => set("stance", v)}
           options={[
@@ -249,7 +252,7 @@ export function EvidenceExplorer() {
             { value: "supports", label: "Supports" },
             { value: "contradicts", label: "Contradicts" },
             { value: "neutral", label: "Neutral" },
-            { value: "unlinked", label: "Not linked" },
+            { value: "unlinked", label: "No hypothesis link" },
           ]}
         />
         <Select label="Published" value={filters.date} onValueChange={(v) => set("date", v)} options={DATE_OPTIONS} />
@@ -262,7 +265,6 @@ export function EvidenceExplorer() {
             { value: "bmw_record", label: "BMW record" },
             { value: "pipeline", label: "Pipeline" },
             { value: "curated_seed", label: "Curated seed" },
-            { value: "synthetic", label: "Synthetic" },
           ]}
         />
         <label className="ml-1 inline-flex items-center gap-1.5 text-xs text-slate-600">

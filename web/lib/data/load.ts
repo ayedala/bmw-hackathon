@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { SUBTOPIC_ALIASES } from "@/lib/domain/contracts";
@@ -53,7 +53,12 @@ const PIPELINE_DIRS = ["src/bmw_pm/data_pipeline/web_research/data"] as const;
 async function firstExisting(relativeFile: string): Promise<string> {
   for (const dir of PIPELINE_DIRS) {
     const candidate = `${dir}/${relativeFile}`;
-    if ((await readText(candidate)) !== null) return candidate;
+    try {
+      await access(path.join(repoRoot(), candidate));
+      return candidate;
+    } catch {
+      // Try the next supported pipeline location.
+    }
   }
   return `${PIPELINE_DIRS[0]}/${relativeFile}`;
 }
@@ -476,11 +481,11 @@ export async function loadDataset(): Promise<Dataset> {
     profile,
     planning_context: context,
     evidence,
-    signals: demo ? SYNTHETIC_SIGNALS : [],
     hypotheses: demo ? HYPOTHESES : [],
     findings,
     reasoning,
     requirements,
+    model_coverage: [],
     benchmark: demo ? BENCHMARK : [],
     audit: demo ? buildSeedAudit(requirements, 0, []) : [],
     research_runs: runs,

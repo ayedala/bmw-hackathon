@@ -33,7 +33,7 @@ interface Filters {
 }
 const DEFAULTS: Filters = { topic: "all", priority: "all", decision: "all" };
 const MAX_COMPARE = 4;
-/** Two CRPS values closer than this are treated as a tie; ordinal ratings do not support finer distinctions. */
+/** Two legacy planning scores closer than this are treated as a tie. */
 const TIE_MARGIN = 2.5;
 
 function CompareTable({ rows }: { rows: RequirementRow[] }) {
@@ -83,7 +83,7 @@ function CompareTable({ rows }: { rows: RequirementRow[] }) {
           ))}
           <tr className="border-b border-slate-100 bg-slate-50">
             <th scope="row" className="px-3 py-1.5 text-left text-xs font-semibold text-zinc-900">
-              CRPS
+              Legacy score
             </th>
             {rows.map((r) => (
               <td key={r.id} className={cn(cell, "text-sm")}>
@@ -93,7 +93,7 @@ function CompareTable({ rows }: { rows: RequirementRow[] }) {
           </tr>
           <tr className="border-b border-slate-100">
             <th scope="row" className="px-3 py-1.5 text-left text-xs font-normal text-zinc-800">
-              Default-weight CRPS
+              Default legacy score
             </th>
             {rows.map((r) => (
               <td key={r.id} className={cn(cell, "text-xs text-slate-600")}>
@@ -103,7 +103,7 @@ function CompareTable({ rows }: { rows: RequirementRow[] }) {
           </tr>
           <tr className="border-b border-slate-100">
             <th scope="row" className="px-3 py-1.5 text-left text-xs font-normal text-zinc-800">
-              Evidence (support / contra / sources)
+              Same-topic signals / opposing / feedback IDs
             </th>
             {rows.map((r) => (
               <td key={r.id} className={cn(cell, "text-xs")}>
@@ -217,7 +217,7 @@ function DemoPrioritizationScreen() {
       ),
       className: "w-8",
     },
-    { key: "priority", header: "Priority", cell: (r) => <PriorityBadge priority={r.priority} />, className: "w-16" },
+    { key: "priority", header: "Legacy priority", cell: (r) => <PriorityBadge priority={r.priority} />, className: "w-16" },
     {
       key: "title",
       header: "Requirement",
@@ -229,7 +229,7 @@ function DemoPrioritizationScreen() {
       ),
       className: "min-w-[280px] max-w-[460px]",
     },
-    { key: "crps", header: "CRPS", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, align: "right", className: "w-24" },
+    { key: "crps", header: "Legacy score", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, align: "right", className: "w-24" },
     ...FACTOR_KEYS.map(
       (k): Column<RequirementRow> => ({
         key: k,
@@ -269,7 +269,7 @@ function DemoPrioritizationScreen() {
           ))}
         </div>
         <div className="self-start rounded-md border border-slate-200 bg-white p-3">
-          <div className="text-2xs font-medium uppercase tracking-wide text-slate-500">CRPS distribution</div>
+          <div className="text-2xs font-medium uppercase tracking-wide text-slate-500">Legacy score distribution</div>
           <ScoreDistributionChart data={distribution} />
         </div>
         <div className="self-start rounded-md border border-slate-200 bg-white p-3">

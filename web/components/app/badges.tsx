@@ -133,7 +133,7 @@ function qualityWidth(q: number) {
   return "w-1/6";
 }
 
-/** CRPS display. Seed (illustrative) ratings are marked; out-of-scope markets show no number. */
+/** Legacy planning score display. Seed (illustrative) ratings are marked; out-of-scope markets show no number. */
 export function ScoreValue({ score, basis, className }: { score: number | null; basis?: "saved" | "seed"; className?: string }) {
   if (score === null) {
     return (
@@ -158,7 +158,7 @@ export function ScoreValue({ score, basis, className }: { score: number | null; 
 /** Horizontal support / contradict / neutral bar. Contradictions are never hidden. */
 export function BalanceBar({ balance, showCounts = true, className }: { balance: Balance; showCounts?: boolean; className?: string }) {
   const total = Math.max(balance.total, 1);
-  const pct = (n: number) => `${(n / total) * 100}%`;
+  const pct = (n: number) => `${((n / total) * 100).toFixed(1)}%`;
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <svg aria-hidden viewBox="0 0 100 6" preserveAspectRatio="none" className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100">
@@ -172,7 +172,7 @@ export function BalanceBar({ balance, showCounts = true, className }: { balance:
         </span>
       )}
       <span className="sr-only">
-        {balance.supporting} supporting, {balance.contradicting} contradicting, {balance.neutral} neutral; {pct(balance.supporting)} supporting
+        {balance.supporting} same-topic complaint or aspiration spans, {balance.contradicting} opposing, {balance.neutral} praise or other; {pct(balance.supporting)} complaint or aspiration spans
       </span>
     </div>
   );

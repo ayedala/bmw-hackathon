@@ -31,7 +31,9 @@ if hosted_mode():
     db_path = require_hosted_access()
 else:
     with st.sidebar.expander("Workspace settings", expanded=False):
-        configured_db = database_target(root=ROOT)
+        # An explicit local workspace path must override a shared connection in
+        # .env.local, including when the workbench is exercised in isolation.
+        configured_db = database_target(os.environ.get("BMW_PM_DATABASE") or None, root=ROOT)
         if is_postgres(configured_db):
             st.caption("Shared PostgreSQL database configured in the server environment.")
             db_path = configured_db

@@ -54,7 +54,7 @@ function EvidencePanelHost({ children }: { children: ReactNode }) {
         }
       >
         {evidence ? (
-          <EvidenceDetail evidence={evidence} />
+          <EvidenceDetail key={evidence.id} evidence={evidence} />
         ) : (
           <p className="text-xs text-slate-500">
             Record <span className="font-mono">{id}</span> is referenced but its source file is not loaded. Check Settings → Data sources.
@@ -81,7 +81,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex h-7 items-center justify-between rounded-md px-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35",
+        "flex h-9 items-center justify-between rounded-md px-2.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35",
         active
           ? "bg-brand-soft font-medium text-brand shadow-[inset_2px_0_0_0_#0066cc]"
           : "text-zinc-600 hover:bg-slate-100 hover:text-zinc-900",
@@ -93,9 +93,15 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-function AppSidebar() {
+interface SidebarSummary {
+  findings: number;
+  evidence: number;
+  requirements: number;
+  openDecisions: number;
+}
+
+function AppSidebar({ summary }: { summary?: SidebarSummary }) {
   const pathname = usePathname();
-  const liveStudio = pathname === "/studio" || pathname === "/video-memory" || pathname === "/evaluation";
   const { dataset, requirements } = useStore();
   const openDecisions = requirements.filter((r) => {
     const s = decisionStatus(latestRevision(r), r.decisions);
@@ -109,15 +115,15 @@ function AppSidebar() {
       label: "Intelligence",
       items: [
         { href: "/needs", label: "Customer needs", count: dataset.reasoning.needs.length },
-        { href: "/findings", label: "Findings", count: dataset.findings.length },
-        { href: "/evidence", label: "Evidence", count: dataset.evidence.length },
+        { href: "/findings", label: "Findings", count: summary?.findings ?? dataset.findings.length },
+        { href: "/evidence", label: "Evidence", count: summary?.evidence ?? dataset.evidence.length },
         { href: "/hypotheses", label: "Hypotheses", count: dataset.hypotheses.length },
       ],
     },
     {
       label: "Requirements",
       items: [
-        { href: "/requirements", label: "Requirements", count: requirements.length },
+        { href: "/requirements", label: "Requirements", count: summary?.requirements ?? requirements.length },
         { href: "/prioritization", label: "Prioritization" },
       ],
     },
@@ -131,7 +137,7 @@ function AppSidebar() {
     {
       label: "Governance",
       items: [
-        { href: "/decisions", label: "Decisions", count: openDecisions },
+        { href: "/decisions", label: "Decisions", count: summary?.openDecisions ?? openDecisions },
         { href: "/audit", label: "Audit trail" },
       ],
     },
@@ -140,7 +146,7 @@ function AppSidebar() {
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-slate-200 bg-white lg:flex" aria-label="Primary">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white lg:flex" aria-label="Primary">
       <div className="flex h-14 items-center border-b border-slate-200 px-3">
         <Link href="/" className="flex items-center gap-2.5 focus-visible:outline-none">
           {/* eslint-disable-next-line @next/next/no-img-element -- static local SVG */}
@@ -151,8 +157,8 @@ function AppSidebar() {
           </span>
         </Link>
       </div>
-      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
-        {groups.filter((_, index) => !liveStudio || index < 2).map((group, i) => (
+      <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-4">
+        {groups.map((group, i) => (
           <div key={group.label ?? i}>
             {group.label && <div className="mb-1 px-2 text-2xs font-medium uppercase tracking-wide text-slate-400">{group.label}</div>}
             <div className="space-y-px">
@@ -164,7 +170,7 @@ function AppSidebar() {
         ))}
       </nav>
       <div className="border-t border-slate-200 px-2 py-2">
-        <NavLink item={{ href: "/settings", label: liveStudio ? "Workbench settings" : "Settings" }} active={isActive("/settings")} />
+        <NavLink item={{ href: "/settings", label: "Settings" }} active={isActive("/settings")} />
       </div>
     </aside>
   );
@@ -192,7 +198,7 @@ function CompactNav() {
   ] as const;
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-1.5 lg:hidden" aria-label="Primary">
-      {items.filter((_, index) => (pathname !== "/" && pathname !== "/video-memory") || index < 3).map(([href, label]) => {
+      {items.map(([href, label]) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
@@ -277,9 +283,11 @@ function ContextBar({ onSearch }: { onSearch: () => void }) {
   const { dataset, market, setMarket } = useStore();
   const pathname = usePathname();
   if (pathname === "/studio" || pathname === "/video-memory") return (
-    <div className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 lg:px-6">
-      <span className="text-[13px] font-semibold">BMW Decision Studio</span>
-      <span className="text-xs text-slate-500">Customer evidence · Market research · Video memory</span>
+    <div className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-4 backdrop-blur lg:px-6">
+      <span className="text-[13px] font-semibold text-zinc-900">{pathname === "/studio" ? "Advisor Studio" : "Video memory"}</span>
+      <button type="button" onClick={onSearch} className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-xs text-slate-600 transition-colors hover:border-brand-line hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35" aria-label="Search (Ctrl+K)">
+        <Search className="size-3.5" aria-hidden /><span className="hidden sm:inline">Search the workbench</span><kbd className="hidden font-mono text-2xs text-slate-400 sm:inline">Ctrl K</kbd>
+      </button>
     </div>
   );
   return (
@@ -332,11 +340,33 @@ function ContextBar({ onSearch }: { onSearch: () => void }) {
 /* Command menu (Cmd/Ctrl + K)                                         */
 /* ------------------------------------------------------------------ */
 
+interface SearchIndex {
+  requirements: { id: string; title: string; topic: string }[];
+  findings: { id: string; title: string; market: MarketCode; topic: string }[];
+  hypotheses: { id: string; statement: string }[];
+  evidence: { id: string; claim: string; vehicle: string; market: MarketCode; source_name: string }[];
+  benchmark: { vehicle: string }[];
+}
+
 function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const router = useRouter();
   const { dataset, requirements, setMarket } = useStore();
   const evidencePanel = useEvidencePanel();
   const [query, setQuery] = useState("");
+  const [searchIndex, setSearchIndex] = useState<SearchIndex | null>(null);
+
+  useEffect(() => {
+    if (!open || dataset.evidence.length > 0 || searchIndex) return;
+    const controller = new AbortController();
+    fetch("/api/search-index", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Search index unavailable");
+        return response.json() as Promise<SearchIndex>;
+      })
+      .then(setSearchIndex)
+      .catch(() => { /* Keep navigation links available if search cannot load. */ });
+    return () => controller.abort();
+  }, [open, dataset.evidence.length, searchIndex]);
 
   const run = (fn: () => void) => {
     onOpenChange(false);
@@ -422,6 +452,58 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
                   ))}
                 </Command.Group>
               )}
+              {searchIndex && (
+                <>
+                  <Command.Group heading="Requirements">
+                    {searchIndex.requirements.map((r) => (
+                      <Command.Item key={r.id} value={`${r.id} ${r.title} ${r.topic}`} className={item} onSelect={() => run(() => router.push(`/requirements/${r.id}`))}>
+                        <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{r.id}</span>
+                        <span className="min-w-0 truncate text-zinc-900">{r.title}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                  <Command.Group heading="Findings">
+                    {searchIndex.findings.map((f) => (
+                      <Command.Item key={f.id} value={`${f.id} ${f.title}`} className={item} onSelect={() => run(() => router.push(`/findings?id=${f.id}`))}>
+                        <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{f.id}</span>
+                        <span className="min-w-0 truncate text-zinc-900">{f.title}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                  <Command.Group heading="Hypotheses">
+                    {searchIndex.hypotheses.map((h) => (
+                      <Command.Item key={h.id} value={`${h.id} ${h.statement}`} className={item} onSelect={() => run(() => router.push(`/hypotheses?id=${h.id}`))}>
+                        <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{h.id}</span>
+                        <span className="min-w-0 truncate text-zinc-900">{h.statement}</span>
+                      </Command.Item>
+                    ))}
+                  </Command.Group>
+                  {query.length >= 2 && (
+                    <Command.Group heading="Evidence">
+                      {searchIndex.evidence.map((e) => (
+                        <Command.Item key={e.id} value={`${e.id} ${e.claim} ${e.vehicle} ${e.source_name}`} className={item} onSelect={() => run(() => router.push(`/evidence?id=${e.id}`))}>
+                          <span className="w-24 shrink-0 font-mono text-2xs leading-5 text-slate-500">{e.id}</span>
+                          <span className="min-w-0 truncate text-zinc-900">{e.claim}</span>
+                        </Command.Item>
+                      ))}
+                    </Command.Group>
+                  )}
+                </>
+              )}
+              {query.length >= 2 && dataset.evidence.length === 0 && !searchIndex && (
+                <Command.Group heading="Evidence">
+                  <Command.Item value={`Search evidence ${query}`} className={item} onSelect={() => run(() => router.push(`/evidence?q=${encodeURIComponent(query)}`))}>
+                    Search evidence for “{query}”
+                  </Command.Item>
+                </Command.Group>
+              )}
+              {query.length >= 2 && dataset.requirements.length === 0 && !searchIndex && (
+                <Command.Group heading="Review pages">
+                  <Command.Item value={`Search requirements ${query}`} className={item} onSelect={() => run(() => router.push("/requirements"))}>Open requirements</Command.Item>
+                  <Command.Item value={`Search findings ${query}`} className={item} onSelect={() => run(() => router.push("/findings"))}>Open findings</Command.Item>
+                  <Command.Item value={`Search hypotheses ${query}`} className={item} onSelect={() => run(() => router.push("/hypotheses"))}>Open hypotheses</Command.Item>
+                </Command.Group>
+              )}
               <Command.Group heading="Markets">
                 {MARKETS.map((m) => (
                   <Command.Item key={m} value={`market ${m} ${MARKET_LABEL[m]}`} className={item} onSelect={() => run(() => setMarket(m))}>
@@ -456,7 +538,7 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
 /* Shell                                                                */
 /* ------------------------------------------------------------------ */
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, summary }: { children: ReactNode; summary?: SidebarSummary }) {
   const pathname = usePathname();
   const { dataset } = useStore();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -479,8 +561,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-2 focus:py-1 focus:text-xs">
           Skip to content
         </a>
-        <AppSidebar />
-        <div className="lg:pl-56">
+        <AppSidebar summary={summary} />
+        <div className="lg:pl-60">
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />
           <main id="main" className="mx-auto max-w-[1680px] px-4 py-5 lg:px-6">

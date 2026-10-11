@@ -1,6 +1,6 @@
 "use client";
 import {useState} from "react";
-import {Download, ExternalLink, FileText} from "lucide-react";
+import {Check, Download, ExternalLink, FileText} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {SidePanel} from "@/components/ui/dialog";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
@@ -34,16 +34,17 @@ export function AdvisorReport({result}: {result: AdvisorResult}) {
     const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], {type: "application/json"}));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `bmw-${request.model_code}-${result.run_id}.json`; anchor.click(); URL.revokeObjectURL(url);
   };
-  return <section className="min-w-0 rounded-md border border-slate-200 bg-white p-4 sm:p-5" aria-label="Decision brief">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-2xs font-medium uppercase tracking-wide text-brand">Live research · provisional decision</p><h2 className="mt-1 text-lg font-semibold tracking-tight">{result.report.headline}</h2><p className="mt-1 text-xs text-slate-500">{VEHICLES[request.model_code]} · {request.model_code} / {request.market} / {request.powertrain} · {new Date(result.created_at).toLocaleString()}</p></div><Button size="sm" onClick={exportBrief}><Download />Download brief</Button></div>
-    <p className="mt-4 text-[13px] leading-relaxed text-slate-600">{result.report.summary}</p>
-    <div className="my-4 border-l-2 border-brand bg-brand-soft px-3 py-2 text-xs"><span className="font-semibold">{preferred ? "Provisional preference: " : "No preferred option established. "}</span>{preferred?.title || "The available evidence does not separate the options yet."}</div>
+  return <section className="min-w-0 rounded-md border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-label="Decision brief">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-2xs font-semibold uppercase tracking-[0.14em] text-brand">Decision brief / provisional</p><h2 className="mt-2 max-w-2xl text-xl font-semibold leading-tight tracking-tight text-zinc-950">{result.report.headline}</h2><p className="mt-2 text-xs text-slate-500">{VEHICLES[request.model_code]} · {request.model_code} / {request.market} / {request.powertrain} · {new Date(result.created_at).toLocaleString()}</p></div><Button size="sm" onClick={exportBrief}><Download />Download brief</Button></div>
+    <p className="mt-4 max-w-3xl text-[13px] leading-6 text-slate-600">{result.report.summary}</p>
+    <div className="my-5 rounded-md border border-brand-line bg-brand-soft p-4"><p className="text-2xs font-semibold uppercase tracking-wide text-brand">{preferred ? "Provisional preference" : "Decision remains open"}</p><p className="mt-1 text-sm font-semibold text-zinc-950">{preferred?.title || "The available evidence does not separate the options yet."}</p></div>
+    <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4">{[["Options", result.report.options.length], ["Feedback IDs", result.packet.feedback_records], ["Selected sources", new Set(evidence.map(item => item.evidence_id)).size], ["Public sources", new Set(result.research.sources.map(item => item.evidence_id)).size]].map(([label, value]) => <div key={label} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2"><p className="text-2xs text-slate-500">{label}</p><p className="mt-0.5 text-base font-semibold tabular-nums text-zinc-950">{Number(value).toLocaleString()}</p></div>)}</div>
     <Tabs defaultValue="decision">
       <TabsList className="gap-3 overflow-x-auto">{[["decision", "Decision"], ["evidence", "Evidence"], ["market", "Market research"], ["economics", "Costs & revenue"], ["process", "Process"]].map(([id, label]) => <TabsTrigger key={id} value={id!} className="whitespace-nowrap text-xs">{label}</TabsTrigger>)}</TabsList>
       <TabsContent value="decision" className="space-y-4">
         {claim(result.report.recommendation)}
-        {result.report.options.map((option, index) => <article key={option.option_id} className="rounded-md border border-slate-200 p-4">
-          <h3 className="text-sm font-semibold">{option.title}</h3><p className="mt-1 text-xs leading-relaxed text-slate-600">{option.proposal}</p>
+        {result.report.options.map((option, index) => <article key={option.option_id} className="rounded-md border border-slate-200 p-4 transition-colors hover:border-slate-300">
+          <div className="flex flex-wrap items-start gap-3"><span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-slate-100 font-mono text-xs font-semibold text-slate-600">{String(index + 1).padStart(2, "0")}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-zinc-950">{option.title}</h3>{option.option_id === result.report.preferred_option_id && <span className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-2xs font-semibold text-brand"><Check className="size-3" />Preferred</span>}</div><p className="mt-1 text-xs leading-relaxed text-slate-600">{option.proposal}</p></div></div>
           {request.journey === "compare" && <p className="mt-2 text-2xs text-slate-500">Submitted idea {index + 1}: {request.ideas[index]}</p>}
           <h4 className="mt-4 text-xs font-semibold">Customer value</h4>{option.customer_case.map((item, i) => <div key={i}>{claim(item)}</div>)}
           <details className="mt-3 border-t border-slate-100 pt-3"><summary className="cursor-pointer text-xs font-semibold">Can it be built and shipped?</summary>{claim(option.feasibility)}<h5 className="my-2 text-xs font-medium">Proposed delivery path</h5><List items={option.delivery_steps} /><h5 className="my-2 text-xs font-medium">Risks and validation gates</h5><List items={[...option.risks, ...option.validation_needed]} /></details>

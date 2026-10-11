@@ -13,8 +13,7 @@ import { ReasoningSourceNotice } from "@/components/app/reasoning-chain";
 import { Button } from "@/components/ui/button";
 import { SidePanel } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
-import { Tooltip } from "@/components/ui/tooltip";
-import { EVIDENCE_STRENGTH_RULE, HYPOTHESIS_STATUS_LABEL, TOPIC_LABEL } from "@/lib/domain/derive";
+import { HYPOTHESIS_STATUS_LABEL, TOPIC_LABEL } from "@/lib/domain/derive";
 import type { HypothesisStatus } from "@/lib/domain/model";
 import { usePersistentState, useStore } from "@/lib/store";
 import { useHypothesisRows, type HypothesisRow } from "@/lib/view";
@@ -36,17 +35,13 @@ function HypothesisDetail({ row }: { row: HypothesisRow }) {
       <div className="flex flex-wrap items-center gap-3">
         <HypothesisStatusBadge status={row.status} />
         <ConfidenceBadge confidence={row.confidence} />
-        <Tooltip content={EVIDENCE_STRENGTH_RULE}>
-          <span tabIndex={0} className="text-xs text-slate-600">
-            Strength <span className="font-medium tabular-nums text-zinc-900">{row.strength}</span>
-          </span>
-        </Tooltip>
         <BalanceBar balance={row.balance} />
       </div>
       {missing > 0 && <p className="text-2xs text-amber-700">{missing} linked record(s) are not loaded; counts exclude them.</p>}
       <div>
-        <SubHeading count={entries("supports").length}>Supporting</SubHeading>
-        <EvidenceList entries={entries("supports")} initial={5} empty="No supporting evidence." />
+        <SubHeading count={entries("supports").length}>Same-topic complaints and wishes</SubHeading>
+        <p className="mb-2 text-xs text-slate-600">Polarity and topic were extracted; whether each span supports this hypothesis is unreviewed.</p>
+        <EvidenceList entries={entries("supports")} initial={5} empty="No same-topic complaints or wishes." />
       </div>
       <div>
         <SubHeading count={entries("contradicts").length}>Contradicting</SubHeading>
@@ -120,8 +115,7 @@ function DemoHypothesesScreen() {
       className: "min-w-[340px] max-w-[560px]",
     },
     { key: "status", header: "Status", cell: (r) => <HypothesisStatusBadge status={r.status} />, sortValue: (r) => r.status, className: "w-32" },
-    { key: "strength", header: "Strength", cell: (r) => <span className="text-xs tabular-nums text-zinc-900">{r.strength}</span>, sortValue: (r) => r.strength, align: "right", className: "w-20" },
-    { key: "support", header: "Support", cell: (r) => <span className="text-xs tabular-nums">{r.balance.supporting}</span>, sortValue: (r) => r.balance.supporting, align: "right", className: "w-16" },
+    { key: "support", header: "Topic signals", cell: (r) => <span className="text-xs tabular-nums">{r.balance.supporting}</span>, sortValue: (r) => r.balance.supporting, align: "right", className: "w-20" },
     {
       key: "contra",
       header: "Contradict",
@@ -130,14 +124,14 @@ function DemoHypothesesScreen() {
       align: "right",
       className: "w-20",
     },
-    { key: "sources", header: "Indep. sources", cell: (r) => <span className="text-xs tabular-nums">{r.balance.independent_sources}</span>, sortValue: (r) => r.balance.independent_sources, align: "right", className: "w-24" },
+    { key: "sources", header: "Feedback IDs", cell: (r) => <span className="text-xs tabular-nums">{r.balance.independent_sources}</span>, sortValue: (r) => r.balance.independent_sources, align: "right", className: "w-24" },
     { key: "balance", header: "Balance", cell: (r) => <BalanceBar balance={r.balance} showCounts={false} />, className: "w-24" },
     { key: "market", header: "Mkt", cell: (r) => <MarketTag market={r.hypothesis.market} />, className: "w-12" },
   ];
 
   return (
     <div>
-      <PageHeader title="Hypotheses" question="Which premises behind our findings hold up against the evidence?" />
+      <PageHeader title="Hypotheses" question="Which hypotheses have same-topic feedback to inspect? Topic counts do not validate the premise." />
       <FilterBar active={active} onClearAll={() => setFilters(DEFAULTS)} resultLabel={`${filtered.length} of ${rows.length} hypotheses`}>
         <Select label="Topic" value={filters.topic} onValueChange={(v) => setFilters((f) => ({ ...f, topic: v }))} options={[{ value: "all", label: "All" }, ...topics.map((t) => ({ value: t, label: TOPIC_LABEL[t] ?? t }))]} />
         <Select
@@ -154,7 +148,7 @@ function DemoHypothesesScreen() {
         getRowId={(r) => r.id}
         selectedId={selectedId}
         onRowClick={(r) => select(r.id)}
-        defaultSort={{ key: "strength", direction: "desc" }}
+        defaultSort={{ key: "sources", direction: "desc" }}
         empty={<EmptyState title="No hypothesis matches these filters." action={<Button size="sm" onClick={() => setFilters(DEFAULTS)}>Clear filters</Button>} />}
       />
       <SidePanel open={Boolean(selected)} onOpenChange={(o) => !o && select(null)} title={selected?.hypothesis.statement ?? ""} eyebrow={selected?.id} width="w-[min(600px,100vw)]">

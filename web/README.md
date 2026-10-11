@@ -1,13 +1,13 @@
 # BMW Product Decision Lab — web UI
 
 Next.js 15 (App Router, TypeScript strict), Tailwind CSS 3, Radix primitives (shadcn-style components in `components/ui`), Recharts, cmdk.
-The default page is Decision Studio, connected to the existing Python advisor and local SQLite database. The incoming planning workbench remains at `/overview`, with its labelled example data and browser-local review actions.
+The default page is Decision Studio, connected to the existing Python advisor and configured evidence database. The planning workbench at `/overview` reads US G60 customer evidence from that database and keeps its review actions browser-local.
 
 ## Run Decision Studio
 
 For a shared team dataset, configure `DATABASE_URL` and follow the [Supabase migration and collaborator setup](../docs/SUPABASE.md). The same frontend uses the shared database; each collaborator keeps their connection string in their own ignored `.env.local`. The tracked root `.env` contains blank placeholders only.
 
-Keep `OPENAI_API_KEY` in the repository-root `.env.local` file. Install the Python `ai` dependencies in the repository's `.venv` and import the private database first. Then:
+Keep `OPENAI_API_KEY` in the repository-root `.env.local` file. Install the Python `ai` dependencies in the repository's `.venv` and import the private database first. To enable optional inspection of up to two web-cited pages per run, also put `FIRECRAWL_API_KEY` in that file and install `uv sync --extra ai --extra scrape`. The advisor still works with web search alone when that key is absent. Then:
 
 ```powershell
 cd web
@@ -15,9 +15,18 @@ npm ci --ignore-scripts
 npm run dev
 ```
 
+For a faster demo, build once and start the standalone production server:
+
+```powershell
+npm run build
+npm run start
+```
+
+`npm run start` prepares static assets, binds to `127.0.0.1:3000`, and resolves the Python project from the repository root. Rebuild after source changes.
+
 Open `http://127.0.0.1:3000`. The single Next.js server launches a bounded Python worker for each request; no separate API server is required. `BMW_REPO_ROOT` overrides the repository location and `BMW_PYTHON` can select another Python executable. API credentials and model selection remain server-side. The server binds to loopback; the advisor route rejects non-local hosts and cross-origin requests. This adapter is for the local app, not an authenticated hosted deployment.
 
-The three input paths call the same `run_advisor` used by `ui/agent.py`: assess an idea, recommend an improvement, or compare 2–5 ideas. They retain existing scope filters, public web research, citation validation, unknown costs and deterministic scenario arithmetic. Progress streams while research runs, and errors never substitute demo recommendations. Requests/results stay in browser memory across navigation; download a completed brief to retain it across a reload. Model identity remains in its JSON provenance, not in the normal interface. The older planning fixture store is never passed to the live advisor.
+The three input paths call the same `run_advisor` used by `ui/agent.py`: assess an idea, recommend an improvement, or compare 2–5 ideas. They retain existing scope filters, public web research, citation validation, unknown costs and deterministic scenario arithmetic. Progress streams while research runs, and errors never substitute demo recommendations. Requests/results stay in browser memory across navigation; download a completed brief to retain it across a reload. Model identity remains in its JSON provenance, not in the normal interface. Planning drafts are never passed to the live advisor as evidence.
 
 ## Transcript memory and YouTube quota
 
@@ -47,12 +56,15 @@ The UI follows the successor-planning work on `main` (`42dc8ab`, "Integrate refi
 | `configs/exploratory_equal_v1.json`, `configs/g60.json` | Decision-engine value policy and vehicle profile |
 | `src/bmw_pm/data_pipeline/web_research/data/…` (falls back to `external_research_pipeline/data/…`) | `ProcessedEvidence` and `ResearchRun` from the web-research pipeline |
 | `research/web_evidence_seed.jsonl` | Curated research seeds |
+| Configured private SQLite/PostgreSQL database | Redacted US G60 anchors, validated signal spans and unique-ID denominator (read-only) |
 
-Anchor records (G60-0271 etc.) are real supplied feedback IDs; their verbatim text stays in the private `bmw_pm.db` and is never copied here. Hypotheses, findings, additional customer signals and competitor specs in `lib/data/fixtures/` are labelled **Synthetic** in the UI.
+`scripts/export_planning_snapshot.py` opens the configured SQLite or PostgreSQL database read-only. It returns the nine proposal anchors as redacted source text with spreadsheet locators, all validated US G60 extracted signals, and the unique feedback-ID denominator. The server caches the snapshot for five minutes. No private customer text is committed to Git. If the database is missing or any proposal anchor does not resolve, that proposal is hidden. The seven authored proposals and their factor ratings are still unreviewed drafts, not BMW-approved requirements or measured impacts.
 
-**CRPS** is `bmw_pm.decision.planning.priority_score` — `25 × [impact·w + evidence·w + market fit·w + (4 − uncertainty)·w]` — ported to `lib/domain/scoring.ts`. The what-if weights are shown on Prioritization, in every workspace and in Settings.
+Feedback-theme rows are built from extracted signal domains and unique feedback IDs. A complaint or aspiration is a potential concern; praise is preservation context, not automatic contradiction. A source span does not establish that the proposed solution is correct. The fabricated customer comments, competitor comparison and seeded PM decision formerly supplied by `lib/data/fixtures/` have been removed. Curated web seeds remain discovery notes until matched and verified; the UI does not rate competitive parity from them.
 
-PM actions follow the workbench rules: priority ratings are saved as immutable `PriorityAssessment`s with reviewer ID and rationale; approval needs a saved assessment, a reviewer ID and an explicit uncertainty acknowledgement; editing creates a new revision that does not inherit the old priority; evidence links can be assessed (`EvidenceLinkJudgment`); Decisions exports a Markdown decision brief. Everything is appended to a hash-chained audit trail stored on this device (not in `bmw_pm.db`; reset under Settings).
+The historical four-factor planning score is `bmw_pm.decision.planning.priority_score` — `25 × [impact·w + evidence·w + market fit·w + (4 − uncertainty)·w]` — ported to `lib/domain/scoring.ts`. The what-if weights apply only to that legacy estimate. A separate seven-factor framework CRPS assessment is available on each requirement workspace; see [the scoring method](../docs/CRPS_FRAMEWORK.md). Unsupported inputs remain a range and do not receive a priority band.
+
+PM actions on the Next.js planning pages create browser-local `PriorityAssessment`s and an audit trail on this device. They are not shared database decisions. Use the Python review workbench (`uv run streamlit run ui/app.py`) for shared, persisted requirements and audited PM actions. The local web actions require a reviewer ID, rationale and explicit acknowledgement for approval; editing creates a new local revision. Decisions can export a Markdown brief.
 
 As in `proposal_for()`, the US 5 Series proposals are never transferred to another market. DE / CN / EU show which evidence exists and what a transfer would need.
 

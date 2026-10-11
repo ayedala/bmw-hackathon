@@ -11,7 +11,7 @@ import { usePersistentState, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useRequirementRows } from "@/lib/view";
 
-const PROVENANCES: Provenance[] = ["bmw_record", "pipeline", "curated_seed", "synthetic"];
+const PROVENANCES: Provenance[] = ["bmw_record", "pipeline", "curated_seed"];
 
 export function MarketsScreen() {
   const { dataset, market, setMarket } = useStore();
@@ -32,18 +32,18 @@ export function MarketsScreen() {
     return out;
   }, [dataset.evidence]);
 
-  if (!selected) return <EmptyState title="No successor proposals are loaded." detail="configs/successor_proposals_v1.json is missing or empty." />;
+  if (!selected) return <EmptyState title="No verified successor proposal anchors are loaded." detail="Connect the private evidence database and reload the workbench." />;
   const th = "h-8 px-3 text-2xs font-medium uppercase tracking-wide text-slate-500";
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Market lens"
-        question="Where is each requirement assessed, and what would it take to assess another market?"
+        question="Where are these US proposals scoped, and what evidence would another market need?"
         meta={
           <span>
             Proposals are authored for the US 5 Series and, as in <span className="font-mono text-2xs">proposal_for()</span>, never transferred to another market without its own
-            review. Uncovered by feedback: {dataset.profile.uncovered_regions.join(", ") || "none"}.
+            review. The counts below show which markets have customer feedback and which have context only.
           </span>
         }
       />
@@ -84,7 +84,7 @@ export function MarketsScreen() {
                     <td className="px-3 py-1.5 text-right text-xs font-medium tabular-nums text-zinc-900">{b.total}</td>
                     <td className="px-3 py-1.5 text-xs text-slate-600">{[...b.topics].map((t) => TOPIC_LABEL[t] ?? t).join(", ") || "—"}</td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-xs">
-                      {primary ? <span className="font-medium text-brand">Assessed · {usRows.length} proposals</span> : <span className="text-slate-500">Context only</span>}
+                      {primary ? <span className="font-medium text-brand">{usRows.length} US draft proposals</span> : <span className="text-slate-500">Context only</span>}
                     </td>
                   </tr>
                 );
@@ -94,10 +94,10 @@ export function MarketsScreen() {
         </div>
       </Section>
 
-      <Section title="Requirement × market" description="Only the authored market carries a CRPS. Click a requirement to see what each other market has.">
+      <Section title="Requirement × market" description="Only the authored US market has a legacy planning score. Framework CRPS remains unassessed unless a reviewer records one.">
         <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
           <table className="w-full text-[13px]">
-            <caption className="sr-only">CRPS per requirement and market</caption>
+            <caption className="sr-only">Legacy planning scores per requirement and market</caption>
             <thead>
               <tr className="border-b border-slate-200">
                 <th scope="col" className={cn(th, "text-left")}>Requirement</th>

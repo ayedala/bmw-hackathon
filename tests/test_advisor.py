@@ -200,7 +200,8 @@ def test_provider_errors_do_not_expose_credentials_or_silently_substitute():
     assert "synthetic-secret-value" not in str(result.value)
 
 
-def test_live_workflow_uses_bounded_calls_and_keeps_private_quotes_out_of_search(evidence_db):
+def test_live_workflow_uses_bounded_calls_and_keeps_private_quotes_out_of_search(evidence_db, monkeypatch):
+    monkeypatch.setattr("bmw_pm.advisor.provider.firecrawl_key", lambda: None)
     req = request()
     plan = ResearchPlan(focus_domains=["controls_usability"], search_terms=["climate controls"],
                         research_questions=["Which manufacturers offer tactile controls?"], rationale="Investigate usability.")
@@ -224,6 +225,81 @@ def test_live_workflow_uses_bounded_calls_and_keeps_private_quotes_out_of_search
     assert calls[1]["max_tool_calls"] == 8
     assert result.mode == "live_ai" and result.steps == progress
     assert len(result.usage) == 3
+
+
+def test_page_inspection_is_restricted_to_cited_public_urls(tmp_path, monkeypatch):
+    from bmw_pm.advisor.public_tools import PublicPageInspector, firecrawl_key, public_page_url
+
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
+    (tmp_path / ".env.local").write_text("FIRECRAWL_API_KEY=synthetic-firecrawl-key\n", encoding="utf-8")
+    assert firecrawl_key(tmp_path) == "synthetic-firecrawl-key"
+    assert public_page_url("https://www.bmw.com/example")
+    for url in ("http://example.com", "https://localhost/a", "https://127.0.0.1/a",
+                "https://10.0.0.1/a", "https://example.com:8080/a", "file:///etc/passwd"):
+        assert not public_page_url(url)
+    calls = []
+
+    def scrape(url, **kwargs):
+        calls.append((url, kwargs))
+        return {"markdown": "Official product information", "metadata": {"title": "Product page", "source_url": url}}
+
+    inspector = PublicPageInspector("synthetic-key", client=SimpleNamespace(scrape=scrape))
+    with pytest.raises(ValueError, match="cited"):
+        inspector.inspect("https://other.example/page", {"https://example.com/page"}, "page:1")
+    assert not calls
+    page = inspector.inspect("https://example.com/page", {"https://example.com/page"}, "page:1")
+    assert page.channel == "inspected_public_page" and page.locator["url"] == "https://example.com/page"
+    assert len(calls) == 1
+
+
+def test_model_selected_page_is_added_as_citable_evidence_without_private_data():
+    from bmw_pm.advisor.public_tools import PublicPageInspector
+
+    research = parse_research(web_response())
+    seen = []
+    call = SimpleNamespace(type="function_call", name="inspect_public_page", call_id="call-1",
+                           arguments='{"url":"https://example.com/controls"}')
+
+    def create(**kwargs):
+        seen.append(kwargs)
+        if len(seen) == 1:
+            return SimpleNamespace(output=[call], status="completed", id="select", model="fixture", usage=None)
+        return SimpleNamespace(output=[], status="completed", id="continued", model="fixture", usage=None)
+
+    def scrape(url, **kwargs):
+        return {"markdown": "Controls are described on this public page.",
+                "metadata": {"title": "Controls", "source_url": url}}
+
+    provider = AdvisorProvider(model_id="fixture", client=SimpleNamespace(responses=SimpleNamespace(create=create)))
+    enriched = provider.inspect_research_pages(research, PublicPageInspector("synthetic-key", SimpleNamespace(scrape=scrape)))
+    assert [item.evidence_id for item in enriched.sources] == ["web:1", "page:1"]
+    assert seen[0]["tools"][0]["name"] == "inspect_public_page"
+    assert "The climate control menu is hard" not in json.dumps(seen[0]["input"])
+    assert seen[1]["input"][-1]["type"] == "function_call_output"
+    assert "page:1" in seen[1]["input"][-1]["output"]
+    assert all(call["store"] is False for call in seen)
+
+
+def test_uncited_model_page_request_never_reaches_scraper():
+    from bmw_pm.advisor.public_tools import PublicPageInspector
+
+    research = parse_research(web_response())
+    calls = []
+    tool_call = SimpleNamespace(type="function_call", name="inspect_public_page", call_id="call-1",
+                                arguments='{"url":"https://uncited.example/private"}')
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        output = [tool_call] if len(calls) == 1 else []
+        return SimpleNamespace(output=output, status="completed", id="synthetic", model="fixture", usage=None)
+
+    def scrape(*args, **kwargs):
+        raise AssertionError("Uncited URL reached scraper")
+
+    provider = AdvisorProvider(model_id="fixture", client=SimpleNamespace(responses=SimpleNamespace(create=create)))
+    result = provider.inspect_research_pages(research, PublicPageInspector("synthetic-key", SimpleNamespace(scrape=scrape)))
+    assert [item.evidence_id for item in result.sources] == ["web:1"]
+    assert "error" in calls[-1]["input"][-1]["output"]
 
 
 def test_economics_requires_inputs_and_computes_cash_flow():
