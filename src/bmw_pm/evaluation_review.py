@@ -154,7 +154,10 @@ def review_snapshot(repo_root: Path, *, record_id: str | None = None,
         case["secondary"] = current_secondary.model_dump(mode="json") if current_secondary else None
     return {"available": True, "evaluation_id": manifest.evaluation_id,
             "corpus_hash": manifest.corpus_hash, "total": len(manifest.records),
-            "counts": counts, "items": items, "case": case, "role": role,
+            "counts": {**counts, "ai_assisted_first_reviews": sum(
+                row.review_status == "labelled" and row.review_method == "ai_assisted_verified"
+                for row in primary.values())},
+            "items": items, "case": case, "role": role,
             "file_version": _version(secondary_path if role == "secondary" else root / "human_labels.jsonl"),
             "baseline": baseline, "limitations": manifest.limitations}
 
@@ -213,6 +216,8 @@ def save_review(repo_root: Path, payload: dict) -> dict:
             raise ReviewInputError("The first reviewer must be different from the second reviewer.")
         candidate = {"record_id": record_id, "reviewer_id": reviewer,
                      "reviewed_at": datetime.now(timezone.utc).isoformat(), "review_status": "labelled",
+                     "review_method": primary.get("review_method", "independent") if role == "primary" else "independent",
+                     "source_draft_hash": primary.get("source_draft_hash") if role == "primary" else None,
                      "signals": [signal.model_dump(mode="json") for signal in signals],
                      "abstention_reason": abstention, "difficulty": str(payload.get("difficulty") or "").strip() or None,
                      "double_label": item.double_label, "adjudication": None}

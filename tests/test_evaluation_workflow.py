@@ -90,6 +90,25 @@ def test_double_review_requires_independence_and_adjudication(frozen):
     assert report["gold_ready"] == 1 and report["second_reviewed"] == 1
 
 
+def test_ai_assisted_first_review_retains_provenance_and_cannot_be_second_review(frozen, tmp_path, monkeypatch):
+    import bmw_pm.evaluation_review as review
+    monkeypatch.setattr(review, "_root", lambda _: frozen)
+    rows, _ = _label_first(frozen)
+    rows[0]["review_method"] = "ai_assisted_verified"
+    rows[0]["source_draft_hash"] = "a" * 64
+    (frozen / "human_labels.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+    snapshot = review_snapshot(tmp_path, record_id=rows[0]["record_id"])
+    assert snapshot["counts"]["ai_assisted_first_reviews"] == 1
+    assert snapshot["case"]["review"]["source_draft_hash"] == "a" * 64
+    second = {**rows[0], "reviewer_id": "reviewer-b", "adjudication": None}
+    path = frozen / "second_review.jsonl"
+    path.write_text(json.dumps(second) + "\n", encoding="utf-8")
+    manifest, packets = load_frozen(frozen)
+    with pytest.raises(ValueError, match="invalid second review"):
+        load_labels(frozen, manifest, packets, second_review=path)
+
+
 def test_resumable_baseline_and_scoring_without_gold(frozen, tmp_path):
     provider = BaselineExtractionProvider.from_file("configs/baseline_taxonomy_v1.json")
     output = tmp_path / "baseline-development"

@@ -9,11 +9,13 @@ python -m bmw_pm.cli freeze-evaluation
 
 The private output is `runs/evaluation-v1/`, excluded from Git. The manifest and four split packets are frozen inputs, with a hash receipt. A repeat verifies them without rewriting human work; changed content requires a new version. Preserve old versions. The export is recorded in the application's audit trail.
 
-The current private `evaluation-v1` set contains 120 cases (60 development G60, 30 held-out G60, 15 F70 and 15 G70). Its manifest and selected IDs match the shared Supabase feedback corpus. Deterministic baseline runs are saved for all four splits. No human labels have been supplied, so accuracy is still unmeasured.
+The private `evaluation-v1` set contains 120 cases (60 development G60, 30 held-out G60, 15 F70 and 15 G70). Its manifest and selected IDs match the shared Supabase feedback corpus. Deterministic baseline runs are saved for all four splits. Reviewer progress is stored only in the ignored local label files, so each checkout must read its own dashboard for current counts.
 
 Open the local website's **Evaluation** page at `/evaluation` to review the frozen packets. Choose **First review** for the initial label. A separate person chooses **Independent second review** for the 30 flagged packets; this view does not reveal the first review's labels. After both reviews, a third reviewer chooses **Resolve two reviews** and records a reason and resolved label. The page validates exact quotes, reviewer IDs, and stale file versions before saving. Reviewers can record multiple atomic signals or an explained abstention. The page never sends these packets to an LLM.
 
 The dashboard shows case coverage and baseline attempt counts immediately. It shows a split's extraction precision, recall and F1 only after every case in that split has a completed gold label. These are topic/polarity/span overlap proxies, not semantic correctness or recommendation accuracy. The local page has no reviewer authentication; coordinate reviewer IDs and share the private label files securely if teammates use separate computers. Do not commit `runs/` or customer text.
+
+When a person verifies an AI-prepared draft, mark the resulting first review `ai_assisted_verified` and retain the draft file hash. It is a human-approved, AI-assisted label, with that exposure visible in the dashboard. The flagged records still require a different person's independent second review and adjudication. Never use an unverified AI draft as gold or call agreement with it independent human accuracy.
 
 ## Splits
 
