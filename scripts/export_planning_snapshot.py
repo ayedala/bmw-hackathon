@@ -114,6 +114,11 @@ def snapshot() -> dict:
             "SELECT s.payload_json,s.payload_hash FROM signals s JOIN feedback_records f ON f.record_id=s.feedback_record_id "
             "WHERE f.model_code='G60' AND f.country='US' ORDER BY s.signal_id"
         ).fetchall()
+        # Older read-only SQLite snapshots may contain only the four payload
+        # columns used above. Keep the G60 workbench available in that case.
+        coverage_supported = backend == "postgres" or {"need_domain", "polarity"}.issubset(
+            {row[1] for row in connection.execute("PRAGMA table_info(signals)").fetchall()}
+        )
         example_ids = [source_id for domains in THEME_EXAMPLES.values() for source_id in domains.values()]
         sample_rows = connection.execute(
             "SELECT f.model_code,s.need_domain,s.payload_json,s.payload_hash,f.source_record_id,f.country "
@@ -121,13 +126,13 @@ def snapshot() -> dict:
             f"WHERE f.source_record_id IN ({','.join([bind] * len(example_ids))}) "
             "AND s.polarity IN ('complaint','aspiration') ORDER BY s.signal_id",
             tuple(example_ids),
-        ).fetchall()
+        ).fetchall() if coverage_supported else []
         samples_by_theme = {}
         for row in sample_rows:
             if THEME_EXAMPLES.get(row[0], {}).get(row[1]) == row[4]:
                 samples_by_theme.setdefault((row[0], row[1]), []).append(row)
         model_coverage = []
-        for model in ("F70", "G70"):
+        for model in (("F70", "G70") if coverage_supported else ()):
             market_rows = connection.execute(
                 "SELECT country, count(*) FROM feedback_records WHERE model_code=" + bind +
                 " GROUP BY country ORDER BY count(*) DESC, country", (model,)
