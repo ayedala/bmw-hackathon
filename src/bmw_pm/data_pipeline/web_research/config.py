@@ -134,6 +134,10 @@ DEFAULT_OPENAI_MODEL: Final[str] = "gpt-5-mini"
 #: Per-request OpenAI timeout in seconds.
 DEFAULT_OPENAI_TIMEOUT_SECONDS: Final[float] = 180.0
 
+#: Request timeout shared by every LLM provider. Kept as an alias of the
+#: OpenAI value so the existing OPENAI_TIMEOUT_SECONDS setting still governs it.
+DEFAULT_LLM_TIMEOUT_SECONDS: Final[float] = DEFAULT_OPENAI_TIMEOUT_SECONDS
+
 #: SDK retry count. 1 means one retry after the first failed attempt.
 DEFAULT_OPENAI_MAX_RETRIES: Final[int] = 1
 

@@ -1210,6 +1210,72 @@ class TestSemanticNormalization(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 
 
+class TestRetryLayering(unittest.TestCase):
+    """Retries must not multiply across the SDK and our own wrapper.
+
+    _invoke is decorated with with_retries(attempts=3). The OpenAI client used
+    to be built with max_retries=1 and the Anthropic client with no max_retries
+    at all, so the SDK retried underneath the wrapper: 6 and 9 billed requests
+    respectively for a single chunk, while call_count only ever saw 3.
+    """
+
+    def test_openai_client_is_built_with_sdk_retries_disabled(self):
+        from llm_provider import OpenAIProvider
+        provider = OpenAIProvider(model="gpt-5-mini", api_key="not-a-real-key")
+        try:
+            client = provider.client
+        except Exception as exc:  # pragma: no cover - openai not installed
+            self.skipTest(f"openai package unavailable: {exc}")
+        self.assertEqual(client.max_retries, 0)
+
+    def test_openai_client_carries_the_configured_timeout(self):
+        from llm_provider import OpenAIProvider
+        provider = OpenAIProvider(
+            model="gpt-5-mini", api_key="not-a-real-key", timeout_seconds=42.0)
+        try:
+            client = provider.client
+        except Exception as exc:  # pragma: no cover - openai not installed
+            self.skipTest(f"openai package unavailable: {exc}")
+        self.assertEqual(client.timeout, 42.0)
+
+    def test_anthropic_provider_has_a_timeout_to_pass(self):
+        """The Anthropic client reads self._timeout_seconds, which only lived
+        on OpenAIProvider until the base class gained it."""
+        from llm_provider import AnthropicProvider
+        provider = AnthropicProvider(model="claude-opus-5-5", api_key="not-a-real-key")
+        self.assertIsInstance(provider._timeout_seconds, float)
+        self.assertGreater(provider._timeout_seconds, 0)
+
+    def test_total_http_attempts_equal_the_wrapper_attempts(self):
+        """One logical call must bill exactly the wrapper's attempt count."""
+        from llm_provider import LLMError, OpenAIProvider
+
+        http = {"n": 0}
+
+        class Completions:
+            def create(self, **kwargs):
+                http["n"] += 1
+                raise RuntimeError("503 transient upstream error")
+
+        class Client:
+            def __init__(self):
+                self.chat = type("Chat", (), {"completions": Completions()})()
+
+        provider = OpenAIProvider(model="gpt-5-mini", api_key="not-a-real-key")
+        client = Client()
+        type(provider).client = property(lambda self: client)
+        try:
+            with self.assertRaises(LLMError):
+                provider.complete_json(system="s", user="u", schema={"type": "object"})
+        finally:
+            del type(provider).client
+
+        self.assertEqual(http["n"], 3)
+        # call_count is the number people read off the run summary to judge
+        # spend, so it has to be the real request count.
+        self.assertEqual(provider.call_count, http["n"])
+
+
 class TestCanonicalUnits(unittest.TestCase):
     def test_minute_spellings_all_become_minutes(self):
         for raw in ("Min.", "Minuten", "min", "mins", "minute", "MINUTES"):

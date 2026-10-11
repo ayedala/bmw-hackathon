@@ -39,9 +39,18 @@ class BaseLLMProvider(ABC):
     #: Short provider identifier, used in logs.
     name: str = "base"
 
-    def __init__(self, *, model: str, api_key: str) -> None:
+    def __init__(
+        self,
+        *,
+        model: str,
+        api_key: str,
+        timeout_seconds: float = config.DEFAULT_LLM_TIMEOUT_SECONDS,
+    ) -> None:
         self.model = model
         self._api_key = api_key
+        #: Every provider needs a request timeout, so it lives here rather than
+        #: in one subclass. The Anthropic client was built without one.
+        self._timeout_seconds = timeout_seconds
         self.call_count = 0
         self._log = get_logger()
         self._client: Any | None = None
@@ -88,11 +97,10 @@ class OpenAIProvider(BaseLLMProvider):
         *,
         model: str,
         api_key: str,
-        timeout_seconds: float = config.DEFAULT_OPENAI_TIMEOUT_SECONDS,
+        timeout_seconds: float = config.DEFAULT_LLM_TIMEOUT_SECONDS,
         max_retries: int = config.DEFAULT_OPENAI_MAX_RETRIES,
     ) -> None:
-        super().__init__(model=model, api_key=api_key)
-        self._timeout_seconds = timeout_seconds
+        super().__init__(model=model, api_key=api_key, timeout_seconds=timeout_seconds)
         self._max_retries = max_retries
 
     #: Model name prefixes that use the reasoning-model parameter set.
@@ -110,10 +118,16 @@ class OpenAIProvider(BaseLLMProvider):
                     "`pip install -r requirements.txt` inside src/bmw_pm/data_pipeline/web_research/."
                 ) from exc
 
+            # max_retries=0 on purpose. _invoke is already wrapped in
+            # with_retries, so leaving the SDK's own retries on made the two
+            # layers multiply: 3 wrapper attempts x 2 SDK attempts was 6 billed
+            # requests for one chunk, and call_count only ever saw 3 of them.
+            # The wrapper is the single retry authority; self._max_retries is
+            # what it is configured from.
             self._client = OpenAI(
                 api_key=self._api_key,
                 timeout=self._timeout_seconds,
-                max_retries=self._max_retries,
+                max_retries=0,
             )
 
         return self._client
@@ -307,8 +321,14 @@ class AnthropicProvider(BaseLLMProvider):
                     "`pip install -r requirements.txt` inside src/bmw_pm/data_pipeline/web_research/."
                 ) from exc
 
+            # Same reasoning as the OpenAI client, and this one was worse: it
+            # passed no max_retries at all, so it inherited the SDK default of
+            # two retries and multiplied to 9 billed requests per chunk. It was
+            # also missing the timeout.
             self._client = anthropic.Anthropic(
-                api_key=self._api_key
+                api_key=self._api_key,
+                timeout=self._timeout_seconds,
+                max_retries=0,
             )
 
         return self._client
@@ -489,6 +509,7 @@ def get_provider(settings: Settings) -> BaseLLMProvider:
         provider = provider_cls(
             model=model,
             api_key=api_key,
+            timeout_seconds=settings.openai_timeout_seconds,
         )
 
     get_logger().info(
