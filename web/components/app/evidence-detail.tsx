@@ -16,10 +16,13 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
   const { dataset, evidenceById, requirements } = useStore();
   const [showRaw, setShowRaw] = useState(false);
   const usedBy = dataset.hypotheses.filter((h) => h.links.some((l) => l.evidence_id === evidence.id));
-  const findings = dataset.findings.filter((f) => f.hypothesis_ids.some((id) => usedBy.some((h) => h.id === id)));
+  const findings = dataset.reasoning.authoritative
+    ? dataset.findings.filter((f) => dataset.reasoning.findings.some((row) => row.artifact.finding_id === f.id && row.artifact.evidence_ids.includes(evidence.id)))
+    : dataset.findings.filter((f) => f.hypothesis_ids.some((id) => usedBy.some((h) => h.id === id)));
+  const needs = dataset.reasoning.authoritative ? dataset.reasoning.needs.filter((n) => n.artifact.evidence_ids.includes(evidence.id) || n.findings.some((f) => f.artifact.evidence_ids.includes(evidence.id))) : [];
   const reqs = requirements.filter(
     (r) => r.finding_ids.some((fid) => findings.some((f) => f.id === fid)) ||
-      r.revisions.some((rev) => rev.evidence_links.some((l) => l.signal_id === evidence.id)),
+      r.revisions.some((rev) => rev.evidence_links.some((l) => l.signal_id === evidence.id) || rev.evidence_references?.some((ref) => ref.evidence_id === evidence.id)),
   );
   const original = evidence.duplicate_of ? evidenceById.get(evidence.duplicate_of) : undefined;
 
@@ -70,7 +73,7 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
               </a>
             ) : (
               <span className="text-slate-500">
-                {evidence.kind === "customer_feedback" ? "Supplied workbook (no public URL)" : "Not captured — synthetic illustration"}
+                {evidence.kind === "customer_feedback" ? "Supplied workbook (no public URL)" : evidence.provenance === "synthetic" ? "Synthetic illustration (no URL)" : "Source URL was not captured"}
               </span>
             )}
           </li>
@@ -118,7 +121,7 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
         </div>
       )}
 
-      <div>
+      {!dataset.reasoning.authoritative && <div>
         <SubHeading count={usedBy.length}>Used in hypotheses</SubHeading>
         {usedBy.length === 0 ? (
           <p className="text-xs text-slate-500">Not linked to a hypothesis yet.</p>
@@ -138,9 +141,9 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
             })}
           </ul>
         )}
-      </div>
+      </div>}
 
-      {(findings.length > 0 || reqs.length > 0) && (
+      {(findings.length > 0 || needs.length > 0 || reqs.length > 0) && (
         <div className="grid grid-cols-2 gap-4">
           <div>
             <SubHeading count={findings.length}>Findings</SubHeading>
@@ -154,6 +157,7 @@ export function EvidenceDetail({ evidence }: { evidence: EvidenceItem }) {
               ))}
             </ul>
           </div>
+          {needs.length > 0 && <div><SubHeading count={needs.length}>Customer needs</SubHeading><ul className="space-y-1 text-xs">{needs.map((n) => <li key={n.artifact.need_id}><Link href={`/needs?id=${encodeURIComponent(n.artifact.need_id)}`} className="text-zinc-900 hover:underline">{n.artifact.statement}</Link></li>)}</ul></div>}
           <div>
             <SubHeading count={reqs.length}>Requirements</SubHeading>
             <ul className="space-y-1 text-xs">

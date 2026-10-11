@@ -55,6 +55,9 @@ function resolvePython(root: string): string | null {
   }
   const venv = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
   if (existsSync(venv)) return venv;
+  // This repository's documented sibling research environment is shared by its worktrees.
+  const researchVenv = path.resolve(root, "../bmw-hackathon-research/.venv/bin/python");
+  if (existsSync(researchVenv)) return researchVenv;
   return "python3";
 }
 
@@ -92,7 +95,7 @@ async function readBody(request: Request): Promise<string | Response> {
 }
 
 /** Run one bridge action and return its single result event. */
-function runBridge(action: ReviewAction, input: string): Promise<ReviewResult> {
+export function runBridge(action: ReviewAction, input: string): Promise<ReviewResult> {
   const root = repoRoot();
   const python = resolvePython(root);
   if (!python) {
@@ -194,6 +197,9 @@ function runBridge(action: ReviewAction, input: string): Promise<ReviewResult> {
 export async function reviewResponse(request: Request, action: string): Promise<Response> {
   if (!(REVIEW_ACTIONS as readonly string[]).includes(action)) {
     return fail("invalid_request", `Unknown review action: ${action}`);
+  }
+  if (request.method !== "POST" && !["state", "audit", "canonical"].includes(action)) {
+    return fail("invalid_request", "Mutating review operations require POST.");
   }
   const body = await readBody(request);
   if (body instanceof Response) return body;

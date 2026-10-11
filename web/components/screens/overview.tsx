@@ -15,6 +15,7 @@ import { priorityRank, TOPIC_LABEL } from "@/lib/domain/derive";
 import { MARKET_LABEL } from "@/lib/domain/model";
 import { useStore } from "@/lib/store";
 import { useFindingRows, useRequirementRows, type FindingRow, type RequirementRow } from "@/lib/view";
+import { CanonicalOverviewScreen } from "./canonical-planning";
 
 const EvidenceBalanceChart = dynamic(() => import("@/components/app/charts").then((m) => m.EvidenceBalanceChart), {
   ssr: false,
@@ -22,6 +23,12 @@ const EvidenceBalanceChart = dynamic(() => import("@/components/app/charts").the
 });
 
 export function OverviewScreen() {
+  const { dataset } = useStore();
+  if (dataset.mode !== "demo") return <CanonicalOverviewScreen />;
+  return <DemoOverviewScreen />;
+}
+
+function DemoOverviewScreen() {
   const router = useRouter();
   const { dataset, market, challenges, weightsAreDefault } = useStore();
   const rows = useRequirementRows(market);

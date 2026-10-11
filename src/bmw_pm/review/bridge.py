@@ -33,6 +33,8 @@ from ..storage import Database
 from ..storage.config import StorageError, database_target
 from ..storage.database import RevisionConflict, WorkflowError
 from .service import ReviewService
+from .canonical import canonical_review_details, canonical_view, import_canonical
+from .challenge import ChallengeService
 
 #: Repository root, three levels up from this file (src/bmw_pm/review/).
 ROOT = Path(__file__).resolve().parents[3]
@@ -94,6 +96,31 @@ class StateRequest(Contract):
     requirement_ids: list[str] = Field(default_factory=list)
 
 
+class ImportCanonicalRequest(Contract):
+    actor_id: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+
+
+class ChallengeRequest(Contract):
+    requirement_id: str = Field(min_length=1)
+    expected_revision: int = Field(ge=1)
+    hypothesis: str = Field(min_length=1, max_length=8000)
+    rationale: str = Field(min_length=1)
+    actor_id: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
+
+
+class ReassessRequest(Contract):
+    challenge_id: str = Field(min_length=1)
+    requirement_id: str = Field(min_length=1)
+    expected_revision: int = Field(ge=1)
+    accept: bool
+    rationale: str = Field(min_length=1)
+    actor_id: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
+
+
 def _load_policy(policy_path: str | None = None) -> PolicyVersion | None:
     """Load the scoring policy, or None when it is not readable.
 
@@ -137,6 +164,12 @@ def _requirement_state(
     else:
         readiness = assess_readiness(requirement, score, policy).model_dump(mode="json")
         readiness_note = None
+    quality = None
+    if requirement.canonical_provenance:
+        details = canonical_review_details(requirement, score, judgments)
+        quality, readiness = details["quality"], details["readiness"]
+        readiness_note = None
+    history = database.replay_requirement(requirement_id)
     return {
         "requirement_id": requirement_id,
         "present": True,
@@ -145,6 +178,7 @@ def _requirement_state(
         "feasibility": requirement.feasibility,
         "requirement": requirement.model_dump(mode="json"),
         "score": score.model_dump(mode="json") if score else None,
+        "crps": score.coverage.get("crps") if score else None,
         "decision": decision.model_dump(mode="json") if decision else None,
         "judgments": {
             signal_id: judgment.model_dump(mode="json")
@@ -152,6 +186,14 @@ def _requirement_state(
         },
         "readiness": readiness,
         "readiness_note": readiness_note,
+        "quality": quality,
+        "lineage": {"need_ids": requirement.need_ids, "finding_ids": requirement.finding_ids,
+                    "evidence_ids": [ref.evidence_id for ref in requirement.evidence_references]},
+        "revisions": history["revisions"],
+        "decisions": history["decisions"],
+        "evidence_judgments": history["evidence_judgments"],
+        "score_snapshots": history.get("score_snapshots", []),
+        "challenges": ChallengeService(database).history(requirement_id),
     }
 
 
@@ -162,6 +204,11 @@ def execute(
     emit: Callable[[dict], None],
 ) -> None:
     """Dispatch one action. Every write goes through ReviewService."""
+    if action == "canonical":
+        if payload:
+            raise ValueError("Canonical preview accepts no parameters")
+        emit({"type": "canonical", **canonical_view(ROOT)})
+        return
     database = Database(database_path)
     # The write paths initialize the schema themselves, the read paths do not,
     # so an unused database reported "no such table" as backend_unavailable.
@@ -173,7 +220,13 @@ def execute(
     def state(requirement_id: str) -> dict[str, Any]:
         return _requirement_state(database, requirement_id, policy)
 
-    if action == "state":
+    if action == "import_canonical":
+        request = ImportCanonicalRequest.model_validate(payload)
+        result = import_canonical(database, root=ROOT, **request.model_dump())
+        emit({"type": "import_canonical", **result,
+              "requirements": [state(rid) for rid in result["requirement_ids"]]})
+
+    elif action == "state":
         request = StateRequest.model_validate(payload)
         ids = request.requirement_ids or [
             item["requirement"].requirement_id
@@ -227,11 +280,21 @@ def execute(
         emit({"type": "judgment", "judgment": judgment.model_dump(mode="json"),
               "state": state(request.requirement_id)})
 
+    elif action == "challenge":
+        request = ChallengeRequest.model_validate(payload)
+        result = ChallengeService(database, root=ROOT).challenge(**request.model_dump())
+        emit({"type": "challenge", "challenge": result, "state": state(request.requirement_id)})
+
+    elif action == "reassess":
+        request = ReassessRequest.model_validate(payload)
+        result = ChallengeService(database, root=ROOT).reassess(**request.model_dump())
+        emit({"type": "reassessment", "reassessment": result, "state": state(request.requirement_id)})
+
     elif action == "audit":
         valid, checkpoint = database.verify_audit_chain()
         emit({"type": "audit", "valid": valid, "checkpoint": checkpoint,
               "events": [event.model_dump(mode="json")
-                         for event in database.audit_events()[-200:]]})
+                         for event in database.audit_events()]})
     else:
         raise ValueError(f"Unsupported review operation: {action!r}")
 

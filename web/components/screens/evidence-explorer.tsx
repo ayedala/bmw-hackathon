@@ -48,7 +48,7 @@ interface Row {
 
 export function EvidenceExplorer() {
   const params = useSearchParams();
-  const { dataset } = useStore();
+  const { dataset, requirements } = useStore();
   const panel = useEvidencePanel();
   const [filters, setFilters] = usePersistentState<Filters>("evidence", DEFAULTS);
 
@@ -69,11 +69,20 @@ export function EvidenceExplorer() {
 
   const stanceOf = useMemo(() => {
     const map = new Map<string, { stance: Stance; hypothesis: string }>();
+    if (dataset.reasoning.authoritative) {
+      for (const bundle of requirements) for (const ref of bundle.revisions.at(-1)?.evidence_references ?? []) {
+        const mapped: Stance = ref.role === "opposes" ? "contradicts" : ref.role === "supports" ? "supports" : "neutral";
+        const previous = map.get(ref.evidence_id);
+        map.set(ref.evidence_id, { stance: previous && previous.stance !== mapped ? "neutral" : mapped,
+          hypothesis: previous && previous.stance !== mapped ? "varies by requirement" : bundle.display_id });
+      }
+      return map;
+    }
     for (const h of dataset.hypotheses) {
       for (const l of h.links) if (!map.has(l.evidence_id)) map.set(l.evidence_id, { stance: l.stance, hypothesis: h.id });
     }
     return map;
-  }, [dataset.hypotheses]);
+  }, [dataset.hypotheses, dataset.reasoning.authoritative, requirements]);
 
   const rows: Row[] = useMemo(
     () =>

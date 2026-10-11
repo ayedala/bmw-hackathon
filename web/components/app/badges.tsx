@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 
-export function PriorityBadge({ priority }: { priority: Priority }) {
+export function PriorityBadge({ priority, hint }: { priority: Priority; hint?: string }) {
   const styles: Record<Priority, string> = {
     P1: "bg-zinc-900 text-white",
     P2: "bg-zinc-700 text-white",
@@ -29,7 +29,7 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
     Watch: "border border-dashed border-slate-300 text-slate-600",
   };
   return (
-    <Tooltip content={PRIORITY_RULE}>
+    <Tooltip content={hint ?? PRIORITY_RULE}>
       <span
         tabIndex={0}
         className={cn(

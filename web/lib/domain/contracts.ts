@@ -87,7 +87,26 @@ export interface RequirementEvidenceLink {
 export type TargetStatus = "pending_engineering_review" | "proposed_target" | "reviewed_target";
 export type Feasibility = "unknown" | "conditional" | "feasible_reviewed" | "blocked";
 
+export interface EvidenceReference {
+  evidence_id: string; evidence_kind: "internal_feedback" | "external_web" | "youtube" | "study" | "planning_context";
+  role: "supports" | "opposes" | "context";
+  source_url: string | null; source_title: string | null; source_family: string | null;
+  market: string | null; vehicle: string | null; topic: string | null; subtopic: string | null;
+  published_at: string | null; retrieved_at: string | null; stance: string | null;
+  source_quality: number | null; confidence: number | string | null;
+  independence_group: string | null; duplicate_of: string | null;
+  claim: string; exact_text: string; source_start_char: number | null; source_end_char: number | null;
+  source_locator: Record<string, unknown>; provenance: Record<string, unknown>;
+  semantic_entailment: "unreviewed" | "reviewed_supports" | "reviewed_rejects";
+}
+
 export interface RequirementRevision {
+  evidence_references?: EvidenceReference[];
+  topic?: string | null;
+  planning_horizon?: string | null;
+  need_ids?: string[];
+  finding_ids?: string[];
+  canonical_provenance?: Record<string, unknown>;
   schema_version: string;
   requirement_id: string;
   revision: number;

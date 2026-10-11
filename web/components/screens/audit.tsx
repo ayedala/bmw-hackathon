@@ -21,23 +21,12 @@ interface Filters {
   action: string;
 }
 const DEFAULTS: Filters = { q: "", actor: "all", action: "all" };
-
-function verifyChain(events: AuditEvent[]) {
-  for (let i = 1; i < events.length; i += 1) {
-    const prev = events[i - 1];
-    const cur = events[i];
-    if (!prev || !cur) continue;
-    if (cur.previous_event_hash !== prev.event_hash || cur.monotonic_sequence !== prev.monotonic_sequence + 1) {
-      return { ok: false, at: cur.monotonic_sequence };
-    }
-  }
-  return { ok: true, at: null };
-}
+const isPmActor = (actorType: string) => actorType === "human" || actorType === "pm" || actorType === "demo_pm";
 
 export function AuditScreen() {
-  const { audit, requirementByDisplayId } = useStore();
+  const { audit, requirementByDisplayId, dataset, auditVerification, auditError, refreshBackend } = useStore();
   const [filters, setFilters] = usePersistentState<Filters>("audit", DEFAULTS);
-  const [check, setCheck] = useState<{ ok: boolean; at: number | null } | null>(null);
+  const [checking, setChecking] = useState(false);
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
   const actions = useMemo(() => [...new Set(audit.map((e) => e.action))].sort(), [audit]);
@@ -45,7 +34,9 @@ export function AuditScreen() {
     const q = filters.q.trim().toLowerCase();
     return audit
       .filter((e) => {
-        if (filters.actor !== "all" && e.actor_type !== filters.actor) return false;
+        if (filters.actor === "pm" || filters.actor === "human") {
+          if (!isPmActor(e.actor_type)) return false;
+        } else if (filters.actor === "pipeline" ? isPmActor(e.actor_type) : filters.actor !== "all" && e.actor_type !== filters.actor) return false;
         if (filters.action !== "all" && e.action !== filters.action) return false;
         if (q && !`${e.object_id} ${e.reason} ${e.actor_id} ${e.action}`.toLowerCase().includes(q)) return false;
         return true;
@@ -56,7 +47,7 @@ export function AuditScreen() {
 
   const active: ActiveFilter[] = [];
   if (filters.q) active.push({ key: "q", label: `“${filters.q}”`, onClear: () => set("q", "") });
-  if (filters.actor !== "all") active.push({ key: "actor", label: filters.actor === "human" ? "PM actions" : "Pipeline", onClear: () => set("actor", "all") });
+  if (filters.actor !== "all") active.push({ key: "actor", label: filters.actor === "pm" || filters.actor === "human" ? "PM actions" : "Pipeline", onClear: () => set("actor", "all") });
   if (filters.action !== "all") active.push({ key: "action", label: humanize(filters.action), onClear: () => set("action", "all") });
 
   const columns: Column<AuditEvent>[] = [
@@ -78,7 +69,7 @@ export function AuditScreen() {
       header: "Actor",
       cell: (e) => (
         <span className="text-xs">
-          <span className={cn(e.actor_type === "human" ? "font-medium text-zinc-900" : "text-slate-600")}>{e.actor_id}</span>
+          <span className={cn(isPmActor(e.actor_type) ? "font-medium text-zinc-900" : "text-slate-600")}>{e.actor_id}</span>
           <span className="block text-2xs text-slate-400">{e.actor_type}</span>
         </span>
       ),
@@ -105,6 +96,7 @@ export function AuditScreen() {
       className: "w-44",
     },
     { key: "reason", header: "Reason / details", cell: (e) => <span className="text-xs leading-snug text-slate-700">{e.reason}</span>, className: "min-w-[320px]" },
+    { key: "request", header: "Request / result", cell: (e) => <span className="block max-w-48 break-all font-mono text-2xs">{e.request_id}<span className="block font-sans text-slate-500">{e.result}</span></span>, className: "w-48" },
     {
       key: "hash",
       header: "Hash",
@@ -123,27 +115,26 @@ export function AuditScreen() {
     <div>
       <PageHeader
         title="Audit trail"
-        question="What happened, who did it, and why?"
+        question="What happened, who did it, and why? Every displayed canonical event comes from the backend audit chain."
         meta={
           <>
             <span>{audit.length} events</span>
-            <span>{audit.filter((e) => e.actor_type === "human").length} PM actions</span>
-            <span>Append-only, hash-chained (AuditEvent contract)</span>
+            <span>{audit.filter((e) => isPmActor(e.actor_type)).length} PM actions</span>
+            <span>{dataset.mode === "demo" ? "Explicit demo session trail" : "Backend append-only hash chain"}</span>
           </>
         }
         actions={
           <div className="flex items-center gap-2">
-            {check && (
-              <span className={cn("text-xs", check.ok ? "text-zinc-700" : "text-red-700")} role="status">
-                {check.ok ? `Chain intact across ${audit.length} events` : `Chain broken at event ${check.at}`}
-              </span>
-            )}
-            <Button size="sm" onClick={() => setCheck(verifyChain(audit))}>
-              Verify chain
+            <span className={cn("text-xs", auditVerification?.valid ? "text-zinc-700" : "text-amber-700")} role="status">
+              {auditVerification ? auditVerification.valid ? `Backend verified ${audit.length} events · checkpoint ${auditVerification.checkpoint.slice(0, 12)}` : `Backend verification failed: ${auditVerification.checkpoint}` : auditError ?? "Backend verification unavailable"}
+            </span>
+            <Button size="sm" disabled={checking} onClick={async () => { setChecking(true); try { await refreshBackend(); } finally { setChecking(false); } }}>
+              Verify with backend
             </Button>
           </div>
         }
       />
+      {auditError && dataset.mode !== "demo" && <p role="alert" className="mb-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">{auditError}. No browser audit is substituted.</p>}
       <FilterBar active={active} onClearAll={() => setFilters(DEFAULTS)} resultLabel={`${filtered.length} events, newest first`}>
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
@@ -155,7 +146,7 @@ export function AuditScreen() {
           onValueChange={(v) => set("actor", v)}
           options={[
             { value: "all", label: "All" },
-            { value: "human", label: "PM actions" },
+            { value: "pm", label: "PM actions" },
             { value: "pipeline", label: "Pipeline" },
           ]}
         />

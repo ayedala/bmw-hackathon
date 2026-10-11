@@ -26,6 +26,7 @@ import type {
   ArtifactRequirementScore,
 } from "@/lib/domain/reasoning";
 import { buildReasoningGraph } from "@/lib/domain/reasoning";
+import { runBridge } from "@/lib/review/server";
 import { SYNTHETIC_EXTERNAL } from "./fixtures/external";
 import { feedbackEvidence, SYNTHETIC_SIGNALS } from "./fixtures/feedback";
 import { BENCHMARK, FINDINGS, HYPOTHESES } from "./fixtures/graph";
@@ -46,8 +47,8 @@ const FILES = {
   seeds: "research/web_evidence_seed.jsonl",
 } as const;
 
-/** The web-research pipeline moved into src/bmw_pm/data_pipeline on main; older checkouts keep data at the legacy path. */
-const PIPELINE_DIRS = ["src/bmw_pm/data_pipeline/web_research/data", "external_research_pipeline/data"] as const;
+/** Only the active repository pipeline is authoritative. */
+const PIPELINE_DIRS = ["src/bmw_pm/data_pipeline/web_research/data"] as const;
 
 async function firstExisting(relativeFile: string): Promise<string> {
   for (const dir of PIPELINE_DIRS) {
@@ -141,7 +142,8 @@ function toMarket(code: string | null | undefined): MarketCode {
   const upper = (code ?? "").toUpperCase();
   if ((MARKETS as readonly string[]).includes(upper)) return upper as MarketCode;
   if (["FR", "IT", "ES", "NL", "AT", "CH", "BE", "SE", "PL", "UK", "GB", "EUROPE", "EU"].includes(upper)) return "EU";
-  return "DE";
+  if (["GLOBAL", "WORLD"].includes(upper)) return "GLOBAL";
+  return "UNKNOWN";
 }
 
 function externalToItem(record: ProcessedEvidence, provenance: "pipeline" | "synthetic"): EvidenceItem {
@@ -367,7 +369,7 @@ function contextToItem(source: PlanningContextSource): EvidenceItem {
   } catch {
     /* keep raw url */
   }
-  const meta = CONTEXT_META[host] ?? { family: "other" as const, topic: "market_trend" as const, subtopic: "customer_expectation", market: "US" as const, vehicle: "—", brand: "—" };
+  const meta = CONTEXT_META[host] ?? { family: "other" as const, topic: "market_trend" as const, subtopic: "customer_expectation", market: "UNKNOWN" as const, vehicle: "—", brand: "—" };
   const id = host.startsWith("adac") ? "ctx-adac-i5" : host.startsWith("mbusa") ? "ctx-mbusa-eqe" : host.startsWith("iea") ? "ctx-iea-gevo" : `ctx-${hashString(source.url)}`;
   return {
     id,
@@ -405,7 +407,6 @@ export async function loadDataset(): Promise<Dataset> {
   const proposals = await readJson<SuccessorProposalFile>(FILES.proposals, EMPTY_PROPOSALS, status);
   const context = await readJson<PlanningContextSource[]>(FILES.context, [], status);
   const pipeline = await readJsonl<ProcessedEvidence>(await firstExisting("processed/external_evidence.jsonl"), status);
-  const seeds = await readJsonl<WebResearchSeedRecord>(FILES.seeds, status);
 
   // The real reasoning chain. Present on main; absent in demo checkouts, in
   // which case the fixture graph below is used and the UI says so.
@@ -418,17 +419,6 @@ export async function loadDataset(): Promise<Dataset> {
   const artifactScores = await readJsonl<ArtifactRequirementScore>(
     await firstExisting("processed/requirement_scores.jsonl"), status);
   const runs = await readJsonl<ResearchRun>(await firstExisting("metadata/research_runs.jsonl"), status);
-
-  const evidence: EvidenceItem[] = [
-    ...anchorEvidence(),
-    ...pipeline.map((r) => externalToItem(r, "pipeline")),
-    ...seeds.map(seedToItem),
-    ...context.map(contextToItem),
-    ...SYNTHETIC_EXTERNAL.map((r) => externalToItem(r, "synthetic")),
-    ...feedbackEvidence(SYNTHETIC_SIGNALS),
-  ];
-
-  const requirements = buildRequirements(proposals, SYNTHETIC_SIGNALS);
 
   // The planning scope is whatever the loaded profile declares. Hardcoding it
   // here would let the profile and the UI disagree silently.
@@ -443,21 +433,56 @@ export async function loadDataset(): Promise<Dataset> {
     scores: artifactScores,
   });
 
+  // A partial/invalid canonical corpus must never switch into believable demo data.
+  const artifactsPresent = status.some((s) => /processed\/(findings|customer_needs|requirements|requirement_scores)\.jsonl$/.test(s.path) && s.status !== "missing");
+  const demo = !artifactsPresent && process.env.BMW_DEMO_MODE === "1";
+  const canonical = artifactsPresent ? await runBridge("canonical", "{}") : null;
+  const preview = canonical?.type === "canonical" ? canonical.requirements : [];
+  const mode: Dataset["mode"] = artifactsPresent ? "canonical" : demo ? "demo" : "unavailable";
+  const seeds = demo ? await readJsonl<WebResearchSeedRecord>(FILES.seeds, status) : [];
+  const evidence: EvidenceItem[] = demo ? [
+    ...anchorEvidence(), ...seeds.map(seedToItem), ...SYNTHETIC_EXTERNAL.map((r) => externalToItem(r, "synthetic")),
+    ...feedbackEvidence(SYNTHETIC_SIGNALS),
+  ] : [...pipeline.map((r) => externalToItem(r, "pipeline")), ...context.map(contextToItem)];
+  const requirements: RequirementBundle[] = demo ? buildRequirements(proposals, SYNTHETIC_SIGNALS) : preview.map((row) => {
+    const artifact = artifactRequirements.find((r) => r.requirement_id === row.requirement.requirement_id);
+    const revision = row.requirement;
+    return {
+      display_id: revision.requirement_id, canonical: true, crps: row.crps, quality: row.quality,
+      domain: artifact?.topic ?? "unknown", topic: artifact?.topic ?? "unknown",
+      scope_markets: revision.scope.countries.map(toMarket), revisions: [revision], assessments: [], decisions: [],
+      finding_ids: artifact?.finding_ids ?? [], benchmark_topic: null, market_context: {},
+      // Compatibility display fields only; these factors are NEVER scored in canonical mode.
+      proposal: { domain: artifact?.topic ?? "unknown", title: revision.title, outcome: revision.customer_outcome,
+        value: artifact?.customer_value ?? revision.customer_outcome, interpretation: "Canonical evidence-derived requirement; provenance in evidence_references.",
+        future_assumption: revision.assumptions.join(" "), contrary: "Inspect opposing and context evidence.",
+        validation: revision.acceptance_proposal.method, review_trigger: revision.missing_evidence.join(" "),
+        anchor_ids: [], factors: { impact: 0, evidence: 0, relevance: 0, uncertainty: 4 } },
+    };
+  });
+  const findings = demo ? FINDINGS : artifactFindings.map((f) => ({
+    id: f.finding_id, title: f.title, summary: f.summary, topic: f.topic as EvidenceItem["topic"],
+    market: toMarket(f.markets_covered.length === 1 ? f.markets_covered[0] : "GLOBAL"),
+    hypothesis_ids: [], customer_need: artifactNeeds.filter((n) => n.finding_ids.includes(f.finding_id)).map((n) => n.statement).join(" "),
+    requirement_ids: artifactRequirements.filter((r) => r.finding_ids.includes(f.finding_id)).map((r) => r.requirement_id), updated_at: f.created_at,
+  }));
+
   return {
+    mode,
     generated_at: new Date().toISOString(),
     vehicle: { family: "BMW 5 Series", generation: "G60", successor_label: "G60 → Successor", horizon },
-    planning: { version: proposals.version, status: proposals.status, window: horizon, primary_market: primaryMarket },
+    planning: { version: demo ? proposals.version : "canonical-germany-2030", status: demo ? "EXPLICIT DEMO — synthetic illustrations" : "Canonical research artifacts; PM import and decisions are backend audited", window: horizon, primary_market: primaryMarket },
     policy,
     profile,
     planning_context: context,
     evidence,
-    signals: SYNTHETIC_SIGNALS,
-    hypotheses: HYPOTHESES,
-    findings: FINDINGS,
+    signals: demo ? SYNTHETIC_SIGNALS : [],
+    hypotheses: demo ? HYPOTHESES : [],
+    findings,
     reasoning,
     requirements,
-    benchmark: BENCHMARK,
-    audit: buildSeedAudit(requirements, pipeline.length + seeds.length + context.length, runs),
+    benchmark: demo ? BENCHMARK : [],
+    audit: demo ? buildSeedAudit(requirements, 0, []) : [],
     research_runs: runs,
     data_notes: [
       reasoning.authoritative
@@ -467,12 +492,11 @@ export async function loadDataset(): Promise<Dataset> {
           (reasoning.issues.length
             ? `; ${reasoning.issues.length} traceability issue(s) are reported rather than repaired.`
             : " with every reference resolving.")
-        : "Reasoning artifacts (findings/customer_needs/requirements) were not found, so the demo fixture graph is shown. These are illustrations, not evidence-derived findings.",
-      "Requirements are the authored successor proposals in configs/successor_proposals_v1.json; seed factor ratings are illustrative PM judgements.",
-      "Anchor records (G60-xxxx) are real supplied feedback IDs; their verbatim text stays in the private bmw_pm.db.",
-      "Pipeline evidence, curated seeds and planning context are read from the repository at request time.",
-      "Additional customer signals and competitor specifications marked Synthetic are demo illustrations.",
-      "PM assessments, decisions and link judgements made here are stored on this device, not in bmw_pm.db.",
+        : demo ? "EXPLICIT DEMO MODE: fixtures are illustrations, not evidence-derived findings." : "Canonical reasoning artifacts unavailable. No synthetic fallback is enabled.",
+      ...(canonical?.type === "error" ? [`Canonical backend preview unavailable: ${canonical.message}. No substitute score or fixture requirement is shown.`] : []),
+      "Canonical scores are calculated by bmw_pm.decision.crps; public page counts never stand in for prevalence.",
+      "Import the canonical corpus explicitly to enable audited review. Canonical PM actions never fall back to browser storage.",
+      "US/EU/global evidence is contextual; unknown markets are not treated as Germany.",
     ],
     source_files: status,
   };

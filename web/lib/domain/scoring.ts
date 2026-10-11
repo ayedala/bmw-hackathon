@@ -3,9 +3,10 @@
  * src/bmw_pm/decision/scoring.py (reach_input, score_requirement,
  * rank_scores, assess_ranking).
  *
- * The UI uses it only to preview the effect of a PM challenge or
- * recalculation before it is recorded. The Python implementation remains
- * authoritative; tests in tests/test_scoring.py define the behaviour.
+ * This legacy internal-feedback score and the four-factor priority helpers
+ * below are retained for explicit demo mode only. Canonical requirements and
+ * challenges use the Python seven-factor CRPS payload; web/lib/domain/crps.ts
+ * is an arithmetic-only parity helper, never a competing score authority.
  */
 import type {
   CriterionInput,

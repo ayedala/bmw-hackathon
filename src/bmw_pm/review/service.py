@@ -118,6 +118,10 @@ class ReviewService:
             edited_revision=edited,
         )
         assert new_revision is not None
+        if self.database.latest_score(requirement_id, new_revision.revision) is not None:
+            # A replayed edit request returns the recorded revision and score,
+            # including its original scoring date, instead of recalculating.
+            return decision, new_revision
         previous_score = self.database.latest_score(requirement_id, expected_revision)
         if previous_score and actual_changes <= {"title"}:
             copied_score = previous_score.model_copy(
@@ -136,4 +140,26 @@ class ReviewService:
                 copied_score,
                 request_id=f"{request_id}:score-recalculation",
             )
+        elif previous_score and current.canonical_provenance:
+            # An edited canonical revision must be reassessable without copying
+            # an authored impact judgment onto a changed customer outcome. The
+            # frozen corpus remains the input; all links require fresh human
+            # entailment review for the new revision.
+            from .canonical import build_score
+
+            supporting = [ref.provenance["source_record"] for ref in new_revision.evidence_references
+                          if ref.role == "supports" and ref.provenance.get("source_record")]
+            opposing = [ref.provenance["source_record"] for ref in new_revision.evidence_references
+                        if ref.role == "opposes" and ref.provenance.get("source_record")]
+            recalculated = build_score(
+                new_revision, supporting, opposing,
+                run_id=f"edit-reassessment:{request_id}",
+                corpus_hash=previous_score.corpus_manifest_hash, today=utc_now().date(),
+            )
+            recalculated = recalculated.model_copy(update={"assumptions": [
+                *new_revision.assumptions,
+                "Semantic edit invalidated the authored customer-impact input. Existing links are "
+                "unreviewed candidates for this new revision; challenge them before commitment.",
+            ]})
+            self.database.persist_score(recalculated, request_id=f"{request_id}:score-recalculation")
         return decision, new_revision

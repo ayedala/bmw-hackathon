@@ -27,6 +27,8 @@ import { MARKETS, MARKET_LABEL } from "@/lib/domain/model";
 import { priorityScore } from "@/lib/domain/scoring";
 import { judgmentsFor, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { ReasoningSourceNotice } from "@/components/app/reasoning-chain";
+import { CanonicalRequirementWorkspace } from "@/components/screens/canonical-requirement-workspace";
 
 function ChainStep({ label, value, href, last }: { label: string; value: string | number; href: string; last?: boolean }) {
   return (
@@ -54,6 +56,11 @@ function ProseBlock({ label, children, tone }: { label: string; children: React.
 }
 
 export function RequirementWorkspace({ displayId }: { displayId: string }) {
+  const { dataset } = useStore();
+  return dataset.reasoning.authoritative ? <CanonicalRequirementWorkspace displayId={displayId} /> : <><ReasoningSourceNotice /><DemoRequirementWorkspace displayId={displayId} /></>;
+}
+
+function DemoRequirementWorkspace({ displayId }: { displayId: string }) {
   const { dataset, market, setMarket, policy, requirementByDisplayId, findingsById, hypothesesById, evidenceById, audit, challenges, judgments } = useStore();
   const bundle = requirementByDisplayId.get(displayId);
 

@@ -37,8 +37,10 @@ CREATE TABLE IF NOT EXISTS schema_version (
 '''
 APPLICATION_TABLES = BASE_TABLES + re.findall(r'CREATE TABLE IF NOT EXISTS (\w+)', EXTRA_SCHEMA)
 MIGRATABLE_TABLES = [t for t in APPLICATION_TABLES if t not in {'shared_source_files', 'migration_runs', 'schema_version'}]
-ROW_ORDER_TABLES = {'score_snapshots', 'decisions', 'priority_assessments', 'evidence_link_judgments'}
+ROW_ORDER_TABLES = {'score_snapshots', 'decisions', 'priority_assessments', 'evidence_link_judgments',
+                    'heterogeneous_evidence_judgments'}
 IMMUTABLE_TABLES = ['audit_events', 'requirement_revisions', 'evidence_link_judgments',
+                    'heterogeneous_evidence_judgments', 'requirement_challenges', 'challenge_resolutions', 'canonical_artifacts',
                     'priority_assessments', 'successor_drafts', 'video_memories', 'shared_source_files', 'migration_runs']
 
 

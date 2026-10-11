@@ -248,6 +248,49 @@ class RequirementEvidenceLink(Contract):
     author_expertise: Literal["unknown"] = "unknown"
 
 
+class EvidenceReference(Contract):
+    """A heterogeneous evidence link, without pretending web claims are feedback.
+
+    ``role`` is requirement-relative; source ``stance`` is retained separately.
+    Missing source metadata stays missing. A captured span is not a claim that
+    the source was re-fetched or that a human has accepted its entailment.
+    """
+
+    evidence_id: str = Field(min_length=1)
+    evidence_kind: Literal["internal_feedback", "external_web", "youtube", "study", "planning_context"]
+    role: Literal["supports", "opposes", "context"]
+    source_url: str | None = None
+    source_title: str | None = None
+    source_family: str | None = None
+    market: str | None = None
+    vehicle: str | None = None
+    topic: str | None = None
+    subtopic: str | None = None
+    published_at: str | None = None
+    retrieved_at: str | None = None
+    stance: str | None = None
+    source_quality: float | None = Field(default=None, ge=0, le=100)
+    confidence: float | str | None = None
+    independence_group: str | None = None
+    duplicate_of: str | None = None
+    claim: str
+    exact_text: str = Field(min_length=1)
+    source_start_char: int | None = Field(default=None, ge=0)
+    source_end_char: int | None = Field(default=None, ge=0)
+    source_locator: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    semantic_entailment: Literal["unreviewed", "reviewed_supports", "reviewed_rejects"] = "unreviewed"
+
+    @model_validator(mode="after")
+    def preserve_span(self) -> "EvidenceReference":
+        if (self.source_start_char is None) != (self.source_end_char is None):
+            raise ValueError("evidence span requires both start and end")
+        if self.source_start_char is not None and self.source_end_char is not None:
+            if self.source_end_char - self.source_start_char != len(self.exact_text):
+                raise ValueError("evidence span length must match the exact text")
+        return self
+
+
 class CrossChannelEvidence(Contract):
     evidence_id: str
     channel: Literal["youtube", "bmw_study", "bmw_sales", "bmw_equipment", "imported_context"]
@@ -321,6 +364,12 @@ class RequirementRevision(Contract):
     counter_signal_ids: list[str]
     context_signal_ids: list[str] = Field(default_factory=list)
     evidence_links: list[RequirementEvidenceLink] = Field(default_factory=list)
+    evidence_references: list[EvidenceReference] = Field(default_factory=list)
+    topic: str | None = None
+    planning_horizon: str | None = None
+    need_ids: list[str] = Field(default_factory=list)
+    finding_ids: list[str] = Field(default_factory=list)
+    canonical_provenance: dict[str, Any] = Field(default_factory=dict)
     context_observation_ids: list[str] = Field(default_factory=list)
     alternatives: list[str]
     assumptions: list[str]

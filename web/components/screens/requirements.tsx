@@ -11,6 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
+import Link from "next/link";
+import { CrpsInterval } from "@/components/app/canonical-crps";
+import { ReasoningSourceNotice } from "@/components/app/reasoning-chain";
 import { DECISION_STATUS_LABEL, formatDate, PRIORITIES, priorityRank, TOPIC_LABEL, type DecisionStatus } from "@/lib/domain/derive";
 import { MARKET_LABEL } from "@/lib/domain/model";
 import { usePersistentState, useStore } from "@/lib/store";
@@ -26,7 +29,7 @@ const DEFAULTS: Filters = { q: "", topic: "all", priority: "all", decision: "all
 
 export function requirementColumns(market: string): Column<RequirementRow>[] {
   return [
-    { key: "priority", header: "Priority", cell: (r) => <PriorityBadge priority={r.priority} />, sortValue: (r) => -priorityRank(r.priority), className: "w-16" },
+    { key: "priority", header: "Priority", cell: (r) => <PriorityBadge priority={r.priority} hint={r.bundle.crps?.result.band_basis} />, sortValue: (r) => -priorityRank(r.priority), className: "w-16" },
     {
       key: "title",
       header: "Requirement",
@@ -44,12 +47,12 @@ export function requirementColumns(market: string): Column<RequirementRow>[] {
       className: "min-w-[320px] max-w-[520px]",
     },
     { key: "topic", header: "Topic", cell: (r) => <span className="text-xs text-slate-700">{TOPIC_LABEL[r.bundle.topic]}</span>, sortValue: (r) => r.bundle.topic, className: "w-24" },
-    { key: "crps", header: "CRPS", cell: (r) => <ScoreValue score={r.score} basis={r.basis} />, sortValue: (r) => r.score ?? -1, align: "right", className: "w-24" },
+    { key: "crps", header: "CRPS", cell: (r) => r.bundle.canonical ? r.in_scope && r.bundle.crps ? <CrpsInterval score={r.bundle.crps} /> : <span className="text-xs text-slate-500">Not assessed</span> : <ScoreValue score={r.score} basis={r.basis} />, sortValue: (r) => r.score ?? -1, align: "right", className: "w-32" },
     {
       key: "confidence",
       header: "Confidence",
-      cell: (r) => <ConfidenceBadge confidence={r.confidence} />,
-      sortValue: (r) => ["Low", "Medium", "High"].indexOf(r.confidence),
+      cell: (r) => r.bundle.canonical ? <span className="tabular-nums">{r.bundle.crps ? `${r.bundle.crps.confidence.value_0_to_100.toFixed(1)}/100` : "Unknown"}</span> : <ConfidenceBadge confidence={r.confidence} />,
+      sortValue: (r) => r.bundle.canonical ? r.bundle.crps?.confidence.value_0_to_100 ?? -1 : ["Low", "Medium", "High"].indexOf(r.confidence),
       className: "w-24",
     },
     {
@@ -68,7 +71,8 @@ export function requirementColumns(market: string): Column<RequirementRow>[] {
       sortValue: (r) => r.balance.independent_sources,
       className: "w-28",
     },
-    { key: "market", header: "Mkt", cell: () => <MarketTag market={market} />, className: "w-12" },
+    { key: "market", header: "Scope", cell: (r) => <div><MarketTag market={r.bundle.canonical ? r.revision.scope.countries.join(", ") : market} />{r.bundle.canonical && <span className="ml-1 text-2xs text-slate-500">2030</span>}</div>, className: "w-24" },
+    { key: "feasibility", header: "Feasibility", cell: (r) => <span className="text-xs text-slate-600">{r.revision.feasibility.replaceAll("_", " ")}</span>, className: "w-24" },
     { key: "decision", header: "Decision", cell: (r) => <DecisionBadge status={r.status} />, sortValue: (r) => r.status, className: "w-28" },
     { key: "updated", header: "Updated", cell: (r) => <span className="whitespace-nowrap text-xs text-slate-500">{formatDate(r.updated_at)}</span>, sortValue: (r) => r.updated_at, className: "w-28" },
   ];
@@ -104,8 +108,10 @@ export function RequirementsScreen() {
     <div>
       <PageHeader
         title="Requirements"
-        question={`Which customer-facing requirements should shape the successor? CRPS under the current weights · ${MARKET_LABEL[market]}.`}
+        question={`Which customer-facing requirements should shape the BMW 5 Series successor? Canonical seven-factor CRPS · ${MARKET_LABEL[market]} · 2030.`}
+        actions={<Button asChild><Link href="/needs">Trace customer needs</Link></Button>}
       />
+      <ReasoningSourceNotice />
       <FilterBar active={active} onClearAll={() => setFilters(DEFAULTS)} resultLabel={`${filtered.length} of ${rows.length} requirements`}>
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />

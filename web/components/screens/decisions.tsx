@@ -15,8 +15,15 @@ import { formatDateTime, humanize } from "@/lib/domain/derive";
 import { MARKET_LABEL } from "@/lib/domain/model";
 import { usePersistentState, useStore } from "@/lib/store";
 import { useRequirementRows, type RequirementRow } from "@/lib/view";
+import { CanonicalDecisionsScreen } from "./canonical-decisions";
 
 export function DecisionsScreen() {
+  const { dataset } = useStore();
+  if (dataset.mode !== "demo") return <CanonicalDecisionsScreen />;
+  return <DemoDecisionsScreen />;
+}
+
+function DemoDecisionsScreen() {
   const router = useRouter();
   const { dataset, market, challenges, policy, judgments, actorId, logAction } = useStore();
   const usRows = useRequirementRows(dataset.planning.primary_market);

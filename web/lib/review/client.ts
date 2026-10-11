@@ -54,6 +54,16 @@ export function fetchAudit(): Promise<ReviewResult> {
   return call("audit", {}, "POST");
 }
 
+export function importCanonical(payload: { actor_id: string; rationale: string; request_id: string }): Promise<ReviewResult> {
+  return call("import_canonical", payload, "POST");
+}
+export function postChallenge(payload: { requirement_id: string; expected_revision: number; hypothesis: string; rationale: string; actor_id: string; request_id: string }): Promise<ReviewResult> {
+  return call("challenge", payload, "POST");
+}
+export function postReassessment(payload: { challenge_id: string; requirement_id: string; expected_revision: number; accept: boolean; rationale: string; actor_id: string; request_id: string }): Promise<ReviewResult> {
+  return call("reassess", payload, "POST");
+}
+
 export interface DecidePayload {
   requirement_id: string;
   expected_revision: number;

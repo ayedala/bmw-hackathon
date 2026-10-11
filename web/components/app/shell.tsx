@@ -95,7 +95,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 
 function AppSidebar() {
   const pathname = usePathname();
-  const liveStudio = pathname === "/" || pathname === "/video-memory" || pathname === "/evaluation";
+  const liveStudio = pathname === "/studio" || pathname === "/video-memory" || pathname === "/evaluation";
   const { dataset, requirements } = useStore();
   const openDecisions = requirements.filter((r) => {
     const s = decisionStatus(latestRevision(r), r.decisions);
@@ -103,11 +103,12 @@ function AppSidebar() {
   }).length;
 
   const groups: { label?: string; items: NavItem[] }[] = [
-    { items: [{ href: "/", label: "Decision Studio" }, { href: "/video-memory", label: "Video memory" }, { href: "/evaluation", label: "Evaluation" }] },
+    { items: [{ href: "/", label: "Germany 2030 overview" }, { href: "/studio", label: "Advisor Studio" }, { href: "/video-memory", label: "Video memory" }, { href: "/evaluation", label: "Evaluation" }] },
     {label: "Planning workbench", items: [{href: "/overview", label: "Overview"}]},
     {
       label: "Intelligence",
       items: [
+        { href: "/needs", label: "Customer needs", count: dataset.reasoning.needs.length },
         { href: "/findings", label: "Findings", count: dataset.findings.length },
         { href: "/evidence", label: "Evidence", count: dataset.evidence.length },
         { href: "/hypotheses", label: "Hypotheses", count: dataset.hypotheses.length },
@@ -173,7 +174,8 @@ function AppSidebar() {
 function CompactNav() {
   const pathname = usePathname();
   const items = [
-    ["/", "Decision Studio"],
+    ["/", "Germany 2030"],
+    ["/studio", "Advisor Studio"],
     ["/video-memory", "Video memory"],
     ["/evaluation", "Evaluation"],
     ["/overview", "Overview"],
@@ -245,7 +247,7 @@ function DataStatus() {
           className="hidden items-center gap-1.5 rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/35 xl:inline-flex"
         >
           <span aria-hidden className={cn("size-1.5 rounded-full", pipelineCount > 0 ? "bg-zinc-900" : "bg-slate-300")} />
-          {dataset.requirements.length} proposals · {pipelineCount} pipeline records
+          {dataset.requirements.length} {dataset.mode === "demo" ? "demo proposals" : "canonical requirements"} · {pipelineCount} pipeline records
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-3">
@@ -264,7 +266,7 @@ function DataStatus() {
           {dataset.data_notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
-          <li>{sessionEventCount} PM actions recorded in this browser session.</li>
+          <li>{dataset.mode === "demo" ? `${sessionEventCount} demo actions recorded in this browser session.` : "PM actions and audit history are recorded by the review backend."}</li>
         </ul>
       </PopoverContent>
     </Popover>
@@ -274,7 +276,7 @@ function DataStatus() {
 function ContextBar({ onSearch }: { onSearch: () => void }) {
   const { dataset, market, setMarket } = useStore();
   const pathname = usePathname();
-  if (pathname === "/" || pathname === "/video-memory") return (
+  if (pathname === "/studio" || pathname === "/video-memory") return (
     <div className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 lg:px-6">
       <span className="text-[13px] font-semibold">BMW Decision Studio</span>
       <span className="text-xs text-slate-500">Customer evidence · Market research · Video memory</span>
@@ -374,7 +376,7 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
                       <span className="min-w-0">
                         <span className="block truncate text-zinc-900">{rev.title}</span>
                         <span className="block text-2xs text-slate-500">
-                          Requirement · 5 Series G60 · United States · {TOPIC_LABEL[r.topic] ?? r.topic}
+                          Requirement · 5 Series successor · {r.scope_markets.join(", ")} · {TOPIC_LABEL[r.topic] ?? r.topic}
                         </span>
                       </span>
                     </Command.Item>
@@ -456,6 +458,7 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { dataset } = useStore();
   const [searchOpen, setSearchOpen] = useState(false);
   const toggle = useCallback(() => setSearchOpen((o) => !o), []);
 
@@ -481,7 +484,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />
           <main id="main" className="mx-auto max-w-[1680px] px-4 py-5 lg:px-6">
-            {pathname !== "/" && pathname !== "/video-memory" && pathname !== "/evaluation" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Planning workbench includes labelled synthetic examples and browser-local review actions. <Link href="/" className="font-medium text-brand">Open Decision Studio</Link> for live research using the evidence database.</div>}
+            {dataset.mode === "demo" && pathname !== "/studio" && <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Explicit demo mode: illustrative fixtures and browser-local actions. <Link href="/studio" className="font-medium underline">Open Advisor Studio</Link> for separate live research.</div>}
             {children}
           </main>
         </div>

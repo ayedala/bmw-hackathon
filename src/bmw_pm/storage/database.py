@@ -137,6 +137,59 @@ CREATE TABLE IF NOT EXISTS run_manifests (
     payload_json TEXT NOT NULL,
     payload_hash TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS heterogeneous_evidence_judgments (
+    judgment_id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    requirement_revision INTEGER NOT NULL,
+    signal_id TEXT NOT NULL,
+    request_id TEXT NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    FOREIGN KEY(requirement_id, requirement_revision)
+      REFERENCES requirement_revisions(requirement_id, revision)
+);
+CREATE TABLE IF NOT EXISTS requirement_challenges (
+    challenge_id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    requirement_revision INTEGER NOT NULL,
+    request_id TEXT NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    FOREIGN KEY(requirement_id, requirement_revision)
+      REFERENCES requirement_revisions(requirement_id, revision)
+);
+CREATE TABLE IF NOT EXISTS canonical_artifacts (
+    artifact_key TEXT PRIMARY KEY,
+    corpus_hash TEXT NOT NULL,
+    artifact_kind TEXT NOT NULL,
+    artifact_id TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_canonical_artifact_corpus ON canonical_artifacts(corpus_hash, artifact_kind);
+CREATE TRIGGER IF NOT EXISTS canonical_artifacts_no_update BEFORE UPDATE ON canonical_artifacts
+BEGIN SELECT RAISE(ABORT, 'canonical artifacts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS canonical_artifacts_no_delete BEFORE DELETE ON canonical_artifacts
+BEGIN SELECT RAISE(ABORT, 'canonical artifacts are immutable'); END;
+CREATE TABLE IF NOT EXISTS challenge_resolutions (
+    resolution_id TEXT PRIMARY KEY,
+    challenge_id TEXT NOT NULL UNIQUE REFERENCES requirement_challenges(challenge_id),
+    request_id TEXT NOT NULL UNIQUE,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS heterogeneous_judgments_no_update BEFORE UPDATE ON heterogeneous_evidence_judgments
+BEGIN SELECT RAISE(ABORT, 'evidence judgments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS heterogeneous_judgments_no_delete BEFORE DELETE ON heterogeneous_evidence_judgments
+BEGIN SELECT RAISE(ABORT, 'evidence judgments are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS challenges_no_update BEFORE UPDATE ON requirement_challenges
+BEGIN SELECT RAISE(ABORT, 'challenges are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS challenges_no_delete BEFORE DELETE ON requirement_challenges
+BEGIN SELECT RAISE(ABORT, 'challenges are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS challenge_resolutions_no_update BEFORE UPDATE ON challenge_resolutions
+BEGIN SELECT RAISE(ABORT, 'challenge resolutions are append-only'); END;
+CREATE TRIGGER IF NOT EXISTS challenge_resolutions_no_delete BEFORE DELETE ON challenge_resolutions
+BEGIN SELECT RAISE(ABORT, 'challenge resolutions are append-only'); END;
 CREATE TABLE IF NOT EXISTS report_context (
     context_id TEXT PRIMARY KEY,
     report_id TEXT NOT NULL,
@@ -973,14 +1026,19 @@ class Database:
         self, requirement_id: str, revision: int
     ) -> dict[str, EvidenceLinkJudgment]:
         with self.connect() as connection:
-            rows = connection.execute(
-                """SELECT payload_json FROM evidence_link_judgments
-                   WHERE requirement_id=? AND requirement_revision=? ORDER BY rowid""",
+            return self._latest_evidence_judgments(connection, requirement_id, revision)
+
+    @staticmethod
+    def _latest_evidence_judgments(connection, requirement_id: str, revision: int) -> dict[str, EvidenceLinkJudgment]:
+        rows = []
+        for table in ("evidence_link_judgments", "heterogeneous_evidence_judgments"):
+            rows.extend(connection.execute(
+                f"SELECT payload_json FROM {table} WHERE requirement_id=? AND requirement_revision=? ORDER BY rowid",
                 (requirement_id, revision),
-            ).fetchall()
+            ).fetchall())
         latest: dict[str, EvidenceLinkJudgment] = {}
-        for row in rows:
-            judgment = EvidenceLinkJudgment.model_validate_json(row["payload_json"])
+        judgments = [EvidenceLinkJudgment.model_validate_json(row["payload_json"]) for row in rows]
+        for judgment in sorted(judgments, key=lambda item: item.recorded_at):
             latest[judgment.signal_id] = judgment
         return latest
 
@@ -998,6 +1056,13 @@ class Database:
         self.initialize()
         if not rationale.strip() or not actor_id.strip():
             raise ValueError("evidence judgment requires a rationale and reviewer ID")
+        requirement = self.latest_requirement(requirement_id)
+        if signal_id in {ref.evidence_id for ref in getattr(requirement, "evidence_references", [])}:
+            return self._record_heterogeneous_judgment(
+                requirement_id=requirement_id, expected_revision=expected_revision,
+                signal_id=signal_id, verdict=verdict, rationale=rationale,
+                actor_id=actor_id, request_id=request_id,
+            )
         conflict_message: str | None = None
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -1095,6 +1160,61 @@ class Database:
         if conflict_message:
             raise RevisionConflict(conflict_message)
         raise AssertionError("evidence review transaction ended without a result")
+
+    def _record_heterogeneous_judgment(self, **request) -> EvidenceLinkJudgment:
+        """Review a typed evidence reference without inventing an internal signal."""
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT payload_json FROM heterogeneous_evidence_judgments WHERE request_id=?",
+                (request["request_id"],),
+            ).fetchone()
+            if existing:
+                judgment = EvidenceLinkJudgment.model_validate_json(existing["payload_json"])
+                expected = {"requirement_id": judgment.requirement_id,
+                    "expected_revision": judgment.requirement_revision, "signal_id": judgment.signal_id,
+                    "verdict": judgment.verdict, "rationale": judgment.rationale,
+                    "actor_id": judgment.actor_id, "request_id": judgment.request_id}
+                if expected != {k: v.strip() if isinstance(v, str) else v for k, v in request.items()}:
+                    raise WorkflowError("request ID already belongs to a different evidence judgment")
+                return judgment
+            if self._existing_event(connection, request["request_id"]):
+                raise WorkflowError("request ID already belongs to another operation")
+            row = connection.execute(
+                "SELECT payload_json FROM requirement_revisions WHERE requirement_id=? ORDER BY revision DESC LIMIT 1",
+                (request["requirement_id"],),
+            ).fetchone()
+            current = RequirementRevision.model_validate_json(row["payload_json"])
+            if current.revision != request["expected_revision"]:
+                message = f"Stale evidence review: expected revision {request['expected_revision']}, latest is {current.revision}."
+                self._append_audit(connection, actor_id=request["actor_id"].strip(), actor_type="demo_pm",
+                    action="evidence_review_revision_conflict", object_type="requirement", object_id=current.requirement_id,
+                    object_revision=request["expected_revision"], before_hash=content_hash(current), after_hash=None,
+                    reason=message, request_id=request["request_id"], result="failure")
+                connection.commit()
+                raise RevisionConflict(message)
+            if request["signal_id"] not in {ref.evidence_id for ref in current.evidence_references}:
+                raise WorkflowError("evidence is not linked to this requirement revision")
+            judgment = EvidenceLinkJudgment(
+                judgment_id=f"evidence_judgment_{uuid4().hex}",
+                requirement_id=current.requirement_id, requirement_revision=current.revision,
+                signal_id=request["signal_id"], verdict=request["verdict"],
+                rationale=request["rationale"].strip(), actor_id=request["actor_id"].strip(),
+                recorded_at=utc_now(), request_id=request["request_id"],
+            )
+            previous = self._latest_evidence_judgments(connection, current.requirement_id, current.revision).get(judgment.signal_id)
+            connection.execute(
+                "INSERT INTO heterogeneous_evidence_judgments (judgment_id,requirement_id,requirement_revision,signal_id,request_id,payload_json,payload_hash) VALUES (?,?,?,?,?,?,?)",
+                (judgment.judgment_id, current.requirement_id, current.revision, judgment.signal_id,
+                 judgment.request_id, judgment.model_dump_json(), content_hash(judgment)),
+            )
+            self._append_audit(connection, actor_id=judgment.actor_id, actor_type="demo_pm",
+                action="review_evidence_link", object_type="evidence_link",
+                object_id=f"{current.requirement_id}:{judgment.signal_id}", object_revision=current.revision,
+                before_hash=content_hash(previous) if previous else None, after_hash=content_hash(judgment),
+                reason=f"{judgment.verdict}: {judgment.rationale}", request_id=judgment.request_id, result="success")
+            connection.commit()
+            return judgment
 
     def atomic_review(
         self,
@@ -1328,10 +1448,28 @@ class Database:
                     (requirement_id,),
                 ).fetchall()
             ]
+            judgments.extend(EvidenceLinkJudgment.model_validate_json(row["payload_json"])
+                for row in connection.execute(
+                    "SELECT payload_json FROM heterogeneous_evidence_judgments WHERE requirement_id=? ORDER BY rowid",
+                    (requirement_id,),
+                ).fetchall())
+            scores = [json.loads(row["payload_json"]) for row in connection.execute(
+                "SELECT payload_json FROM score_snapshots WHERE requirement_id=? ORDER BY rowid", (requirement_id,),
+            ).fetchall()]
+            challenges = []
+            for row in connection.execute(
+                "SELECT c.payload_json,r.payload_json AS resolution_json FROM requirement_challenges c LEFT JOIN challenge_resolutions r ON r.challenge_id=c.challenge_id WHERE c.requirement_id=?",
+                (requirement_id,),
+            ).fetchall():
+                record = json.loads(row["payload_json"])
+                record["resolution"] = json.loads(row["resolution_json"]) if row["resolution_json"] else None
+                challenges.append(record)
         return {
             "audit_valid": valid,
             "audit_checkpoint": checkpoint,
             "revisions": [item.model_dump(mode="json") for item in revisions],
             "decisions": [item.model_dump(mode="json") for item in decisions],
-            "evidence_judgments": [item.model_dump(mode="json") for item in judgments],
+            "evidence_judgments": [item.model_dump(mode="json") for item in sorted(judgments, key=lambda item: item.recorded_at)],
+            "score_snapshots": scores,
+            "challenges": sorted(challenges, key=lambda item: item["created_at"]),
         }

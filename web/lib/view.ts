@@ -48,6 +48,24 @@ export function useRequirementRows(market: MarketCode): RequirementRow[] {
     () =>
       requirements.map((bundle) => {
         const revision = latestRevision(bundle);
+        if (bundle.canonical) {
+          const in_scope = bundle.scope_markets.includes(market);
+          const refs = revision.evidence_references ?? [];
+          const groups = new Set(refs.filter((ref) => !ref.duplicate_of).map((ref) => ref.independence_group || ref.source_url || ref.evidence_id));
+          const balance: Balance = { supporting: refs.filter((ref) => ref.role === "supports").length,
+            contradicting: refs.filter((ref) => ref.role === "opposes").length,
+            neutral: refs.filter((ref) => ref.role === "context").length,
+            independent_sources: groups.size, total: refs.length };
+          const score = in_scope ? bundle.crps?.result.crps_100_lower ?? null : null;
+          const confidenceValue = bundle.crps?.confidence.value_0_to_100 ?? 0;
+          return { id: bundle.display_id, bundle, revision, in_scope,
+            factors: bundle.proposal.factors, basis: "seed" as const, score,
+            priority: in_scope ? bundle.crps?.result.band ?? "Watch" : "Watch",
+            confidence: (confidenceValue >= 75 ? "High" : confidenceValue >= 50 ? "Medium" : "Low") as Confidence,
+            status: decisionStatus(revision, bundle.decisions), balance,
+            external_count: refs.filter((ref) => ref.evidence_kind === "external_web" && !ref.duplicate_of).length,
+            updated_at: [revision.created_at, bundle.decisions.at(-1)?.recorded_at ?? ""].sort().at(-1) ?? revision.created_at };
+        }
         const { factors, basis, assessment } = currentFactors(bundle);
         const in_scope = inScope(bundle, market);
         const score = in_scope ? priorityScore(factors, policy) : null;

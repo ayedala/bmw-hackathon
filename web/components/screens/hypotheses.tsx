@@ -5,9 +5,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 
 import { BalanceBar, ConfidenceBadge, HypothesisStatusBadge, MarketTag } from "@/components/app/badges";
+import { ChallengeResult } from "@/components/app/canonical-review-controls";
 import { DataTable, type Column } from "@/components/app/data-table";
 import { EvidenceList } from "@/components/app/evidence-list";
-import { EmptyState, FilterBar, PageHeader, SubHeading, type ActiveFilter } from "@/components/app/layout-parts";
+import { EmptyState, FilterBar, PageHeader, Section, SubHeading, type ActiveFilter } from "@/components/app/layout-parts";
+import { ReasoningSourceNotice } from "@/components/app/reasoning-chain";
 import { Button } from "@/components/ui/button";
 import { SidePanel } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/select";
@@ -74,6 +76,18 @@ function HypothesisDetail({ row }: { row: HypothesisRow }) {
 }
 
 export function HypothesesScreen() {
+  const { dataset, canonicalChallenges } = useStore();
+  if (dataset.mode !== "demo") return <div className="space-y-5">
+    <PageHeader title="PM challenges" question="Which assumptions about the real requirements have been challenged?" />
+    <ReasoningSourceNotice />
+    <Section title={`Recorded challenge hypotheses (${canonicalChallenges.length})`} description="Each hypothesis retrieves real corpus records and proposes a deterministic reassessment. A PM must accept it separately.">
+      {canonicalChallenges.length ? <div className="space-y-3">{canonicalChallenges.map((challenge) => <ChallengeResult key={challenge.challenge_id} challenge={challenge} />)}</div> : <EmptyState title="No PM challenge recorded yet. Open a requirement to challenge its evidence and score." />}
+    </Section>
+  </div>;
+  return <DemoHypothesesScreen />;
+}
+
+function DemoHypothesesScreen() {
   const rows = useHypothesisRows();
   const router = useRouter();
   const pathname = usePathname();

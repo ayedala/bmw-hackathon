@@ -34,6 +34,11 @@ export function RecordingTarget({ displayId }: { displayId: string }) {
     );
   }
 
+  if (requirementByDisplayId.get(displayId)?.canonical) return <p className="rounded-sm bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+    Not yet available for audited review. {backend.reachable ? "Import the canonical corpus explicitly." : backend.reason}
+    {" "}No canonical decision or score is saved in browser storage.
+  </p>;
+
   return (
     <p className="rounded-sm bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
       <span className="font-medium">Session only.</span>{" "}

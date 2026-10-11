@@ -7,6 +7,7 @@
  *          → Score snapshot → PM decision → Audit event
  */
 import type { ReasoningGraph } from "./reasoning";
+import type { CanonicalCrps, RequirementQuality } from "./crps";
 
 import type {
   AuditEvent,
@@ -26,14 +27,16 @@ import type {
   WebResearchSeedRecord,
 } from "./contracts";
 
-export const MARKETS = ["US", "DE", "CN", "EU"] as const;
-export type MarketCode = (typeof MARKETS)[number];
+export const MARKETS = ["DE", "US", "CN", "EU"] as const;
+export type MarketCode = (typeof MARKETS)[number] | "GLOBAL" | "UNKNOWN";
 
 export const MARKET_LABEL: Record<MarketCode, string> = {
   DE: "Germany",
   US: "United States",
   CN: "China",
   EU: "Europe (excl. DE)",
+  GLOBAL: "Global context",
+  UNKNOWN: "Unspecified market",
 };
 
 /** Where a record came from. Shown on every evidence row. */
@@ -131,6 +134,9 @@ export type BenchmarkTopic = (typeof BENCHMARK_TOPICS)[number]["key"];
  * explains it, its PM priority history and decisions.
  */
 export interface RequirementBundle {
+  canonical?: boolean;
+  crps?: CanonicalCrps | null;
+  quality?: RequirementQuality | null;
   /** Short, stable display ID (e.g. REQ-CTL-01); requirement.requirement_id is the contract ID. */
   display_id: string;
   domain: string;
@@ -150,6 +156,7 @@ export interface RequirementBundle {
 }
 
 export interface Dataset {
+  mode: "canonical" | "demo" | "unavailable";
   generated_at: string;
   vehicle: {
     family: string;

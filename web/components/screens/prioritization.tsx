@@ -19,6 +19,7 @@ import { DEFAULT_PRIORITY_POLICY, priorityContributions, priorityScore } from "@
 import { usePersistentState, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useRequirementRows, type RequirementRow } from "@/lib/view";
+import { CanonicalPrioritizationScreen } from "./canonical-planning";
 
 const ScoreDistributionChart = dynamic(() => import("@/components/app/charts").then((m) => m.ScoreDistributionChart), {
   ssr: false,
@@ -154,6 +155,12 @@ function CompareTable({ rows }: { rows: RequirementRow[] }) {
 }
 
 export function PrioritizationScreen() {
+  const { dataset } = useStore();
+  if (dataset.mode !== "demo") return <CanonicalPrioritizationScreen />;
+  return <DemoPrioritizationScreen />;
+}
+
+function DemoPrioritizationScreen() {
   const router = useRouter();
   const { market } = useStore();
   const rows = useRequirementRows(market);

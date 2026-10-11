@@ -11,8 +11,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "@/components/ui/dialog";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { CanonicalSettingsScreen } from "./canonical-planning";
 
 export function SettingsScreen() {
+  const { dataset } = useStore();
+  if (dataset.mode !== "demo") return <CanonicalSettingsScreen />;
+  return <DemoSettingsScreen />;
+}
+
+function DemoSettingsScreen() {
   const { dataset, sessionEventCount, challenges, resetSession, actorId, setActorId } = useStore();
   const [confirm, setConfirm] = useState(false);
   const { policy, profile } = dataset;

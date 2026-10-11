@@ -17,6 +17,8 @@ import { MARKETS, MARKET_LABEL } from "@/lib/domain/model";
 import { priorityScore } from "@/lib/domain/scoring";
 import { usePersistentState, useStore } from "@/lib/store";
 import { useFindingRows, type FindingRow } from "@/lib/view";
+import { ReasoningSourceNotice } from "@/components/app/reasoning-chain";
+import { CanonicalFindingsScreen } from "@/components/screens/canonical-findings";
 
 interface Filters {
   topic: string;
@@ -128,6 +130,11 @@ function FindingDetail({ row }: { row: FindingRow }) {
 }
 
 export function FindingsScreen() {
+  const { dataset } = useStore();
+  return dataset.reasoning.authoritative ? <CanonicalFindingsScreen /> : <><ReasoningSourceNotice /><DemoFindingsScreen /></>;
+}
+
+function DemoFindingsScreen() {
   const rows = useFindingRows();
   const router = useRouter();
   const pathname = usePathname();

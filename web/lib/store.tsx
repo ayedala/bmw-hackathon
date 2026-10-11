@@ -22,9 +22,14 @@ import {
   postEdit,
   postJudgment,
   probeBackend,
+  fetchAudit,
+  importCanonical,
+  postChallenge,
+  postReassessment,
   type BackendAvailability,
   type ReviewError,
 } from "@/lib/review/client";
+import type { CanonicalChallenge } from "@/lib/review/contracts";
 
 /* ------------------------------------------------------------------ */
 /* Local session overlay                                               */
@@ -113,6 +118,13 @@ type EventDraft = Pick<AuditEvent, "action" | "object_type" | "object_id" | "obj
   Partial<Pick<AuditEvent, "before_hash" | "after_hash" | "run_id">>;
 
 interface StoreValue {
+  canonicalChallenges: CanonicalChallenge[];
+  auditVerification: { valid: boolean; checkpoint: string } | null;
+  auditError: string | null;
+  refreshBackend: () => Promise<BackendAvailability>;
+  importCanonicalRequirements: (rationale: string) => Promise<boolean>;
+  createChallenge: (displayId: string, hypothesis: string, rationale: string) => Promise<boolean>;
+  resolveChallenge: (challenge: CanonicalChallenge, accept: boolean, rationale: string) => Promise<boolean>;
   dataset: Dataset;
   market: MarketCode;
   setMarket: (m: MarketCode) => void;
@@ -147,12 +159,12 @@ interface StoreValue {
   /** The last backend refusal, for the UI to show instead of a silent failure. */
   reviewError: ReviewError | null;
   clearReviewError: () => void;
-  recordDecision: (displayId: string, action: Exclude<DecisionAction, "edit" | "challenge">, rationale: string) => Promise<void>;
+  recordDecision: (displayId: string, action: Exclude<DecisionAction, "edit" | "challenge">, rationale: string) => Promise<boolean>;
   editRequirement: (
     displayId: string,
     patch: Pick<RequirementRevision, "title" | "customer_outcome" | "acceptance_proposal">,
     rationale: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   saveAssessment: (displayId: string, factors: PriorityFactors, rationale: string) => Promise<PriorityAssessment>;
   submitChallenge: (
     record: Omit<ChallengeRecord, "challenge_id" | "recorded_at" | "assessment_id" | "score_before" | "score_after">,
@@ -166,6 +178,9 @@ interface StoreValue {
 const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ dataset, children }: { dataset: Dataset; children: ReactNode }) {
+  const [backendAudit, setBackendAudit] = useState<AuditEvent[]>([]);
+  const [auditVerification, setAuditVerification] = useState<StoreValue["auditVerification"]>(null);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(EMPTY);
   const [market, setMarketState] = useState<MarketCode>(dataset.planning.primary_market);
   const [weights, setWeightsState] = useState<PriorityPolicy>(DEFAULT_WEIGHTS);
@@ -185,13 +200,13 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
 
   useEffect(() => {
     const stored = readStorage<Overlay | null>(OVERLAY_KEY, null);
-    setOverlay(stored && stored.version === 2 ? stored : EMPTY);
+    setOverlay(dataset.mode === "demo" && stored && stored.version === 2 ? stored : EMPTY);
     const m = readStorage<string>(MARKET_KEY, dataset.planning.primary_market);
     if ((MARKETS as readonly string[]).includes(m)) setMarketState(m as MarketCode);
     setWeightsState(readStorage<PriorityPolicy>(WEIGHTS_KEY, DEFAULT_WEIGHTS));
     setActorState(readStorage<string>(ACTOR_KEY, DEFAULT_ACTOR));
     setHydrated(true);
-  }, [dataset.planning.primary_market]);
+  }, [dataset.mode, dataset.planning.primary_market]);
 
   // Ask the backend which requirements it holds. Doing this once on mount means
   // the UI can say plainly which cards produce audited decisions and which are
@@ -206,6 +221,14 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         setBackend(availability);
         setBackendProbed(true);
       }
+    });
+    fetchAudit().then((result) => {
+      if (cancelled) return;
+      if (result.type === "audit") {
+        setBackendAudit(result.events as unknown as AuditEvent[]);
+        setAuditVerification({ valid: result.valid, checkpoint: result.checkpoint });
+        setAuditError(null);
+      } else { setAuditError(result.type === "error" ? result.message : "Unexpected audit response"); }
     });
     return () => {
       cancelled = true;
@@ -236,16 +259,24 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
 
   const requirements = useMemo<RequirementBundle[]>(
     () =>
-      dataset.requirements.map((bundle) => ({
+      dataset.requirements.map((bundle) => {
+        const state = backend.statesById.get(bundle.revisions.at(-1)?.requirement_id ?? "");
+        if (bundle.canonical) return { ...bundle,
+          revisions: state?.revisions?.length ? state.revisions : state?.requirement ? [state.requirement] : bundle.revisions,
+          decisions: state?.decisions ?? (state?.decision ? [state.decision as unknown as Decision] : []),
+          crps: state ? state.crps ?? null : bundle.crps,
+          quality: state?.quality ?? bundle.quality,
+        };
+        return ({
         ...bundle,
         revisions: [...bundle.revisions, ...(overlay.revisions[bundle.display_id] ?? [])],
         assessments: [...bundle.assessments, ...(overlay.assessments[bundle.display_id] ?? [])],
         decisions: [...bundle.decisions, ...(overlay.decisions[bundle.display_id] ?? [])],
-      })),
-    [dataset.requirements, overlay],
+      }); }),
+    [dataset.requirements, overlay, backend],
   );
 
-  const audit = useMemo(() => [...dataset.audit, ...overlay.audit], [dataset.audit, overlay.audit]);
+  const audit = useMemo(() => dataset.mode === "demo" ? [...dataset.audit, ...overlay.audit] : backendAudit, [dataset.mode, dataset.audit, overlay.audit, backendAudit]);
 
   const appendEvents = useCallback(
     async (base: Overlay, drafts: EventDraft[]): Promise<AuditEvent[]> => {
@@ -308,11 +339,50 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
 
   /** Re-read backend state so a later action uses the current revision. */
   const refreshBackend = useCallback(async () => {
-    const ids = [...backendRef.current.statesById.keys()];
+    const ids = dataset.requirements.map((b) => b.revisions.at(-1)!.requirement_id);
     const availability = await probeBackend(ids);
     setBackend(availability);
+    setBackendProbed(true);
+    const trail = await fetchAudit();
+    if (trail.type === "audit") {
+      setBackendAudit(trail.events as unknown as AuditEvent[]);
+      setAuditVerification({ valid: trail.valid, checkpoint: trail.checkpoint });
+      setAuditError(null);
+    } else { setAuditVerification(null); setAuditError(trail.type === "error" ? trail.message : "Unexpected audit response"); }
     return availability;
-  }, []);
+  }, [dataset.requirements]);
+
+  const requireBackend = useCallback((displayId: string) => {
+    const state = backendStateFor(displayId);
+    if (!state || !backendRef.current.reachable) {
+      setReviewError({ type: "error", code: "backend_unavailable", message: "Canonical review requires an imported backend revision. Import the corpus or restore the review service; no browser-only action was recorded." });
+      return null;
+    }
+    return state;
+  }, [backendStateFor]);
+
+  const importCanonicalRequirements = useCallback(async (rationale: string) => {
+    setReviewError(null);
+    const result = await importCanonical({ actor_id: actorId, rationale, request_id: newRequestId() });
+    if (isReviewError(result)) { setReviewError(result); return false; }
+    await refreshBackend(); return true;
+  }, [actorId, newRequestId, refreshBackend]);
+
+  const createChallenge = useCallback(async (displayId: string, hypothesis: string, rationale: string) => {
+    const state = requireBackend(displayId); if (!state?.revision) return false;
+    setReviewError(null);
+    const result = await postChallenge({ requirement_id: state.requirement_id, expected_revision: state.revision, hypothesis, rationale, actor_id: actorId, request_id: newRequestId() });
+    if (isReviewError(result)) { setReviewError(result); await refreshBackend(); return false; }
+    await refreshBackend(); return true;
+  }, [requireBackend, actorId, newRequestId, refreshBackend]);
+
+  const resolveChallenge = useCallback(async (challenge: CanonicalChallenge, accept: boolean, rationale: string) => {
+    setReviewError(null);
+    const result = await postReassessment({ challenge_id: challenge.challenge_id, requirement_id: challenge.requirement_id,
+      expected_revision: challenge.requirement_revision, accept, rationale, actor_id: actorId, request_id: newRequestId() });
+    if (isReviewError(result)) { setReviewError(result); await refreshBackend(); return false; }
+    await refreshBackend(); return true;
+  }, [actorId, newRequestId, refreshBackend]);
 
   const findBundle = useCallback(
     (displayId: string) => {
@@ -352,6 +422,8 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       const { bundle, latest } = findBundle(displayId);
       const backendState = backendStateFor(displayId);
 
+      if (bundle.canonical && !requireBackend(displayId)) return false;
+
       // Backend-backed: the review service decides. Its revision check, its
       // audit event, its decision id. A refusal is final and is surfaced
       // rather than being replaced by a local decision that looks the same.
@@ -371,10 +443,10 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         if (isReviewError(result)) {
           setReviewError(result);
           await refreshBackend();
-          return;
+          return false;
         }
         await refreshBackend();
-        return;
+        return true;
       }
 
       // No backend revision for this card. Record it in the session so the
@@ -397,14 +469,16 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         decisions: { ...base.decisions, [displayId]: [...(base.decisions[displayId] ?? []), decision] },
         audit: [...base.audit, ...events],
       });
+      return true;
     },
-    [actorId, appendEvents, backendStateFor, commit, findBundle, makeDecision, newRequestId, refreshBackend],
+    [actorId, appendEvents, backendStateFor, commit, findBundle, makeDecision, newRequestId, refreshBackend, requireBackend],
   );
 
   const editRequirement = useCallback<StoreValue["editRequirement"]>(
     async (displayId, patch, rationale) => {
-      const { latest } = findBundle(displayId);
+      const { bundle, latest } = findBundle(displayId);
       const backendState = backendStateFor(displayId);
+      if (bundle.canonical && !requireBackend(displayId)) return false;
 
       // Backend-backed: the service creates the immutable new revision and
       // decides which fields may change. Doing it here as well would be a
@@ -426,10 +500,10 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         if (isReviewError(result)) {
           setReviewError(result);
           await refreshBackend();
-          return;
+          return false;
         }
         await refreshBackend();
-        return;
+        return true;
       }
 
       const base = overlayRef.current;
@@ -460,8 +534,9 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         decisions: { ...base.decisions, [displayId]: [...(base.decisions[displayId] ?? []), decision] },
         audit: [...base.audit, ...events],
       });
+      return true;
     },
-    [actorId, appendEvents, backendStateFor, commit, findBundle, makeDecision, newRequestId, refreshBackend],
+    [actorId, appendEvents, backendStateFor, commit, findBundle, makeDecision, newRequestId, refreshBackend, requireBackend],
   );
 
   const buildAssessment = useCallback(
@@ -488,6 +563,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
   const saveAssessment = useCallback<StoreValue["saveAssessment"]>(
     async (displayId, factors, rationale) => {
       const { bundle, latest } = findBundle(displayId);
+      if (bundle.canonical) throw new Error("Canonical CRPS is derived by the backend; use an evidence-grounded challenge.");
       const base = overlayRef.current;
       const assessment = buildAssessment(bundle, latest, factors, rationale);
       const events = await appendEvents(base, [
@@ -513,6 +589,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
   const submitChallenge = useCallback<StoreValue["submitChallenge"]>(
     async (record) => {
       const { bundle, latest } = findBundle(record.display_id);
+      if (bundle.canonical) throw new Error("Canonical challenges must use backend corpus retrieval.");
       const base = overlayRef.current;
       const assessment = buildAssessment(bundle, latest, record.factors_after, `Challenge: ${record.statement}`);
       const challenge: ChallengeRecord = {
@@ -553,8 +630,9 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
 
   const judgeLink = useCallback<StoreValue["judgeLink"]>(
     async (displayId, evidenceId, verdict, rationale) => {
-      const { latest } = findBundle(displayId);
+      const { bundle, latest } = findBundle(displayId);
       const backendState = backendStateFor(displayId);
+      if (bundle.canonical && !requireBackend(displayId)) return;
 
       // Backend-backed: the service checks that the evidence really is linked
       // to this revision before accepting a judgement on it.
@@ -603,16 +681,17 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       ]);
       commit({ ...base, judgments: [...base.judgments, judgment], audit: [...base.audit, ...events] });
     },
-    [actorId, appendEvents, backendStateFor, commit, findBundle, newRequestId, refreshBackend],
+    [actorId, appendEvents, backendStateFor, commit, findBundle, newRequestId, refreshBackend, requireBackend],
   );
 
   const logAction = useCallback<StoreValue["logAction"]>(
     async (action, objectType, objectId, reason) => {
+      if (dataset.mode !== "demo") throw new Error("Canonical actions require an explicit backend audit operation.");
       const base = overlayRef.current;
       const events = await appendEvents(base, [{ action, object_type: objectType, object_id: objectId, object_revision: null, reason }]);
       commit({ ...base, audit: [...base.audit, ...events] });
     },
-    [appendEvents, commit],
+    [appendEvents, commit, dataset.mode],
   );
 
   const clearReviewError = useCallback(() => setReviewError(null), []);
@@ -625,6 +704,8 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
 
   const value = useMemo<StoreValue>(
     () => ({
+      auditVerification, auditError, refreshBackend, importCanonicalRequirements, createChallenge, resolveChallenge,
+      canonicalChallenges: [...backend.statesById.values()].flatMap((s) => s.challenges ?? []),
       dataset,
       market,
       setMarket,
@@ -646,7 +727,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       reviewError,
       clearReviewError,
       challenges: overlay.challenges,
-      judgments: overlay.judgments,
+      judgments: dataset.mode === "demo" ? overlay.judgments : [...backend.statesById.values()].flatMap((s) => Object.values(s.judgments ?? {}) as unknown as EvidenceLinkJudgment[]),
       sessionEventCount: overlay.audit.length,
       hydrated,
       recordDecision,
@@ -661,6 +742,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       dataset, market, setMarket, weights, setWeights, policy, weightsAreDefault, actorId, setActorId, requirements, audit, overlay, hydrated,
       backend, backendProbed, isBackendBacked, reviewError, clearReviewError,
       recordDecision, editRequirement, saveAssessment, submitChallenge, judgeLink, logAction, resetSession,
+      auditVerification, auditError, refreshBackend, importCanonicalRequirements, createChallenge, resolveChallenge,
     ],
   );
 
