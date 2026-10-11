@@ -16,6 +16,15 @@ import type { Confidence } from "@/lib/domain/derive";
 import type { Dataset, EvidenceItem, Finding, Hypothesis, MarketCode, RequirementBundle } from "@/lib/domain/model";
 import { MARKETS } from "@/lib/domain/model";
 import { DEFAULT_PRIORITY_POLICY, hashString, normalisePolicy, priorityScore } from "@/lib/domain/scoring";
+import {
+  isReviewError,
+  postDecision,
+  postEdit,
+  postJudgment,
+  probeBackend,
+  type BackendAvailability,
+  type ReviewError,
+} from "@/lib/review/client";
 
 /* ------------------------------------------------------------------ */
 /* Local session overlay                                               */
@@ -49,6 +58,13 @@ interface Overlay {
 }
 
 const EMPTY: Overlay = { version: 2, revisions: {}, assessments: {}, decisions: {}, judgments: [], challenges: [], audit: [] };
+/**
+ * Stamped on any action the review service could not accept, so a browser-local
+ * entry is never mistaken for an audited decision. The session overlay is a
+ * demo convenience, not a record of what was decided.
+ */
+const SESSION_ONLY_NOTE =
+  "Recorded in this browser session only: this requirement has no revision in the audited review database, so no audit event was written there.";
 const OVERLAY_KEY = "bmw-pdl:session:v2";
 const MARKET_KEY = "bmw-pdl:market";
 const WEIGHTS_KEY = "bmw-pdl:weights";
@@ -118,6 +134,19 @@ interface StoreValue {
   judgments: EvidenceLinkJudgment[];
   sessionEventCount: number;
   hydrated: boolean;
+  /**
+   * Whether the Python review service is reachable, and which requirements it
+   * can actually record decisions for. The browser is not the authority; when
+   * a requirement is backend-backed, a refused action stays refused.
+   */
+  backend: BackendAvailability;
+  /** True once the backend has been probed, so the UI can avoid claiming either way. */
+  backendProbed: boolean;
+  /** Whether this requirement's decisions are written to the audited database. */
+  isBackendBacked: (displayId: string) => boolean;
+  /** The last backend refusal, for the UI to show instead of a silent failure. */
+  reviewError: ReviewError | null;
+  clearReviewError: () => void;
   recordDecision: (displayId: string, action: Exclude<DecisionAction, "edit" | "challenge">, rationale: string) => Promise<void>;
   editRequirement: (
     displayId: string,
@@ -142,8 +171,17 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
   const [weights, setWeightsState] = useState<PriorityPolicy>(DEFAULT_WEIGHTS);
   const [actorId, setActorState] = useState(DEFAULT_ACTOR);
   const [hydrated, setHydrated] = useState(false);
+  const [backend, setBackend] = useState<BackendAvailability>({
+    reachable: false,
+    reason: "The review service has not been contacted yet.",
+    statesById: new Map(),
+  });
+  const [backendProbed, setBackendProbed] = useState(false);
+  const [reviewError, setReviewError] = useState<ReviewError | null>(null);
   const overlayRef = useRef(overlay);
   overlayRef.current = overlay;
+  const backendRef = useRef(backend);
+  backendRef.current = backend;
 
   useEffect(() => {
     const stored = readStorage<Overlay | null>(OVERLAY_KEY, null);
@@ -154,6 +192,25 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
     setActorState(readStorage<string>(ACTOR_KEY, DEFAULT_ACTOR));
     setHydrated(true);
   }, [dataset.planning.primary_market]);
+
+  // Ask the backend which requirements it holds. Doing this once on mount means
+  // the UI can say plainly which cards produce audited decisions and which are
+  // session-only, instead of presenting both as if they were the same thing.
+  useEffect(() => {
+    let cancelled = false;
+    const ids = dataset.requirements
+      .map((bundle) => bundle.revisions[bundle.revisions.length - 1]?.requirement_id)
+      .filter((id): id is string => Boolean(id));
+    probeBackend(ids).then((availability) => {
+      if (!cancelled) {
+        setBackend(availability);
+        setBackendProbed(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataset.requirements]);
 
   const commit = useCallback((next: Overlay) => {
     overlayRef.current = next;
@@ -224,6 +281,39 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
     [dataset.audit, actorId],
   );
 
+  /** The backend's record for this requirement, or null when it has none. */
+  const backendStateFor = useCallback(
+    (displayId: string) => {
+      const bundle = requirements.find((b) => b.display_id === displayId);
+      const requirementId = bundle?.revisions[bundle.revisions.length - 1]?.requirement_id;
+      if (!requirementId) return null;
+      return backendRef.current.statesById.get(requirementId) ?? null;
+    },
+    [requirements],
+  );
+
+  const isBackendBacked = useCallback(
+    (displayId: string) => backendStateFor(displayId) !== null,
+    [backendStateFor],
+  );
+
+  /** Idempotency key. The backend refuses a reused id with a different payload. */
+  const newRequestId = useCallback(() => {
+    try {
+      return `ui-${crypto.randomUUID()}`;
+    } catch {
+      return `ui-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+  }, []);
+
+  /** Re-read backend state so a later action uses the current revision. */
+  const refreshBackend = useCallback(async () => {
+    const ids = [...backendRef.current.statesById.keys()];
+    const availability = await probeBackend(ids);
+    setBackend(availability);
+    return availability;
+  }, []);
+
   const findBundle = useCallback(
     (displayId: string) => {
       const bundle = requirements.find((b) => b.display_id === displayId);
@@ -260,10 +350,47 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
   const recordDecision = useCallback<StoreValue["recordDecision"]>(
     async (displayId, action, rationale) => {
       const { bundle, latest } = findBundle(displayId);
+      const backendState = backendStateFor(displayId);
+
+      // Backend-backed: the review service decides. Its revision check, its
+      // audit event, its decision id. A refusal is final and is surfaced
+      // rather than being replaced by a local decision that looks the same.
+      if (backendState?.revision !== undefined) {
+        setReviewError(null);
+        const result = await postDecision({
+          requirement_id: backendState.requirement_id,
+          expected_revision: backendState.revision,
+          action,
+          rationale,
+          actor_id: actorId,
+          request_id: newRequestId(),
+          // Approval needs this acknowledgement; the rule is enforced in
+          // ReviewService, which refuses the call when it is missing.
+          uncertainty_acknowledged: action === "approve",
+        });
+        if (isReviewError(result)) {
+          setReviewError(result);
+          await refreshBackend();
+          return;
+        }
+        await refreshBackend();
+        return;
+      }
+
+      // No backend revision for this card. Record it in the session so the
+      // demo still works, but say so in the trail instead of presenting a
+      // browser-local entry as an audited decision.
       const base = overlayRef.current;
       const decision = makeDecision(latest, action, rationale, latestAssessmentId(bundle, latest.revision));
       const events = await appendEvents(base, [
-        { action: `decision_${action}`, object_type: "requirement", object_id: displayId, object_revision: latest.revision, after_hash: decision.decision_id, reason: rationale },
+        {
+          action: `decision_${action}`,
+          object_type: "requirement",
+          object_id: displayId,
+          object_revision: latest.revision,
+          after_hash: decision.decision_id,
+          reason: `${rationale} ${SESSION_ONLY_NOTE}`,
+        },
       ]);
       commit({
         ...base,
@@ -271,12 +398,40 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         audit: [...base.audit, ...events],
       });
     },
-    [appendEvents, commit, findBundle, makeDecision],
+    [actorId, appendEvents, backendStateFor, commit, findBundle, makeDecision, newRequestId, refreshBackend],
   );
 
   const editRequirement = useCallback<StoreValue["editRequirement"]>(
     async (displayId, patch, rationale) => {
       const { latest } = findBundle(displayId);
+      const backendState = backendStateFor(displayId);
+
+      // Backend-backed: the service creates the immutable new revision and
+      // decides which fields may change. Doing it here as well would be a
+      // second implementation of the same rules.
+      if (backendState?.revision !== undefined) {
+        setReviewError(null);
+        const result = await postEdit({
+          requirement_id: backendState.requirement_id,
+          expected_revision: backendState.revision,
+          changes: {
+            title: patch.title,
+            customer_outcome: patch.customer_outcome,
+            acceptance_proposal: patch.acceptance_proposal,
+          },
+          rationale,
+          actor_id: actorId,
+          request_id: newRequestId(),
+        });
+        if (isReviewError(result)) {
+          setReviewError(result);
+          await refreshBackend();
+          return;
+        }
+        await refreshBackend();
+        return;
+      }
+
       const base = overlayRef.current;
       const next: RequirementRevision = {
         ...latest,
@@ -306,7 +461,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
         audit: [...base.audit, ...events],
       });
     },
-    [actorId, appendEvents, commit, findBundle, makeDecision],
+    [actorId, appendEvents, backendStateFor, commit, findBundle, makeDecision, newRequestId, refreshBackend],
   );
 
   const buildAssessment = useCallback(
@@ -399,6 +554,30 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
   const judgeLink = useCallback<StoreValue["judgeLink"]>(
     async (displayId, evidenceId, verdict, rationale) => {
       const { latest } = findBundle(displayId);
+      const backendState = backendStateFor(displayId);
+
+      // Backend-backed: the service checks that the evidence really is linked
+      // to this revision before accepting a judgement on it.
+      if (backendState?.revision !== undefined) {
+        setReviewError(null);
+        const result = await postJudgment({
+          requirement_id: backendState.requirement_id,
+          expected_revision: backendState.revision,
+          signal_id: evidenceId,
+          verdict,
+          rationale,
+          actor_id: actorId,
+          request_id: newRequestId(),
+        });
+        if (isReviewError(result)) {
+          setReviewError(result);
+          await refreshBackend();
+          return;
+        }
+        await refreshBackend();
+        return;
+      }
+
       const base = overlayRef.current;
       const judgment: EvidenceLinkJudgment = {
         schema_version: "1",
@@ -424,7 +603,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       ]);
       commit({ ...base, judgments: [...base.judgments, judgment], audit: [...base.audit, ...events] });
     },
-    [actorId, appendEvents, commit, findBundle],
+    [actorId, appendEvents, backendStateFor, commit, findBundle, newRequestId, refreshBackend],
   );
 
   const logAction = useCallback<StoreValue["logAction"]>(
@@ -436,6 +615,12 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
     [appendEvents, commit],
   );
 
+  const clearReviewError = useCallback(() => setReviewError(null), []);
+
+  /**
+   * Clears the session overlay only. Decisions the review service accepted are
+   * in the audited database and are deliberately not reachable from here.
+   */
   const resetSession = useCallback(() => commit(EMPTY), [commit]);
 
   const value = useMemo<StoreValue>(
@@ -455,6 +640,11 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
       findingsById: new Map(dataset.findings.map((f) => [f.id, f])),
       requirementByDisplayId: new Map(requirements.map((r) => [r.display_id, r])),
       audit,
+      backend,
+      backendProbed,
+      isBackendBacked,
+      reviewError,
+      clearReviewError,
       challenges: overlay.challenges,
       judgments: overlay.judgments,
       sessionEventCount: overlay.audit.length,
@@ -469,6 +659,7 @@ export function StoreProvider({ dataset, children }: { dataset: Dataset; childre
     }),
     [
       dataset, market, setMarket, weights, setWeights, policy, weightsAreDefault, actorId, setActorId, requirements, audit, overlay, hydrated,
+      backend, backendProbed, isBackendBacked, reviewError, clearReviewError,
       recordDecision, editRequirement, saveAssessment, submitChallenge, judgeLink, logAction, resetSession,
     ],
   );

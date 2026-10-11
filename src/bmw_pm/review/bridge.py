@@ -80,7 +80,9 @@ class JudgeLinkRequest(Contract):
     requirement_id: str = Field(min_length=1)
     expected_revision: int = Field(ge=1)
     signal_id: str = Field(min_length=1)
-    verdict: Literal["supports", "does_not_support", "unclear"]
+    # Mirrors EvidenceLinkJudgment.verdict exactly; a wider set here would be
+    # rejected by the contract anyway, and a narrower one would hide a verdict.
+    verdict: Literal["supports", "does_not_support", "context_only"]
     rationale: str = Field(min_length=1)
     actor_id: str = Field(min_length=1)
     request_id: str = Field(min_length=1)
