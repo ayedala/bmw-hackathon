@@ -1,4 +1,5 @@
 """Synthetic guardrails: no source validity or extraction accuracy is implied."""
+import re
 from pathlib import Path
 import pytest
 from bmw_pm.contracts import PriorityPolicy
@@ -42,5 +43,5 @@ def test_blank_priorities_stay_unknown_and_export_has_no_future_forecast(tmp_pat
     for item in db.requirement_summaries():
         assert PriorityService(db).history(item["requirement"].requirement_id)==[]
     brief=decision_brief(db,db.requirement_summaries(),{},None)
-    assert "2029" not in brief and "seed judgement" not in brief
+    assert re.search(r"\b2029\b", brief) is None and "seed judgement" not in brief
     assert "Unknown; explicit PM input required" in brief

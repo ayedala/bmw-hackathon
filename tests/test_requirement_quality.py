@@ -29,7 +29,7 @@ def _load(name: str) -> list[dict]:
     path = PROCESSED / name
     if not path.exists():  # pragma: no cover - artifacts are tracked
         pytest.skip(f"artifact {name} not present")
-    with path.open() as handle:
+    with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
 
