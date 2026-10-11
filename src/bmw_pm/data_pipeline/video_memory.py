@@ -48,10 +48,10 @@ def video_id(url: str) -> str:
     return value
 
 
-def save_transcript(database: Path, request: TranscriptInput, *,
+def save_transcript(database: str | Path, request: TranscriptInput, *,
                     source_kind: str = "user_supplied_transcript", source_locator: dict | None = None,
                     original_transcript_json: str | None = None) -> dict:
-    if not database.is_file():
+    if not Database(database).exists():
         raise ValueError("Import the evidence database before saving transcript memory.")
     identifier = video_id(request.video_url)
     digest = sha256_bytes(request.transcript.encode("utf-8"))
@@ -82,7 +82,7 @@ def save_transcript(database: Path, request: TranscriptInput, *,
 def memory_excerpts(connection: sqlite3.Connection, model_code: str, market: str, terms: set[str]) -> list[dict]:
     candidates, seen = [], set()
     for result in connection.execute(
-        "SELECT payload_json FROM video_memories WHERE model_code=? AND (market IS NULL OR market=?) ORDER BY (market=?) DESC,created_at DESC,memory_id DESC",
+        "SELECT payload_json FROM video_memories WHERE model_code=? AND (market IS NULL OR market=?) ORDER BY CASE WHEN market=? THEN 1 ELSE 0 END DESC,created_at DESC,memory_id DESC",
         (model_code, market, market)):
         row = json.loads(result[0])
         if row["video_id"] in seen:

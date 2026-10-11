@@ -23,6 +23,7 @@ from ..contracts import (
     StudyIngestionResult,
 )
 from ..utils import canonical_json, content_hash, sha256_bytes, utc_now
+from .config import database_target, is_postgres
 
 
 class RevisionConflict(RuntimeError):
@@ -210,10 +211,21 @@ BEGIN SELECT RAISE(ABORT, 'evidence judgments are append-only'); END;
 
 
 class Database:
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.target = database_target(path)
+        self.is_postgres = is_postgres(self.target)
+        # Existing UI cache keys may use .path; never put credentials there.
+        self.path = Path('shared-postgresql') if self.is_postgres else Path(self.target)
+
+    def exists(self) -> bool:
+        return self.is_postgres or self.path.is_file()
 
     def initialize(self) -> None:
+        if self.is_postgres:
+            from .postgres import assert_schema
+            with self.connect() as connection:
+                assert_schema(connection)
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
@@ -338,7 +350,24 @@ class Database:
                 if public_record_applies(record, requirement, state=state, domain=domain)]
 
     @contextmanager
-    def connect(self) -> Iterator[sqlite3.Connection]:
+    def connect(self, *, readonly: bool = False) -> Iterator:
+        if self.is_postgres:
+            from .postgres import PostgresConnection
+            connection = PostgresConnection(str(self.target), readonly=readonly)
+            try:
+                yield connection
+            finally:
+                connection.close()
+            return
+        if readonly:
+            connection = sqlite3.connect(self.path.resolve().as_uri() + '?mode=ro', uri=True)
+            connection.row_factory = sqlite3.Row
+            connection.execute('PRAGMA query_only=ON')
+            try:
+                yield connection
+            finally:
+                connection.close()
+            return
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -430,6 +459,8 @@ class Database:
         result: str,
         run_id: str | None = None,
     ) -> AuditEvent:
+        if hasattr(connection, 'write_lock'):
+            connection.write_lock()
         existing = self._existing_event(connection, request_id)
         if existing:
             return existing

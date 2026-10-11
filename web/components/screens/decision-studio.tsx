@@ -75,7 +75,7 @@ export function DecisionStudioScreen() {
         </fieldset>
         <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
           {records !== undefined ? <><strong className="font-medium text-zinc-900">{records.toLocaleString()} scoped feedback records</strong><p className="mt-1">{records ? "Unique feedback IDs; not a representative customer sample." : "No matching feedback. Research will show this gap."}</p></> : "Checking the evidence database…"}
-          {catalog && <p className="mt-2">Video library across models: {catalog.youtube_findings} validated findings · {catalog.video_memories} saved transcripts.</p>}
+          {catalog && <><p className="mt-2">{catalog.database_backend === "postgres" ? "Connected to the shared team dataset." : "Connected to the local dataset."}</p><p className="mt-2">Video library across models: {catalog.youtube_findings} validated findings · {catalog.video_memories} saved transcripts.</p></>}
         </div>
         {studio.catalogError && <p role="alert" className="text-xs text-red-700">{studio.catalogError}</p>}
         {catalog && !catalog.connection_configured && <p className="text-xs text-amber-800">Add your API key to the repository’s <code>.env</code> file. <button type="button" className="underline" onClick={() => void studio.refreshCatalog()}>Check again</button></p>}

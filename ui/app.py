@@ -14,6 +14,7 @@ from bmw_pm.decision import assess_ranking
 from bmw_pm.decision.planning import load_proposals, planning_order, decision_brief
 from bmw_pm.data_pipeline.context import source_acquisition_urls
 from bmw_pm.storage import Database
+from bmw_pm.storage.config import database_target, is_postgres
 from workbench_theme import apply_theme, brand, page_intro, badge, workflow, source_row
 from workbench_views import render_evidence, render_priority, render_review, render_history_records
 from planning_view import audit
@@ -29,8 +30,13 @@ if hosted_mode():
     db_path = require_hosted_access()
 else:
     with st.sidebar.expander("Workspace settings", expanded=False):
-        default_db = Path(os.environ.get("BMW_PM_DATABASE", str(ROOT / "data/processed/bmw_pm.db")))
-        db_path = Path(st.text_input("SQLite database", str(default_db)))
+        configured_db = database_target(root=ROOT)
+        if is_postgres(configured_db):
+            st.caption("Shared PostgreSQL database configured in the server environment.")
+            db_path = configured_db
+        else:
+            default_db = Path(os.environ.get("BMW_PM_DATABASE", str(configured_db)))
+            db_path = Path(st.text_input("SQLite database", str(default_db)))
 database = Database(db_path)
 database.initialize()
 if hosted_mode():

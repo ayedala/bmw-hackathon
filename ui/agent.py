@@ -18,6 +18,8 @@ from bmw_pm.advisor.settings import (ProjectCredentials, environment_credentials
                                      project_credentials, save_project_credentials)
 from bmw_pm.hosting import hosted_mode
 from bmw_pm.intelligence.provider import ProviderError
+from bmw_pm.storage import Database
+from bmw_pm.storage.config import database_target, database_label
 
 VEHICLES = {"BMW 1 Series · F70": "F70", "BMW 5 Series · G60": "G60", "BMW 7 Series · G70": "G70"}
 MARKETS = {"United States": "US", "United Kingdom": "GB", "Germany": "DE", "China": "CN", "Japan": "JP", "South Korea": "KR"}
@@ -258,7 +260,7 @@ def main() -> None:
     [data-testid="stForm"] {border-radius: 14px; padding: 1.3rem;}
     div.stButton > button[kind="primary"] {background: #1769e0; border-color: #1769e0;}
     </style>""", unsafe_allow_html=True)
-    database = ROOT / "data/processed/bmw_pm.db"
+    database = database_target(root=ROOT)
     if hosted_mode():
         from hosting_access import require_hosted_access
         database = Path(require_hosted_access())
@@ -271,7 +273,7 @@ def main() -> None:
     with st.sidebar:
         st.subheader("Decision Studio")
         st.caption("Evidence → market research → product decision")
-        st.caption("Dataset available" if database.is_file() else "Dataset missing — import the supplied files")
+        st.caption(database_label(database) if Database(database).exists() else "Dataset missing — import the supplied files")
         if st.button("Start a new decision", use_container_width=True):
             st.session_state.pop("advisor_result", None)
             st.session_state.pop("advisor_error", None)

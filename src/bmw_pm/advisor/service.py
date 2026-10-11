@@ -9,7 +9,7 @@ from .evidence import build_packet, model_payload
 from .provider import AdvisorProvider, PROMPT_VERSION, validate_report
 
 
-def run_advisor(request: AdvisorRequest, database: Path, provider: AdvisorProvider,
+def run_advisor(request: AdvisorRequest, database: str | Path, provider: AdvisorProvider,
                 progress: Callable[[str], None] = lambda _: None) -> AdvisorResult:
     steps: list[str] = []
 

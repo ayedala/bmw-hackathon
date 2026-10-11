@@ -30,6 +30,7 @@ export interface AdvisorResult {
   steps: string[]; usage: Record<string, unknown>[];
 }
 export interface SourceCatalog {
+  database_backend: "sqlite" | "postgres";
   database_available: boolean; connection_configured: boolean;
   scopes: {model_code: string; market: string; powertrain: string; feedback_records: number}[];
   youtube_findings: number; youtube_videos: number; saved_youtube_runs: number; video_memories: number;

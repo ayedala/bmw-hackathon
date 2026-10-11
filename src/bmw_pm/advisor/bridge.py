@@ -8,7 +8,7 @@ import sqlite3
 import sys
 from decimal import Decimal
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 from pydantic import Field, ValidationError
 
@@ -17,6 +17,7 @@ from ..data_pipeline.video_memory import TranscriptInput, save_transcript, video
 from ..intelligence.fusion import import_youtube_run
 from ..intelligence.provider import ProviderError
 from ..storage import Database
+from ..storage.config import StorageError, database_target
 from ..utils import sha256_bytes
 from .contracts import AdvisorRequest
 from .evidence import ROOT
@@ -42,6 +43,7 @@ class ScopeCoverage(Contract):
 
 class SourceCatalog(Contract):
     database_available: bool
+    database_backend: Literal['sqlite', 'postgres'] = 'sqlite'
     connection_configured: bool
     scopes: list[ScopeCoverage]
     youtube_findings: int
@@ -66,12 +68,13 @@ def saved_youtube_runs(root: Path = ROOT) -> list[Path]:
     ) for path in directory.glob("*/evidence.json")})
 
 
-def source_catalog(database: Path, root: Path = ROOT) -> SourceCatalog:
+def source_catalog(database: str | Path, root: Path = ROOT) -> SourceCatalog:
     credentials = project_credentials(root) or environment_credentials()
-    result = dict(database_available=database.is_file(), connection_configured=bool(credentials),
+    storage = Database(database)
+    result = dict(database_available=storage.exists(), database_backend='postgres' if storage.is_postgres else 'sqlite', connection_configured=bool(credentials),
                   scopes=[], youtube_findings=0, youtube_videos=0, saved_youtube_runs=len(saved_youtube_runs(root)), video_memories=0)
-    if database.is_file():
-        with sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+    if storage.exists():
+        with storage.connect(readonly=True) as connection:
             tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             result["database_available"] = "feedback_records" in tables
             if "feedback_records" in tables:
@@ -85,8 +88,8 @@ def source_catalog(database: Path, root: Path = ROOT) -> SourceCatalog:
     return SourceCatalog.model_validate(result)
 
 
-def sync_youtube(database: Path, root: Path = ROOT) -> SyncResult:
-    if not database.is_file():
+def sync_youtube(database: str | Path, root: Path = ROOT) -> SyncResult:
+    if not Database(database).exists():
         raise ValueError("Import the supplied database before syncing saved research.")
     runs = saved_youtube_runs(root)
     if len(runs) > 100:
@@ -145,7 +148,7 @@ def sync_youtube(database: Path, root: Path = ROOT) -> SyncResult:
     return SyncResult(**counts)
 
 
-def execute(action: str, payload: dict, database: Path, emit: Callable[[dict], None], *,
+def execute(action: str, payload: dict, database: str | Path, emit: Callable[[dict], None], *,
             root: Path = ROOT, provider_factory=AdvisorProvider) -> None:
     if action == "catalog":
         emit({"type": "catalog", "catalog": source_catalog(database, root).model_dump(mode="json")})
@@ -185,7 +188,7 @@ def main() -> int:
         if len(raw) > 1048576:
             raise ValueError("The request is too large.")
         payload = json.loads(raw or "{}")
-        database = Path(os.getenv("BMW_PM_DB_PATH") or ROOT / "data/processed/bmw_pm.db")
+        database = database_target(root=ROOT)
         execute(sys.argv[1] if len(sys.argv) > 1 else "catalog", payload, database, emit)
         return 0
     except ValidationError as exc:
@@ -193,6 +196,8 @@ def main() -> int:
                     for error in exc.errors(include_input=False, include_url=False)]
         emit({"type": "error", "message": "Check the decision inputs. " + "; ".join(messages)})
     except ProviderError as exc:
+        emit({"type": "error", "message": str(exc)})
+    except StorageError as exc:
         emit({"type": "error", "message": str(exc)})
     except (ValueError, OSError, sqlite3.Error):
         emit({"type": "error", "message": "The local request or evidence could not be loaded. Check the database and saved research configuration."})

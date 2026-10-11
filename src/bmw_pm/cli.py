@@ -24,7 +24,7 @@ def _json_print(value: object) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bmw-pm")
-    parser.add_argument("--db", default="data/processed/bmw_pm.db")
+    parser.add_argument("--db", default=None, help="Explicit SQLite path; otherwise use DATABASE_URL or the configured local database")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     ingest = subparsers.add_parser("ingest", help="ingest local supplied workbooks")
@@ -97,7 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    database = Database(Path(args.db))
+    database = Database(args.db)
     database.initialize()
     if args.command == "import-youtube":
         from .intelligence.fusion import import_youtube_run

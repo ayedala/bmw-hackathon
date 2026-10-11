@@ -11,6 +11,7 @@ from typing import Iterable
 from ..contracts import FeedbackRecord, Polarity
 from ..data_pipeline.video_memory import memory_excerpts
 from ..intelligence.baseline import BaselineExtractionProvider
+from ..storage import Database
 from ..utils import content_hash
 from .contracts import AdvisorRequest, EvidenceItem, EvidencePacket, TopicSummary
 
@@ -33,14 +34,13 @@ def _relevance(text: str, terms: set[str]) -> int:
     return len(set(re.findall(r"[a-z]{3,}", text.lower())) & terms)
 
 
-def build_packet(request: AdvisorRequest, database: Path, *, search_terms: Iterable[str] = (),
+def build_packet(request: AdvisorRequest, database: str | Path, *, search_terms: Iterable[str] = (),
                  focus_domains: Iterable[str] = ()) -> EvidencePacket:
-    if not database.is_file():
+    storage = Database(database)
+    if not storage.exists():
         raise ValueError("The evidence database is missing. Import the supplied data before starting research.")
     terms = _terms([request.question, *request.ideas, *search_terms])
-    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
-    connection.row_factory = sqlite3.Row
-    try:
+    with storage.connect(readonly=True) as connection:
         connection.execute("BEGIN")  # One consistent read snapshot, even during another import.
         params: list[str] = [request.model_code, request.market]
         where = "model_code=? AND country=?"
@@ -109,8 +109,6 @@ def build_packet(request: AdvisorRequest, database: Path, *, search_terms: Itera
 
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         _add_context(connection, tables, request, terms, evidence)
-    finally:
-        connection.close()
 
     limitations = [
         "The LLM receives selected excerpts and aggregate counts, not every feedback record.",
