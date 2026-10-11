@@ -144,6 +144,13 @@ def test_settings_do_not_execute_or_print_secrets(tmp_path):
     assert secret not in repr(credentials)
 
 
+def test_private_env_key_overrides_tracked_template(tmp_path):
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=\n")
+    (tmp_path / ".env.local").write_text("OPENAI_API_KEY=synthetic-local-key\n")
+    credentials = project_credentials(tmp_path)
+    assert (credentials.api_key, credentials.origin) == ("synthetic-local-key", ".env.local")
+
+
 def test_saved_app_key_survives_restart_and_does_not_overwrite_other_settings(tmp_path):
     existing = 'OPENAI_API_KEY=old-key\nUNRELATED=keep\n'
     (tmp_path / ".env").write_text(existing, encoding="utf-8")

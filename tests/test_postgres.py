@@ -54,6 +54,14 @@ def test_database_config_does_not_leak_or_fall_back(monkeypatch, tmp_path):
     assert 'private' not in str(Database('postgresql://test:private@localhost/test').path)
 
 
+def test_private_env_overrides_tracked_template(monkeypatch, tmp_path):
+    monkeypatch.delenv('DATABASE_URL', raising=False)
+    monkeypatch.delenv('BMW_PM_DB_PATH', raising=False)
+    (tmp_path / '.env').write_text('DATABASE_URL=\nBMW_PM_DB_PATH=template.db\n')
+    (tmp_path / '.env.local').write_text('DATABASE_URL=postgresql://test:private@localhost/test\n')
+    assert database_target(root=tmp_path) == 'postgresql://test:private@localhost/test'
+
+
 def test_large_migration_uses_direct_supabase_endpoint():
     session = 'postgresql://postgres.abcdefghijklmnopqrst:encoded%40pass@aws-1-eu-west-3.pooler.supabase.com:5432/postgres?sslmode=require'
     assert direct_migration_target(session) == ('postgresql://postgres:encoded%40pass@'

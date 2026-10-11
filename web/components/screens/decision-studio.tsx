@@ -78,7 +78,7 @@ export function DecisionStudioScreen() {
           {catalog && <><p className="mt-2">{catalog.database_backend === "postgres" ? "Connected to the shared team dataset." : "Connected to the local dataset."}</p><p className="mt-2">Video library across models: {catalog.youtube_findings} validated findings · {catalog.video_memories} saved transcripts.</p></>}
         </div>
         {studio.catalogError && <p role="alert" className="text-xs text-red-700">{studio.catalogError}</p>}
-        {catalog && !catalog.connection_configured && <p className="text-xs text-amber-800">Add your API key to the repository’s <code>.env</code> file. <button type="button" className="underline" onClick={() => void studio.refreshCatalog()}>Check again</button></p>}
+        {catalog && !catalog.connection_configured && <p className="text-xs text-amber-800">Add your API key to the repository’s <code>.env.local</code> file. <button type="button" className="underline" onClick={() => void studio.refreshCatalog()}>Check again</button></p>}
         {catalog && !catalog.database_available && <p className="text-xs text-red-700">The evidence database needs to be imported before research can start.</p>}
         <p className="text-2xs leading-relaxed text-slate-500">Research sends selected redacted excerpts to OpenAI and public questions to web search. API usage charges apply.</p>
         {running ? <Button type="button" onClick={studio.stop} className="w-full"><Square />Stop research</Button>

@@ -1,6 +1,6 @@
 """Private shared database setup, verified SQLite migration and team access.
 
-Run with python -m bmw_pm.storage.supabase. Credentials are read from .env,
+Run with python -m bmw_pm.storage.supabase. Credentials are read from .env.local,
 never accepted as CLI arguments or printed in output.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ from ..utils import canonical_json, content_hash, sha256_bytes, utc_now
 def shared_database(target=None) -> Database:
     db = Database(database_target(target))
     if not db.is_postgres:
-        raise StorageError('Add the Supabase Session pooler DATABASE_URL to the local .env file first.')
+        raise StorageError('Add the Supabase Session pooler DATABASE_URL to the local .env.local file first.')
     return db
 
 

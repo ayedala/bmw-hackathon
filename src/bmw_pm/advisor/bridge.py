@@ -167,7 +167,7 @@ def execute(action: str, payload: dict, database: str | Path, emit: Callable[[di
         request = AdvisorRequest.model_validate(payload)
         credentials = project_credentials(root) or environment_credentials()
         if not credentials:
-            raise ProviderError("Add OPENAI_API_KEY to the repository's local .env file, then retry.")
+            raise ProviderError("Add OPENAI_API_KEY to the repository's local .env.local file, then retry.")
         provider = provider_factory(api_key=credentials.api_key, project_id=credentials.project_id)
         emit({"type": "progress", "message": "Checking saved YouTube findings against their source transcripts."})
         imported = sync_youtube(database, root)
