@@ -95,6 +95,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 
 function AppSidebar() {
   const pathname = usePathname();
+  const liveStudio = pathname === "/" || pathname === "/video-memory";
   const { dataset, requirements } = useStore();
   const openDecisions = requirements.filter((r) => {
     const s = decisionStatus(latestRevision(r), r.decisions);
@@ -102,7 +103,8 @@ function AppSidebar() {
   }).length;
 
   const groups: { label?: string; items: NavItem[] }[] = [
-    { items: [{ href: "/", label: "Overview" }] },
+    { items: [{ href: "/", label: "Decision Studio" }, { href: "/video-memory", label: "Video memory" }] },
+    {label: "Planning workbench", items: [{href: "/overview", label: "Overview"}]},
     {
       label: "Intelligence",
       items: [
@@ -149,7 +151,7 @@ function AppSidebar() {
         </Link>
       </div>
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 py-3">
-        {groups.map((group, i) => (
+        {groups.filter((_, index) => !liveStudio || index < 2).map((group, i) => (
           <div key={group.label ?? i}>
             {group.label && <div className="mb-1 px-2 text-2xs font-medium uppercase tracking-wide text-slate-400">{group.label}</div>}
             <div className="space-y-px">
@@ -161,7 +163,7 @@ function AppSidebar() {
         ))}
       </nav>
       <div className="border-t border-slate-200 px-2 py-2">
-        <NavLink item={{ href: "/settings", label: "Settings" }} active={isActive("/settings")} />
+        <NavLink item={{ href: "/settings", label: liveStudio ? "Workbench settings" : "Settings" }} active={isActive("/settings")} />
       </div>
     </aside>
   );
@@ -171,7 +173,9 @@ function AppSidebar() {
 function CompactNav() {
   const pathname = usePathname();
   const items = [
-    ["/", "Overview"],
+    ["/", "Decision Studio"],
+    ["/video-memory", "Video memory"],
+    ["/overview", "Overview"],
     ["/findings", "Findings"],
     ["/evidence", "Evidence"],
     ["/hypotheses", "Hypotheses"],
@@ -185,7 +189,7 @@ function CompactNav() {
   ] as const;
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-slate-200 bg-white px-3 py-1.5 lg:hidden" aria-label="Primary">
-      {items.map(([href, label]) => {
+      {items.filter((_, index) => (pathname !== "/" && pathname !== "/video-memory") || index < 3).map(([href, label]) => {
         const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
         return (
           <Link
@@ -268,6 +272,13 @@ function DataStatus() {
 
 function ContextBar({ onSearch }: { onSearch: () => void }) {
   const { dataset, market, setMarket } = useStore();
+  const pathname = usePathname();
+  if (pathname === "/" || pathname === "/video-memory") return (
+    <div className="sticky top-0 z-20 flex h-14 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 lg:px-6">
+      <span className="text-[13px] font-semibold">BMW Decision Studio</span>
+      <span className="text-xs text-slate-500">Customer evidence · Market research · Video memory</span>
+    </div>
+  );
   return (
     <div className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-slate-200 bg-white px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
@@ -443,6 +454,7 @@ function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChange: (o: 
 /* ------------------------------------------------------------------ */
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [searchOpen, setSearchOpen] = useState(false);
   const toggle = useCallback(() => setSearchOpen((o) => !o), []);
 
@@ -468,6 +480,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ContextBar onSearch={() => setSearchOpen(true)} />
           <CompactNav />
           <main id="main" className="mx-auto max-w-[1680px] px-4 py-5 lg:px-6">
+            {pathname !== "/" && pathname !== "/video-memory" && <div className="mb-4 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">Planning workbench includes labelled synthetic examples and browser-local review actions. <Link href="/" className="font-medium text-brand">Open Decision Studio</Link> for live research using the evidence database.</div>}
             {children}
           </main>
         </div>

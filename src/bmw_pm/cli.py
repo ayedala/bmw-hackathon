@@ -24,7 +24,7 @@ def _json_print(value: object) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bmw-pm")
-    parser.add_argument("--db", default="data/processed/bmw_pm.db")
+    parser.add_argument("--db", default=None, help="Explicit SQLite path; otherwise use DATABASE_URL or the configured local database")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     ingest = subparsers.add_parser("ingest", help="ingest local supplied workbooks")
@@ -39,6 +39,15 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--limit", type=int, default=100)
     youtube = subparsers.add_parser("import-youtube", help="validate and import a saved YouTube research run")
     youtube.add_argument("directory", type=Path)
+    report_context = subparsers.add_parser("sync-report-context", help="store curated BMW report planning context")
+    report_context.add_argument("--input", default="configs/bmw_group_report_2025_context.json")
+    public = subparsers.add_parser("sync-public-datasets", help="import bounded official and curated public context")
+    public.add_argument("--config", default="configs/public_datasets_v1.json")
+    public.add_argument("--curated", default="configs/public_evidence_curated_v1.json")
+    public.add_argument("--only", choices=("all", "nhtsa", "afdc", "curated"), default="all")
+    public_context = subparsers.add_parser("public-context", help="inspect public evidence for one requirement")
+    public_context.add_argument("requirement_id")
+    public_context.add_argument("--state", help="AFDC state name, or Total")
 
     run = subparsers.add_parser("run", help="derive and score requirement candidates")
     run.add_argument("--profile", default="configs/g60.json")
@@ -46,11 +55,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--taxonomy", default="configs/baseline_taxonomy_v1.json")
     run.add_argument("--provider", choices=("auto", "baseline", "openai"), default="auto")
     run.add_argument("--limit", type=int)
+    run.add_argument("--report-context", default="configs/bmw_group_report_2025_context.json")
     run.add_argument("--full", action="store_true", help="print complete candidate payloads")
     run.add_argument("--youtube-run", type=Path, action="append", default=None,
                      help="saved YouTube output directory; repeat for multiple runs; prior imports are included automatically")
 
     subparsers.add_parser("list", help="list latest requirement cards")
+    readiness = subparsers.add_parser("decision-readiness", help="check gaps before a PM commitment")
+    readiness.add_argument("--policy", default="configs/exploratory_equal_v1.json")
+    evaluation = subparsers.add_parser("freeze-evaluation", help="freeze private inputs for independent human labels")
+    evaluation.add_argument("--version", default="evaluation-v1")
 
     review = subparsers.add_parser("review", help="approve, reject, challenge, or defer")
     review.add_argument("requirement_id")
@@ -83,13 +97,31 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    database = Database(Path(args.db))
+    database = Database(args.db)
     database.initialize()
     if args.command == "import-youtube":
         from .intelligence.fusion import import_youtube_run
         result = import_youtube_run(database, args.directory)
         _json_print(result)
         return 1 if result["rejected"] else 0
+    if args.command == "freeze-evaluation":
+        from .evaluation import freeze_evaluation
+        if not args.version or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in args.version):
+            raise ValueError("evaluation version must use letters, numbers, underscore or hyphen")
+        _json_print(freeze_evaluation(database, Path("runs") / args.version, seed=args.version))
+        return 0
+    if args.command == "decision-readiness":
+        from .decision import assess_ranking
+        from .decision.readiness import assess_readiness
+        policy = PolicyVersion.model_validate(load_json(args.policy))
+        summaries = database.requirement_summaries()
+        _json_print({
+            "cards": [assess_readiness(item["requirement"], item["score"], policy).model_dump()
+                      for item in summaries],
+            "ranking": assess_ranking([item["score"] for item in summaries if item["score"]]),
+            "learning_status": "No human-labelled evaluation or reviewed preference dataset is recorded by this check; no automatic training or policy promotion.",
+        })
+        return 0
     if args.command == "import-workspace":
         from .data_pipeline.legacy_database import import_workspace
         _json_print(import_workspace(database=database, source_root=args.source,
@@ -98,6 +130,35 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "context":
         from .data_pipeline.legacy_database import evidence_context
         _json_print([row.model_dump(mode="json") for row in evidence_context(database, args.table, args.limit)])
+        return 0
+    if args.command == "sync-report-context":
+        _json_print({"new_context_items": database.sync_report_context(load_json(args.input))})
+        return 0
+    if args.command == "sync-public-datasets":
+        from .public_datasets import afdc_records, curated_records, nhtsa_records
+
+        config = load_json(args.config)
+        records = []
+        coverage = None
+        if args.only in ("all", "nhtsa"):
+            nhtsa, coverage = nhtsa_records(config)
+            records.extend(nhtsa)
+        if args.only in ("all", "afdc"):
+            records.extend(afdc_records(config, snapshot_root=Path("data/raw/external/afdc")))
+        if args.only in ("all", "curated"):
+            records.extend(curated_records(load_json(args.curated)))
+        inserted = database.persist_public_evidence(records)
+        _json_print({"records_collected": len(records), "new_database_rows": inserted,
+                     "nhtsa_model_coverage": coverage,
+                     "note": "Review context only; no automatic priority or safety rating."})
+        return 0
+    if args.command == "public-context":
+        summaries = database.requirement_summaries()
+        requirement = next((item["requirement"] for item in summaries
+                            if item["requirement"].requirement_id == args.requirement_id), None)
+        if requirement is None:
+            raise ValueError("requirement ID not found")
+        _json_print(database.public_evidence_for_requirement(requirement, state=args.state))
         return 0
     if args.command == "ingest":
         report = ingest_supplied_data(
@@ -108,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         _json_print(report)
         return 0
     if args.command == "run":
+        database.sync_report_context(load_json(args.report_context))
         profile = load_json(args.profile)
         policy = PolicyVersion.model_validate(load_json(args.policy))
         provider = select_provider(args.provider, baseline_config=args.taxonomy)

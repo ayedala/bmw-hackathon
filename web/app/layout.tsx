@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/app/shell";
 import { loadDataset } from "@/lib/data/load";
 import { StoreProvider } from "@/lib/store";
+import { StudioProvider } from "@/lib/advisor/store";
 
 import "./globals.css";
 
@@ -30,7 +31,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="en" className={plex.variable}>
       <body>
         <StoreProvider dataset={dataset}>
-          <AppShell>{children}</AppShell>
+          <StudioProvider><AppShell>{children}</AppShell></StudioProvider>
         </StoreProvider>
       </body>
     </html>

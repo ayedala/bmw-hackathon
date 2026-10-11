@@ -1,5 +1,5 @@
-import { OverviewScreen } from "@/components/screens/overview";
+import { DecisionStudioScreen } from "@/components/screens/decision-studio";
 
 export default function Page() {
-  return <OverviewScreen />;
+  return <DecisionStudioScreen />;
 }

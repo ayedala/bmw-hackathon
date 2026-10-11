@@ -128,7 +128,7 @@ class ReviewService:
                     "requirement_revision": new_revision.revision,
                     "assumptions": [
                         *previous_score.assumptions,
-                        "This PM edit did not change scope or evidence links, so recorded criterion inputs were carried forward.",
+                        "Only the display title changed; recorded criterion inputs were carried forward.",
                     ],
                 }
             )

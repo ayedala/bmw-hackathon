@@ -126,3 +126,22 @@ def test_audit_is_append_only_and_tamper_is_detected(tmp_path: Path) -> None:
     valid, message = database.verify_audit_chain()
     assert valid is False
     assert "event hash mismatch" in message
+
+
+def test_customer_outcome_edit_requires_new_scoring(tmp_path):
+    from bmw_pm.contracts import PolicyVersion, CriterionInput
+    from bmw_pm.decision import score_requirement
+    database = Database(tmp_path / "edit.db")
+    requirement = database.ensure_requirement(_requirement(), request_id="create", run_id="run")
+    policy = PolicyVersion.model_validate_json(Path("configs/exploratory_equal_v1.json").read_text())
+    score = score_requirement(requirement=requirement, policy=policy,
+        criterion_inputs={name: CriterionInput(value=2, basis="Synthetic fixture") for name in policy.criteria},
+        profile_id="synthetic", profile_revision=1, corpus_manifest_hash="synthetic", run_id="run")
+    database.persist_score(score, request_id="score")
+    service = ReviewService(database)
+    _, edited = service.edit(requirement_id=requirement.requirement_id, expected_revision=1,
+        changes={"customer_outcome": "A materially different task."}, rationale="Scope of claim changed",
+        actor_id="test-pm", request_id="edit")
+    assert database.latest_score(requirement.requirement_id, edited.revision) is None
+    assert database.latest_score(requirement.requirement_id, 1) is not None
+    assert database.replay_requirement(requirement.requirement_id)["audit_valid"]

@@ -112,6 +112,15 @@ def test_documented_score_arithmetic_and_policy_reversal() -> None:
     assert weighted_a.lower_bound == 67.5
 
 
+def test_readiness_does_not_promote_complete_arithmetic_to_approved_evidence():
+    from bmw_pm.decision.readiness import assess_readiness
+    result = assess_readiness(_requirement(), _score((3, 2, 3, 1)), _policy())
+    assert not result.ready_for_commitment
+    assert any("entailment" in reason for reason in result.blockers)
+    assert any("policy" in reason for reason in result.blockers)
+    assert any("Feasibility" in reason for reason in result.blockers)
+
+
 def test_unknowns_are_intervals_and_known_weights_are_not_renormalized() -> None:
     inputs = {
         "customer_impact": CriterionInput(value=3, basis="Synthetic reviewed value"),

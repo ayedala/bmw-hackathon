@@ -25,6 +25,8 @@ Required: **YOUTUBE_API_KEY** (enable YouTube Data API v3 on a Google Cloud proj
 
 ## Local review interface
 
+Configuration is loaded from this folder's `.env` regardless of the launch directory; environment variables take precedence. Both API keys and the transcript package are checked before discovery. A run returns a failure exit code when no selected video completes retrieval and extraction. A completed extraction with zero relevant observations is valid and is not evidence that customer needs are absent.
+
 On Windows, run `.venv\Scripts\python.exe web.py` from this folder, then open http://127.0.0.1:8765.
 The interface loads saved runs under `output/`, filters findings, links to the
 original video at each quote's timestamp, and displays the retrieved transcript
@@ -56,6 +58,8 @@ The program persists `sources.json`, `evidence.json`, `evidence.csv`, `summary.m
 From the repository root, run `bmw-pm run --provider baseline --full` after research finishes. The shared engine discovers saved YouTube output directories, revalidates quotes against saved transcripts, and combines findings with BMW feedback, studies and imported context. Alternatively use the Streamlit workbench's **YouTube research** view and select **Combine this run with BMW evidence**. `--youtube-run <output-directory>` selects an explicit saved run in the CLI and can be repeated. Missing or blocked transcripts cannot contribute evidence. See the root README for provenance, scope and scoring limitations.
 
 ## Verification and limitations
+
+Probe mode stops discovery after the first result page containing a metadata-matched candidate, reducing search quota use. It may still need multiple searches if earlier pages contain no match. Normal runs still paginate discovery; `--max-videos` limits processing, not search requests. HTTP failures report Google's reason/message without including API keys. If Google reports the daily Search Queries quota exhausted, wait for its reset or request an approved quota increase in Google Cloud; retrying immediately will not restore quota.
 
 ```bash
 pytest -q

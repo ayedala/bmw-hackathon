@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 ai = ["openai>=2,<3"]
+postgres = ["psycopg[binary]>=3.2,<4"]
 data = ["pypdf[crypto]>=6,<7", "fonttools>=4,<5"]
 
 [dependency-groups]

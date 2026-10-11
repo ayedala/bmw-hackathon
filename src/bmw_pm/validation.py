@@ -69,7 +69,8 @@ def validate_database(database: Database, *, expect_supplied_shape: bool = False
                 "SELECT source_id,payload_json FROM sources"
             ).fetchall()
         }
-        if connection.execute("SELECT 1 FROM sqlite_master WHERE name='bmw_context'").fetchone():
+        if (connection.execute("SELECT 1 FROM sqlite_master WHERE name='bmw_context'").fetchone()
+                and connection.execute("SELECT 1 FROM bmw_context LIMIT 1").fetchone()):
             context_rows = connection.execute("SELECT payload_json,payload_hash FROM bmw_context").fetchall()
             context_errors, counts = [], {"bmw_sales": 0, "bmw_equipment": 0}
             for row in context_rows:

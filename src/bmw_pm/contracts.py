@@ -426,6 +426,45 @@ class ScoreSnapshot(Contract):
     run_id: str
 
 
+class EvaluationRecord(Contract):
+    record_id: str
+    grouped_record_ids: list[str]
+    split: Literal["development", "heldout_g60", "transfer_f70", "transfer_g70"]
+    model: str
+    source_label: str | None
+    country: str | None
+    powertrain: str | None
+    source_hash: str
+    content_hash: str
+    group_hash: str
+    double_label: bool
+    selection_reason: str = "Deterministic round-robin across source/country/powertrain strata; not population representative."
+
+
+class EvaluationManifest(Contract):
+    schema_version: str = "1"
+    evaluation_id: str
+    seed: str
+    corpus_hash: str
+    records: list[EvaluationRecord]
+    limitations: list[str]
+
+    @model_validator(mode="after")
+    def independent_groups(self) -> "EvaluationManifest":
+        ids = [item.record_id for item in self.records]
+        groups = [item.group_hash for item in self.records]
+        if len(ids) != len(set(ids)) or len(groups) != len(set(groups)):
+            raise ValueError("evaluation records and groups must be unique")
+        return self
+
+
+class DecisionReadiness(Contract):
+    requirement_id: str
+    ready_for_commitment: bool
+    blockers: list[str]
+    interpretation: str = "Readiness checks are safeguards, not measured recommendation quality."
+
+
 class ProviderDescriptor(Contract):
     name: str
     mode: Literal["baseline_no_ai", "live_ai", "cached_replay"]

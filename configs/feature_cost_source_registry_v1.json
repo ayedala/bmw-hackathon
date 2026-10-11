@@ -1,0 +1,96 @@
+{
+  "schema_version": "1",
+  "as_of": "2026-10-11",
+  "purpose": "Source map and coverage gaps for future feature-cost evidence. A listed source is not a priced feature estimate.",
+  "sources": [
+    {
+      "id": "doe_incremental_cost",
+      "topic": "battery and powertrain",
+      "status": "numeric_benchmarks_loaded",
+      "url": "https://www.energy.gov/cmei/vehicles/incremental-purchase-cost-methodology-and-results-electric-vehicles"
+    },
+    {
+      "id": "doe_electric_drive",
+      "topic": "traction motor and inverter",
+      "status": "numeric_benchmarks_loaded",
+      "url": "https://www.energy.gov/sites/default/files/2024-06/EDTT_Roadmap_2023_JOG_Consensus_compliant.pdf"
+    },
+    {
+      "id": "nhtsa_draft_technology_costs",
+      "topic": "vehicle electrical components",
+      "status": "numeric_benchmarks_loaded_draft_model",
+      "url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2025-12/CAFE-SAFE-MY-2022-2031-NPRM-TSD-tag.pdf"
+    },
+    {
+      "id": "nhtsa_final_historical_mechanics",
+      "topic": "steering, accessory, brake and axle-disconnect modeled costs",
+      "status": "numeric_benchmarks_loaded_historical_model",
+      "url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2022-04/Final-Rule-Preamble_CAFE-MY-2024-2026.pdf"
+    },
+    {
+      "id": "nhtsa_aeb_final_rule",
+      "topic": "advanced safety software and sensor upgrade context",
+      "status": "aggregate_context_only_not_unit_price",
+      "url": "https://www.nhtsa.gov/sites/nhtsa.gov/files/2024-04/final-rule-automatic-emergency-braking-systems-light-vehicles_web-version.pdf",
+      "context_metric": {
+        "value": 354.06,
+        "unit": "million USD annual US fleet incremental cost",
+        "price_year": 2020,
+        "software_million_usd": 282.2,
+        "hardware_million_usd": 71.86,
+        "locator": "Section IV.B, Table 26"
+      },
+      "limit": "Industry-wide cost to meet a particular regulation relative to an AEB-equipped baseline; not the cost to add AEB, radar or software to a BMW vehicle."
+    },
+    {
+      "id": "bls_oews",
+      "topic": "US engineering and service wages",
+      "status": "numeric_benchmarks_loaded",
+      "url": "https://www.bls.gov/news.release/ocwage.t01.htm"
+    },
+    {
+      "id": "destatis_labor",
+      "topic": "German manufacturing employer labor cost",
+      "status": "numeric_benchmarks_loaded",
+      "url": "https://www.destatis.de/Europa/EN/Topic/Population-Labour-Social-Issues/Labour-market/EU_LabourCostPerHourWorked.html"
+    },
+    {
+      "id": "afdc_infrastructure",
+      "topic": "external charging equipment and installation",
+      "status": "numeric_benchmarks_loaded_infrastructure_only",
+      "url": "https://afdc.energy.gov/fuels/electricity-infrastructure-development"
+    },
+    {
+      "id": "bls_parts_ppi",
+      "topic": "US industry price change",
+      "status": "price_index_loaded",
+      "url": "https://www.bls.gov/mxp/publications/industry-pamphlets/charts/motor-vehicle-parts-price-indexes.htm"
+    },
+    {
+      "id": "usgs_minerals",
+      "topic": "lithium, nickel, cobalt and other material supply and commodity context",
+      "status": "source_mapped_no_vehicle_unit_cost",
+      "url": "https://www.usgs.gov/centers/national-minerals-information-center/mineral-commodity-summaries"
+    },
+    {
+      "id": "nhtsa_ewr",
+      "topic": "public safety and reliability reporting",
+      "status": "source_mapped_no_warranty_cost",
+      "url": "https://www.nhtsa.gov/resources-investigations-recalls"
+    },
+    {
+      "id": "epa_omega",
+      "topic": "older technology cost model files",
+      "status": "source_mapped_requires_year_and_scope_review",
+      "url": "https://www.epa.gov/regulations-emissions-vehicles-and-engines/optimization-model-reducing-emissions-greenhouse-gases"
+    }
+  ],
+  "missing_private_inputs": [
+    "BMW platform bill of materials and supplier quotations",
+    "part geometry, material, tolerance, mass and planned production volume",
+    "engineering hours, loaded rates, tooling, validation and homologation",
+    "feature take rate, regional fitment and lifecycle volume",
+    "field failure rates, warranty reimbursement and service parts",
+    "software licensing, cloud operations and update support"
+  ]
+}

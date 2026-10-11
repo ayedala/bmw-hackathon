@@ -16,7 +16,7 @@ from ..contracts import (
     ProviderDescriptor,
     Signal,
 )
-from ..utils import stable_id
+from ..utils import content_hash, stable_id
 
 
 class ProviderError(RuntimeError):
@@ -81,6 +81,8 @@ class OpenAIStructuredExtractionProvider(ExtractionProvider):
             raise ProviderError("install the project with the 'ai' extra for live extraction") from exc
         self._client = OpenAI()
         self._returned_model_id: str | None = None
+        self.last_usage: dict[str, int | None] | None = None
+        self.last_abstention_reason: str | None = None
 
     @property
     def descriptor(self) -> ProviderDescriptor:
@@ -92,9 +94,15 @@ class OpenAIStructuredExtractionProvider(ExtractionProvider):
             label="Live AI structured extraction; post-validated against exact evidence spans",
         )
 
+    @property
+    def configuration_hash(self) -> str:
+        return content_hash([_SYSTEM_PROMPT, _ExtractionResult.model_json_schema(), self.model_id])
+
     def extract(self, records: list[FeedbackRecord], *, run_id: str) -> list[Signal]:
         output: list[Signal] = []
         for record in records:
+            self.last_usage = None
+            self.last_abstention_reason = None
             payload = {
                 "record_id": record.record_id,
                 "redacted_text": record.redacted_text,
@@ -120,11 +128,16 @@ class OpenAIStructuredExtractionProvider(ExtractionProvider):
                     f"live extraction failed for {record.record_id}; no baseline substitution was made"
                 ) from exc
             self._returned_model_id = getattr(response, "model", self.model_id)
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                self.last_usage = {key: getattr(usage, key, None)
+                                   for key in ("input_tokens", "output_tokens", "total_tokens")}
             parsed = getattr(response, "output_parsed", None)
             if parsed is None:
                 raise ProviderError(
                     f"live extraction returned no parsed output for {record.record_id}"
                 )
+            self.last_abstention_reason = parsed.abstention_reason
             output.extend(self._validate_drafts(record, parsed, run_id=run_id))
         return output
 

@@ -68,6 +68,23 @@ uv run streamlit run ui/app.py
 
 The CLI and UI default to data/processed/bmw_pm.db. For an optional live model run, install with uv sync --extra ai, set OPENAI_API_KEY and BMW_PM_OPENAI_MODEL, review the redacted input, and use bmw-pm run --provider openai --limit 20. Keep raw customer material, keys, local databases, and model responses containing personal information out of Git.
 
+### Guided AI decision website
+
+The product-facing website has three journeys: **Assess my idea**, **Find the next improvement**, and **Compare several ideas**. It covers BMW 1 Series F70, 5 Series G60 and 7 Series G70, with a chosen market, powertrain and objective.
+
+```powershell
+uv sync --extra ai --extra data
+uv run streamlit run ui/agent.py
+```
+
+The earlier `uv run streamlit run ui/mocktest.py` command now opens this same website. The database must already be imported using the commands above. Open **App settings**, enter your API key, and select **Save and test connection**. **Remember on this computer** stores it in the local, unencrypted, Git-ignored `.env.advisor` file; leave this unchecked for session-only use. Failed setup preserves the previous connection. Return to Decision Studio to assess an idea, recommend an improvement or compare ideas. Users do not choose the underlying AI model: `BMW_PM_OPENAI_MODEL` is configured on the server and must support Responses, web search and structured outputs. Keys are never included in reports. See [connection setup](docs/ADVISOR.md#configure-the-app) for details.
+
+Each run reads scoped local evidence, builds a research plan, searches public sources, and produces a cited decision brief with alternatives, competitor findings, delivery risks and economic gaps. The page retains the result across interactions and lets you download its evidence/provenance as JSON. **Costs & revenue** also calculates conditional scenarios from explicit user assumptions using the existing financial engine. Missing costs or causal sales lift are not invented. API failures remain visible. See [the guided agent workflow](docs/ADVISOR.md) for scope, data handling and validation limits. The detailed PM review workbench remains at `ui/app.py`.
+
+The BMW Group Report 2025 is stored as five dated planning-context entries. Run `uv run bmw-pm sync-report-context` to load them into an existing database; new `bmw-pm run` calls sync them automatically. The UI's **BMW report context** tab shows the applicable entries, citations, considerations and limitations for each requirement. These entries do not change feedback counts or criterion scores. See [report context](docs/REPORT_CONTEXT.md).
+
+Run `uv run bmw-pm sync-public-datasets` to add official NHTSA complaint/recall summaries, U.S. Department of Energy public charging counts, and a small set of sourced technology/competitor notes. These appear in the **Public datasets** card tab and remain review context rather than automatic score multipliers. See [public datasets](docs/PUBLIC_DATASETS.md) for scope, gaps and other proposed sources.
+
 The implementation is under src/bmw_pm/; configs/ holds vehicle and scoring policies, ui/ the review interface, tests/ the software checks, and prompts/ the stage specifications. The supplied source files are required to reproduce data-specific runs and are not part of this repository.
 
 ## Use the combined BMW + YouTube engine
@@ -107,6 +124,21 @@ The active database remains `data/processed/bmw_pm.db`. The adapter copies origi
 
 The archive hash, original table, row payload hash and original locator IDs preserve foreign lineage. Import does not establish entailment or engineering feasibility: these extra channels remain unreviewed context and do not automatically populate scores or approve requirements. The combined pipeline links relevant imported context alongside rebuilt feedback and YouTube evidence. Repeating an identical import is idempotent; different local raw bytes cause a conflict instead of an overwrite. Raw data, snapshots and import manifests remain ignored by Git.
 
+## Financial scenarios for update decisions
+
+The separate [business-case calculator](docs/BUSINESS_CASES.md) accepts private,
+hashed cost, revenue, adoption and sales-lift assumptions for each proposed
+update. It reports downside/base/upside annual cash flow, discounted value,
+break even sales lift, evidence and scope gates, and unresolved comparisons.
+The current database has no approved feature-level finance inputs, so it does
+not yet identify a profit-maximizing update. Run
+`python scripts/evaluate_business_cases.py --template runs/business-cases.json`
+with `PYTHONPATH=src` to create the blank private worksheet.
+
 ## Hosted app
 
 A protected Docker/Render deployment is prepared in `Dockerfile` and `render.yaml`. Read [hosting setup](docs/HOSTING.md) for account connection, generated access secrets, persistent storage, private database upload and actual verification limits. The database is uploaded separately through authenticated setup, not included in Git or the image. The app is not live until a hosting service is provisioned.
+
+## Feature implementation costs
+
+The decision workbench and the advisor's Costs & revenue tab now provide a source-labelled feature cost scenario form. It separates parts and assembly per equipped vehicle from engineering, tooling and validation paid once, then shows low/base/high totals at the entered volume. Public DOE/BLS figures are displayed as benchmarks, not BMW quotes. See [the estimator guide](docs/FEATURE_COST_ESTIMATOR.md).
