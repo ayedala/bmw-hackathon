@@ -1,0 +1,86 @@
+{
+  "schema_version": "1",
+  "profile_id": "g60_de_2030",
+  "revision": 1,
+  "model_family": "G60",
+  "scenario_question": "What should the next BMW 5 Series in Germany offer in 2030?",
+  "countries": [
+    "DE"
+  ],
+  "powertrains": [
+    "ICE",
+    "PHEV",
+    "BEV",
+    "BEVE"
+  ],
+  "domain_applicability": {
+    "charging_and_range": [
+      "BEV",
+      "PHEV",
+      "BEVE"
+    ]
+  },
+  "equipment_context_phrases": {
+    "controls_usability": [
+      "Klimaautomatik",
+      "Bedienung",
+      "Bedienkonzept",
+      "Lenkrad"
+    ],
+    "software_reliability": [
+      "ConnectedDrive",
+      "BMW Live Cockpit",
+      "Software",
+      "Display"
+    ],
+    "charging_and_range": [
+      "Laden",
+      "Ladekabel",
+      "Ladeleistung",
+      "Reichweite",
+      "Batterie"
+    ],
+    "ride_and_comfort": [
+      "Komfort",
+      "Sitze",
+      "Sitzheizung",
+      "Federung",
+      "Fahrwerk"
+    ],
+    "noise_and_refinement": [
+      "Akustik",
+      "Verglasung",
+      "Geräusch"
+    ],
+    "storage_and_practicality": [
+      "Gepäck",
+      "Ablage",
+      "Kofferraum",
+      "Getränkehalter"
+    ],
+    "driver_assistance": [
+      "Driving Assistant",
+      "Parking Assistant",
+      "Parkassistent",
+      "Fahrerassistenz"
+    ]
+  },
+  "powertrain_aliases": {},
+  "alias_assumptions": {},
+  "planning_date": "2026-10-11",
+  "launch_window": "2030",
+  "objectives": [],
+  "uncovered_regions": [
+    "CN",
+    "US"
+  ],
+  "notes": [
+    "Scenario scope: BMW 5 Series G60 successor, German market, 2030 horizon.",
+    "Germany is the primary market, so Market Relevance scores DE evidence highest and treats other EU evidence as applicable-but-indirect. See configs/crps_v1.json.",
+    "objectives is empty on purpose. No approved product objectives exist for this exercise, so Strategic Fit stays unknown and keeps its weight as an interval rather than being filled with an assumption about what the business probably values.",
+    "launch_window is the planning horizon, not a committed launch date.",
+    "This profile does not replace configs/g60.json, which remains the US customer-feedback MVP slice that the feedback pipeline and its tests are built on.",
+    "Evidence-only policy: BEVE remains an uninterpreted source label, never silently mapped to BEV.",
+    "No China or US verbatims are in scope for this profile; both are declared uncovered rather than assumed comparable."
+  ]
+}

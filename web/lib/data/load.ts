@@ -40,7 +40,7 @@ const repoRoot = () => process.env.BMW_REPO_ROOT ?? path.resolve(process.cwd(), 
 
 const FILES = {
   policy: "configs/exploratory_equal_v1.json",
-  profile: "configs/g60.json",
+  profile: "configs/g60_de_2030.json",
   proposals: "configs/successor_proposals_v1.json",
   context: "configs/planning_public_context.json",
   seeds: "research/web_evidence_seed.jsonl",
@@ -122,19 +122,19 @@ const FALLBACK_POLICY: PolicyVersion = {
 
 const FALLBACK_PROFILE: VehicleProfile = {
   schema_version: "1",
-  profile_id: "g60_us_feedback_mvp",
+  profile_id: "g60_de_2030",
   revision: 1,
   model_family: "G60",
-  countries: ["US"],
-  powertrains: ["ICE", "PHEV", "BEV"],
+  countries: ["DE"],
+  powertrains: ["ICE", "PHEV", "BEV", "BEVE"],
   domain_applicability: {},
   powertrain_aliases: {},
   alias_assumptions: {},
-  planning_date: "2026-10-10",
-  launch_window: null,
+  planning_date: "2026-10-11",
+  launch_window: "2030",
   objectives: [],
-  uncovered_regions: ["CN"],
-  notes: [],
+  uncovered_regions: ["CN", "US"],
+  notes: ["Fallback profile; configs/g60_de_2030.json was not readable."],
 };
 
 function toMarket(code: string | null | undefined): MarketCode {
@@ -430,6 +430,11 @@ export async function loadDataset(): Promise<Dataset> {
 
   const requirements = buildRequirements(proposals, SYNTHETIC_SIGNALS);
 
+  // The planning scope is whatever the loaded profile declares. Hardcoding it
+  // here would let the profile and the UI disagree silently.
+  const primaryMarket = toMarket(profile.countries[0]);
+  const horizon = profile.launch_window ?? proposals.planning_window;
+
   const reasoning = buildReasoningGraph({
     evidence: pipeline,
     findings: artifactFindings,
@@ -440,8 +445,8 @@ export async function loadDataset(): Promise<Dataset> {
 
   return {
     generated_at: new Date().toISOString(),
-    vehicle: { family: "BMW 5 Series", generation: "G60", successor_label: "G60 → Successor", horizon: proposals.planning_window },
-    planning: { version: proposals.version, status: proposals.status, window: proposals.planning_window, primary_market: "US" },
+    vehicle: { family: "BMW 5 Series", generation: "G60", successor_label: "G60 → Successor", horizon },
+    planning: { version: proposals.version, status: proposals.status, window: horizon, primary_market: primaryMarket },
     policy,
     profile,
     planning_context: context,
