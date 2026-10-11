@@ -67,7 +67,7 @@ export function useRequirementRows(market: MarketCode): RequirementRow[] {
           basis,
           score,
           priority: priorityOf(score, in_scope ? factors : null),
-          confidence: confidenceOf(in_scope ? factors : null, balance),
+          confidence: basis === "seed" ? "Low" : confidenceOf(in_scope ? factors : null, balance),
           status: decisionStatus(revision, bundle.decisions),
           balance,
           external_count: links.filter((l) => l.evidence?.kind === "external_claim" && !l.evidence.duplicate_of).length,

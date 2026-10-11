@@ -206,10 +206,9 @@ export function EvidenceExplorer() {
         question="What supports or contradicts our conclusions, and where does it come from?"
         meta={
           <>
-            <span>{dataset.evidence.filter((e) => e.provenance === "bmw_record").length} BMW anchor records</span>
+            <span>{dataset.evidence.filter((e) => e.provenance === "bmw_record").length} BMW source records and spans</span>
             <span>{dataset.evidence.filter((e) => e.provenance === "pipeline").length} pipeline</span>
             <span>{dataset.evidence.filter((e) => e.provenance === "curated_seed").length} curated seeds</span>
-            <span>{dataset.evidence.filter((e) => e.provenance === "synthetic").length} synthetic</span>
             <span>{dataset.evidence.filter((e) => e.duplicate_of).length} duplicate</span>
           </>
         }
@@ -253,7 +252,6 @@ export function EvidenceExplorer() {
             { value: "bmw_record", label: "BMW record" },
             { value: "pipeline", label: "Pipeline" },
             { value: "curated_seed", label: "Curated seed" },
-            { value: "synthetic", label: "Synthetic" },
           ]}
         />
         <label className="ml-1 inline-flex items-center gap-1.5 text-xs text-slate-600">

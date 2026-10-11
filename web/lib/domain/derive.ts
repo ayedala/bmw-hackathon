@@ -114,11 +114,10 @@ export function confidenceOf(factors: PriorityFactors | null, balance: Balance):
 }
 
 export function confidenceForHypothesis(balance: Balance): Confidence {
-  const decisive = balance.supporting + balance.contradicting;
-  const share = decisive === 0 ? 0 : balance.contradicting / decisive;
-  if (balance.independent_sources >= 4 && share < 0.35 && decisive >= 5) return "High";
-  if (balance.independent_sources < 2 || decisive < 3) return "Low";
-  return "Medium";
+  // The current theme links are classified from extracted polarity, without
+  // human entailment review. Record volume alone cannot raise confidence.
+  void balance;
+  return "Low";
 }
 
 /* ---------------------------------------------------------------- */
@@ -135,10 +134,10 @@ export function hypothesisStatus(balance: Balance): HypothesisStatus {
 }
 
 export const HYPOTHESIS_STATUS_LABEL: Record<HypothesisStatus, string> = {
-  supported: "Supported",
-  contested: "Contested",
-  not_supported: "Not supported",
-  insufficient: "Insufficient evidence",
+  supported: "Concern observed",
+  contested: "Mixed signals",
+  not_supported: "Few concerns",
+  insufficient: "Few records",
 };
 
 /* ---------------------------------------------------------------- */
