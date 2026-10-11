@@ -1222,6 +1222,54 @@ class TestCanonicalUnits(unittest.TestCase):
                           ("kWh/100km", "kWh/100 km")):
             self.assertEqual(normalization.normalize_unit(raw, ""), want, raw)
 
+    def test_metre_spellings_all_become_metres(self):
+        for raw in ("meter", "meters", "Metre", "METRES"):
+            self.assertEqual(normalization.normalize_unit(raw, ""), "metres", raw)
+
+    def test_bare_m_is_metres_when_the_quote_is_about_a_dimension(self):
+        """A 5,06 metre car was being recorded as 5,06 minutes long."""
+        for quote, value in (
+            ("The new BMW 5 Series measures 5,06 meters in length.", 5.06),
+            ("The i5's 5,06 meter exterior length makes it a true colossus.", 5.06),
+            ("Der neue 5er ist 5,06 m lang.", 5.06),
+            ("Der Radstand betraegt 3,11 m.", 3.11),
+            ("The full range radar can see objects up to 300 M ahead.", 300.0),
+        ):
+            self.assertEqual(
+                normalization.normalize_unit("m", quote, value=value), "metres", quote)
+
+    def test_bare_m_is_minutes_when_the_quote_is_about_a_duration(self):
+        for quote, value in (
+            ("The i5 can charge from 10% to 80% in about 30 m.", 30.0),
+            ("Das Laden dauert 21 m.", 21.0),
+            ("The charging stop took 16 m at 40% SOC.", 16.0),
+        ):
+            self.assertEqual(
+                normalization.normalize_unit("m", quote, value=value), "minutes", quote)
+
+    def test_bare_m_with_both_clues_is_broken_by_the_value(self):
+        """One quote can carry a dimension and a charging time at once."""
+        both = "The 5,06 m long i5 charges from 10 to 80 percent in 30 minutes."
+        self.assertEqual(normalization.normalize_unit("m", both, value=5.06), "metres")
+        self.assertEqual(normalization.normalize_unit("m", both, value=30.0), "minutes")
+
+    def test_bare_m_stays_raw_when_nothing_disambiguates_it(self):
+        """Guessing is what caused the bug, so an undecidable m stays visible."""
+        self.assertEqual(
+            normalization.normalize_unit("m", "A sentence with no useful clue.", value=5.0),
+            "m")
+
+    def test_real_corpus_minute_rows_are_unchanged_by_the_metre_fix(self):
+        """The ten genuine charging-duration quotes must not become metres."""
+        for quote, value in (
+            ("The A6 Avant e-tron charges from 10% to 80% in 21 Min.", 21.0),
+            ("A charging stop from 40% to 83% SOC took 16 minutes.", 16.0),
+            ("The Taycan needed just 24 minutes for its state of charge.", 24.0),
+            ("The Model S's DC fast-charge time from 10-90% is 37 min.", 37.0),
+        ):
+            self.assertEqual(
+                normalization.normalize_unit("m", quote, value=value), "minutes", quote)
+
     def test_unknown_unit_is_left_alone(self):
         self.assertEqual(normalization.normalize_unit("furlongs", ""), "furlongs")
         self.assertIsNone(normalization.normalize_unit(None, ""))

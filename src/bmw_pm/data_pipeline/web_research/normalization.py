@@ -445,8 +445,8 @@ def looks_non_english(text: str, *, min_markers: int = 2) -> bool:
 #: The unit vocabulary downstream aggregation may rely on. Anything a model
 #: writes is mapped onto one of these, or left alone when unrecognised.
 CANONICAL_UNITS: tuple[str, ...] = (
-    "kW", "kWh", "kWh/100 km", "V", "A", "km", "km/h", "minutes", "hours",
-    "percent", "EUR", "kg", "litres", "dB",
+    "kW", "kWh", "kWh/100 km", "V", "A", "km", "km/h", "metres", "minutes",
+    "hours", "percent", "EUR", "kg", "litres", "dB",
 )
 
 #: Surface form (lowercased, stripped) -> canonical unit. Covers the German and
@@ -454,7 +454,7 @@ CANONICAL_UNITS: tuple[str, ...] = (
 _UNIT_MAP: dict[str, str] = {
     # time
     "min": "minutes", "min.": "minutes", "mins": "minutes", "minute": "minutes",
-    "minuten": "minutes", "minutes": "minutes", "m": "minutes",
+    "minuten": "minutes", "minutes": "minutes",
     "h": "hours", "hr": "hours", "hrs": "hours", "hour": "hours",
     "hours": "hours", "stunde": "hours", "stunden": "hours",
     # power / energy / electrical
@@ -467,6 +467,8 @@ _UNIT_MAP: dict[str, str] = {
     # distance / speed
     "km": "km", "kilometer": "km", "kilometers": "km", "kilometre": "km",
     "kilometres": "km", "kms": "km",
+    "meter": "metres", "meters": "metres", "metre": "metres",
+    "metres": "metres", "m.": "metres",
     "km/h": "km/h", "kmh": "km/h", "kph": "km/h", "km per hour": "km/h",
     "stundenkilometer": "km/h",
     # proportion
@@ -498,10 +500,38 @@ RE_CAPACITY_CONTEXT = re.compile(
 )
 
 
+#: A bare ``m`` is metres when the quote is about a dimension or a distance.
+#: This is what the extractor actually sees: "measures 5,06 meters in length",
+#: "5,06 meter exterior length", "can see objects up to 300 M ahead".
+RE_LENGTH_CONTEXT = re.compile(
+    r"\bl(?:a|ä)ng|length|\blong\b|breit|width|\bh(?:o|ö)h|height"
+    r"|radstand|wheelbase|\bmeter|\bmetre|measures|abmessung|dimension"
+    r"|\bahead\b|entfernung|\bdistance\b|\breichweite\b|aussen|außen|exterior"
+    r"|kofferraum|\bboot\b|\bturning circle\b|wendekreis",
+    re.I,
+)
+
+#: ...and minutes when the quote is about how long something took. These are
+#: the charging phrasings the cached pages use.
+RE_DURATION_CONTEXT = re.compile(
+    r"\bmin\b|minute|minuten|\bladezeit|charg|\bladen\b|dauert|\btook\b"
+    r"|\btime\b|\bstop\b|\bsoc\b|state of charge|10\s*[-–]\s*80|\bper cent\b"
+    r"|\bschnelllad",
+    re.I,
+)
+
 #: Highest plausible consumption figure in kWh/100 km. Anything above this is a
 #: battery capacity: production EV consumption sits around 10-35, while usable
 #: pack sizes start near 50. Used only to break a tie the words leave open.
 CONSUMPTION_MAX_KWH: float = 40.0
+
+#: Unit spellings that could be either metres or minutes. Only the bare letter
+#: is ambiguous; every spelled-out form maps directly.
+_AMBIGUOUS_M: frozenset[str] = frozenset({"m"})
+
+#: Longest plausible vehicle dimension in metres. Used only to break a tie the
+#: words leave open, never to override them.
+PLAUSIBLE_VEHICLE_METRES: float = 7.0
 
 
 def normalize_unit(
@@ -551,6 +581,27 @@ def normalize_unit(
         plausible = value is not None and 0 < value <= CONSUMPTION_MAX_KWH
         if plausible and RE_CONSUMPTION_CONTEXT.search(context or ""):
             return "kWh/100 km"
+
+    if key in _AMBIGUOUS_M:
+        text = f"{evidence_text or ''} {context or ''}"
+        length = RE_LENGTH_CONTEXT.search(text)
+        duration = RE_DURATION_CONTEXT.search(text)
+        if length and not duration:
+            return "metres"
+        if duration and not length:
+            return "minutes"
+        # Both or neither: a dimension and a charging time can sit in one
+        # quote ("5,06 m long, charges in 30 minutes"), so fall back on the
+        # value. Nothing on these pages is 7 metres long, and nothing charges
+        # in under a minute.
+        if value is not None and 0 < value <= PLAUSIBLE_VEHICLE_METRES and length:
+            return "metres"
+        if value is not None and value > PLAUSIBLE_VEHICLE_METRES and duration:
+            return "minutes"
+        # Still undecided. Returning the raw unit keeps the ambiguity visible
+        # instead of inventing a dimension, which is what made a 5,06 metre
+        # car 5,06 minutes long.
+        return raw
     return canonical
 
 
