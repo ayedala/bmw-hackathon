@@ -2,7 +2,7 @@
 
 import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ConfidenceBadge, DecisionBadge, MarketTag, PriorityBadge, ScoreValue } from "@/components/app/badges";
 import { DataTable, type Column } from "@/components/app/data-table";
@@ -15,7 +15,9 @@ import Link from "next/link";
 import { CrpsInterval } from "@/components/app/canonical-crps";
 import { ReasoningSourceNotice } from "@/components/app/reasoning-chain";
 import { DECISION_STATUS_LABEL, formatDate, PRIORITIES, priorityRank, TOPIC_LABEL, type DecisionStatus } from "@/lib/domain/derive";
-import { MARKET_LABEL } from "@/lib/domain/model";
+import { MARKET_LABEL, type ModelCoverageSummary } from "@/lib/domain/model";
+import { VEHICLES, type Vehicle } from "@/lib/advisor/contracts";
+import { useReviewDrafts } from "@/lib/advisor/review-drafts";
 import { usePersistentState, useStore } from "@/lib/store";
 import { useRequirementRows, type RequirementRow } from "@/lib/view";
 
@@ -26,6 +28,15 @@ interface Filters {
   decision: string;
 }
 const DEFAULTS: Filters = { q: "", topic: "all", priority: "all", decision: "all" };
+const THEME_NAME: Record<string, string> = {
+  controls_usability: "Everyday controls and usability",
+  software_reliability: "Connected functions and software reliability",
+  charging_and_range: "Range and charging confidence",
+  ride_and_comfort: "Ride, seating and comfort",
+  driver_assistance: "Driver assistance behavior",
+  storage_and_practicality: "Storage and practical access",
+  noise_and_refinement: "Cabin noise and refinement",
+};
 
 export function requirementColumns(market: string): Column<RequirementRow>[] {
   return [
@@ -81,7 +92,27 @@ export function requirementColumns(market: string): Column<RequirementRow>[] {
 export function RequirementsScreen() {
   const router = useRouter();
   const { market } = useStore();
+  const [model, setModel] = usePersistentState<Vehicle>("requirements:model", "G60");
+  const drafts = useReviewDrafts();
   const rows = useRequirementRows(market);
+  const modelDrafts = drafts.filter((draft) => draft.model_code === model);
+  const [coverage, setCoverage] = useState<ModelCoverageSummary[]>([]);
+  const [coverageLoaded, setCoverageLoaded] = useState(false);
+  const [coverageReason, setCoverageReason] = useState<string | null>(null);
+  useEffect(() => {
+    if (model === "G60" || coverageLoaded) return;
+    const controller = new AbortController();
+    fetch("/api/model-coverage", { signal: controller.signal })
+      .then((response) => response.json())
+      .then((data: { available: boolean; reason: string | null; coverage: ModelCoverageSummary[] }) => {
+        setCoverage(data.coverage);
+        setCoverageReason(data.available ? null : data.reason || "Evidence database unavailable.");
+        setCoverageLoaded(true);
+      })
+      .catch(() => { if (!controller.signal.aborted) { setCoverageReason("Model evidence could not be loaded."); setCoverageLoaded(true); } });
+    return () => controller.abort();
+  }, [model, coverageLoaded]);
+  const modelCoverage = coverage.find((item) => item.model_code === model);
   const [filters, setFilters] = usePersistentState<Filters>("requirements", DEFAULTS);
   const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -108,9 +139,22 @@ export function RequirementsScreen() {
     <div>
       <PageHeader
         title="Requirements"
-        question={`Which customer-facing requirements should shape the BMW 5 Series successor? Canonical seven-factor CRPS · ${MARKET_LABEL[market]} · 2030.`}
+        question={model === "G60" ? `Which customer-facing requirements should shape the BMW 5 Series successor? Canonical seven-factor CRPS · ${MARKET_LABEL[market]} · 2030.` : `Review suggested requirements for the ${VEHICLES[model]}. Authored canonical requirements are currently available only for the 5 Series.`}
         actions={<Button asChild><Link href="/needs">Trace customer needs</Link></Button>}
       />
+      <div className="mb-5 grid gap-2 sm:grid-cols-3" role="group" aria-label="Choose BMW model for requirements">
+        {(["F70", "G60", "G70"] as const).map((code) => <button key={code} type="button" aria-pressed={model === code} onClick={() => setModel(code)} className={`rounded-md border px-4 py-3 text-left text-sm font-semibold ${model === code ? "border-brand bg-brand-soft" : "border-slate-200 bg-white hover:border-brand-line"}`}>{VEHICLES[code]} <span className="font-mono text-xs font-normal">{code}</span><span className="mt-1 block text-xs font-normal text-slate-600">{code === "G60" ? `${rows.length} canonical requirements · ` : ""}{drafts.filter((draft) => draft.model_code === code).length} Studio suggestions</span></button>)}
+      </div>
+      {modelDrafts.length > 0 && <section className="mb-5 space-y-2"><h2 className="text-sm font-semibold">Studio suggestions awaiting PM review or decision</h2><p className="text-xs text-slate-500">These suggestions and decisions are saved in this browser, separate from audited canonical requirements.</p><div className="grid gap-2 md:grid-cols-2">{modelDrafts.map((draft) => <Link key={draft.id} href={`/requirements/suggestions/${encodeURIComponent(draft.id)}`} className="rounded-md border border-slate-200 bg-white p-3 hover:border-brand"><span className="block text-sm font-medium">{draft.title}</span><span className="mt-1 block text-xs capitalize text-slate-500">{draft.status} · {draft.market} · {draft.powertrain}</span></Link>)}</div></section>}
+      {model !== "G60" ? <div className="space-y-4">
+        <div className="rounded-md border border-slate-200 bg-white p-5"><h2 className="text-sm font-semibold">Model-specific requirement areas</h2><p className="mt-2 text-xs text-slate-600">These are evidence themes, not authored or PM-approved requirements. Studio suggestions for this car appear above when sent for review.</p>
+          {!coverageLoaded && <p className="mt-3 text-xs">Loading model evidence…</p>}
+          {coverageReason && <p className="mt-3 text-xs text-amber-700">{coverageReason}</p>}
+          {modelCoverage && <p className="mt-3 text-xs text-slate-600">{modelCoverage.feedback_records.toLocaleString()} feedback records · {modelCoverage.signal_count.toLocaleString()} extracted spans · {modelCoverage.themes.length} candidate areas</p>}
+          <Button asChild className="mt-3"><Link href="/studio">Open Decision Studio</Link></Button>
+        </div>
+        {modelCoverage && <div className="grid gap-3 md:grid-cols-2">{modelCoverage.themes.map((theme) => <article key={theme.domain} className="rounded-md border border-slate-200 bg-white p-4"><p className="text-2xs font-semibold uppercase text-brand">Candidate requirement area · unreviewed</p><h3 className="mt-1 text-sm font-semibold">{THEME_NAME[theme.domain] ?? theme.domain.replaceAll("_", " ")}</h3><p className="mt-2 text-xs text-slate-600">{theme.feedback_count.toLocaleString()} feedback IDs · {theme.signal_count.toLocaleString()} extracted spans · {theme.concern_count.toLocaleString()} tagged concerns. Counts do not measure customer prevalence.</p>{theme.examples.slice(0, 2).map((example) => <blockquote key={`${example.source_record_id}-${example.locator}`} className="mt-3 border-l-2 border-slate-200 pl-3 text-xs text-slate-700">“{example.excerpt}”<span className="mt-1 block font-mono text-2xs text-slate-500">{example.source_record_id} · {example.country}</span></blockquote>)}</article>)}</div>}
+      </div> : <>
       <ReasoningSourceNotice />
       <FilterBar active={active} onClearAll={() => setFilters(DEFAULTS)} resultLabel={`${filtered.length} of ${rows.length} requirements`}>
         <div className="relative">
@@ -145,6 +189,7 @@ export function RequirementsScreen() {
           />
         }
       />
+      </>}
     </div>
   );
 }

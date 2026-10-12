@@ -1,11 +1,13 @@
 "use client";
 import {useState} from "react";
+import {useRouter} from "next/navigation";
 import {Check, Download, ExternalLink, FileText} from "lucide-react";
 import {Button} from "@/components/ui/button";
 import {SidePanel} from "@/components/ui/dialog";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import type {AdvisorResult, Claim, EvidenceItem} from "@/lib/advisor/contracts";
 import {VEHICLES} from "@/lib/advisor/contracts";
+import {saveSuggestedRequirement} from "@/lib/advisor/review-drafts";
 import {StudioEconomics} from "./studio-economics";
 
 function safeLink(value: unknown): string | null {
@@ -22,6 +24,7 @@ function ClaimView({claim, sources, inspect}: {claim: Claim; sources: Map<string
 function List({items}: {items: string[]}) {return <ul className="list-disc space-y-1.5 pl-4 text-xs leading-relaxed text-slate-600">{items.map((item, i) => <li key={i}>{item}</li>)}</ul>;}
 
 export function AdvisorReport({result}: {result: AdvisorResult}) {
+  const router = useRouter();
   const [selected, setSelected] = useState<EvidenceItem | null>(null);
   const [filter, setFilter] = useState("all");
   const request = result.packet.request;
@@ -45,6 +48,7 @@ export function AdvisorReport({result}: {result: AdvisorResult}) {
         {claim(result.report.recommendation)}
         {result.report.options.map((option, index) => <article key={option.option_id} className="rounded-md border border-slate-200 p-4 transition-colors hover:border-slate-300">
           <div className="flex flex-wrap items-start gap-3"><span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-slate-100 font-mono text-xs font-semibold text-slate-600">{String(index + 1).padStart(2, "0")}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-zinc-950">{option.title}</h3>{option.option_id === result.report.preferred_option_id && <span className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-2xs font-semibold text-brand"><Check className="size-3" />Preferred</span>}</div><p className="mt-1 text-xs leading-relaxed text-slate-600">{option.proposal}</p></div></div>
+          <Button size="sm" className="mt-3" onClick={() => {const id = saveSuggestedRequirement(result, option); router.push(`/requirements/suggestions/${encodeURIComponent(id)}`);}}>Send to PM review</Button>
           {request.journey === "compare" && <p className="mt-2 text-2xs text-slate-500">Submitted idea {index + 1}: {request.ideas[index]}</p>}
           <h4 className="mt-4 text-xs font-semibold">Customer value</h4>{option.customer_case.map((item, i) => <div key={i}>{claim(item)}</div>)}
           <details className="mt-3 border-t border-slate-100 pt-3"><summary className="cursor-pointer text-xs font-semibold">Can it be built and shipped?</summary>{claim(option.feasibility)}<h5 className="my-2 text-xs font-medium">Proposed delivery path</h5><List items={option.delivery_steps} /><h5 className="my-2 text-xs font-medium">Risks and validation gates</h5><List items={[...option.risks, ...option.validation_needed]} /></details>

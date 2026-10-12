@@ -6,6 +6,7 @@
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
     "start": "node scripts/start-standalone.mjs",
+    "start:local-review": "node scripts/start-local-review.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "app:prepare": "next build && node scripts/prepare-standalone.mjs",

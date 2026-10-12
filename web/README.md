@@ -82,3 +82,17 @@ npm install
 npm run app:mac:arm64      # → dist/BMW Product Decision Lab-0.1.0-arm64.dmg (ad-hoc signed)
 npm run app                # run the desktop app without packaging
 ```
+
+## Local PM review demo
+
+After `npm run build`, run `npm run start:local-review` from `web/`. This uses an
+ignored local SQLite review database, separate from the configured shared database.
+The first time, open a canonical 5 Series requirement and use **Import canonical
+corpus for audited review** with a reviewer ID and rationale. Its Approve/Reject
+decisions are then persisted with the local audit trail.
+
+In Decision Studio, **Send to PM review** saves an option as a model-specific
+suggestion. Select 1, 5, or 7 Series on `/requirements` to find those suggestions.
+Their PM decisions are kept in that browser's local storage and are clearly labeled
+separate from audited canonical decisions. Model-specific evidence themes load only
+when the 1 or 7 Series is selected.
